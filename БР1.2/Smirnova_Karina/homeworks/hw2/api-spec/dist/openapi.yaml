@@ -1,0 +1,2028 @@
+openapi: 3.0.0
+info:
+  title: "Rent Service API"
+  version: 1.0.0
+tags:
+  - name: Authentication
+  - name: Users
+  - name: Listings
+  - name: Bookings
+  - name: Rents
+  - name: Chats
+  - name: Messages
+paths:
+  /auth/login:
+    post:
+      operationId: Authentication_login
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Auth.TokensResponse'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Auth.LoginRequest'
+  /auth/logout:
+    post:
+      operationId: Authentication_logout
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Auth.LogoutRequest'
+      security:
+        - BearerAuth: []
+  /auth/refresh:
+    post:
+      operationId: Authentication_refresh
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Auth.TokensResponse'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Auth.RefreshRequest'
+      security:
+        - BearerAuth: []
+  /auth/register:
+    post:
+      operationId: Authentication_register
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Auth.RegisterResponse'
+        '409':
+          description: The request conflicts with the current state of the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictException'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Auth.RegisterRequest'
+  /bookings:
+    post:
+      operationId: Bookings_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bookings.BookingResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ConflictException'
+                  - $ref: '#/components/schemas/BusinessException'
+      tags:
+        - Bookings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Bookings.CreateBookingRequest'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: Bookings_list
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+          explode: false
+        - $ref: '#/components/parameters/PageRequestParams.page'
+        - $ref: '#/components/parameters/PageRequestParams.size'
+        - $ref: '#/components/parameters/PageRequestParams.sort'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                  - pageable
+                  - totalElements
+                  - totalPages
+                  - last
+                  - first
+                  - number
+                  - size
+                  - numberOfElements
+                  - empty
+                  - sort
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bookings.BookingResponse'
+                  pageable:
+                    $ref: '#/components/schemas/PageableInfo'
+                  totalElements:
+                    type: integer
+                    format: int64
+                  totalPages:
+                    type: integer
+                    format: int32
+                  last:
+                    type: boolean
+                  first:
+                    type: boolean
+                  number:
+                    type: integer
+                    format: int32
+                  size:
+                    type: integer
+                    format: int32
+                  numberOfElements:
+                    type: integer
+                    format: int32
+                  empty:
+                    type: boolean
+                  sort:
+                    $ref: '#/components/schemas/SortInfo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+      tags:
+        - Bookings
+      security:
+        - BearerAuth: []
+  /bookings/{bookingId}:
+    get:
+      operationId: Bookings_get
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bookings.BookingResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Bookings
+      security:
+        - BearerAuth: []
+  /bookings/{bookingId}/cancel:
+    post:
+      operationId: Bookings_cancel
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bookings.BookingResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Bookings
+      security:
+        - BearerAuth: []
+  /bookings/{bookingId}/complete:
+    post:
+      operationId: Bookings_complete
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bookings.BookingResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Bookings
+      security:
+        - BearerAuth: []
+  /chats:
+    post:
+      operationId: Chats_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chats.ChatResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Chats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Chats.CreateChatRequest'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: Chats_list
+      parameters:
+        - $ref: '#/components/parameters/PageRequestParams.page'
+        - $ref: '#/components/parameters/PageRequestParams.size'
+        - $ref: '#/components/parameters/PageRequestParams.sort'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                  - pageable
+                  - totalElements
+                  - totalPages
+                  - last
+                  - first
+                  - number
+                  - size
+                  - numberOfElements
+                  - empty
+                  - sort
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Chats.ChatResponse'
+                  pageable:
+                    $ref: '#/components/schemas/PageableInfo'
+                  totalElements:
+                    type: integer
+                    format: int64
+                  totalPages:
+                    type: integer
+                    format: int32
+                  last:
+                    type: boolean
+                  first:
+                    type: boolean
+                  number:
+                    type: integer
+                    format: int32
+                  size:
+                    type: integer
+                    format: int32
+                  numberOfElements:
+                    type: integer
+                    format: int32
+                  empty:
+                    type: boolean
+                  sort:
+                    $ref: '#/components/schemas/SortInfo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+      tags:
+        - Chats
+      security:
+        - BearerAuth: []
+  /chats/{chatId}/messages:
+    get:
+      operationId: Messages_list
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/PageRequestParams.page'
+        - $ref: '#/components/parameters/PageRequestParams.size'
+        - $ref: '#/components/parameters/PageRequestParams.sort'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                  - pageable
+                  - totalElements
+                  - totalPages
+                  - last
+                  - first
+                  - number
+                  - size
+                  - numberOfElements
+                  - empty
+                  - sort
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Messages.MessageResponse'
+                  pageable:
+                    $ref: '#/components/schemas/PageableInfo'
+                  totalElements:
+                    type: integer
+                    format: int64
+                  totalPages:
+                    type: integer
+                    format: int32
+                  last:
+                    type: boolean
+                  first:
+                    type: boolean
+                  number:
+                    type: integer
+                    format: int32
+                  size:
+                    type: integer
+                    format: int32
+                  numberOfElements:
+                    type: integer
+                    format: int32
+                  empty:
+                    type: boolean
+                  sort:
+                    $ref: '#/components/schemas/SortInfo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+    post:
+      operationId: Messages_send
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Messages.MessageResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Messages.SendMessageRequest'
+      security:
+        - BearerAuth: []
+  /listings:
+    post:
+      operationId: Listings_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listings.ListingResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+      tags:
+        - Listings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Listings.CreateListingRequest'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: Listings_search
+      parameters:
+        - name: rentMode
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/RentMode'
+          explode: false
+        - name: houseType
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/HouseType'
+          explode: false
+        - name: priceMin
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+          explode: false
+        - name: priceMax
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+          explode: false
+        - name: lat
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+          explode: false
+        - name: lng
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+          explode: false
+        - name: radiusKm
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+          explode: false
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          explode: false
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          explode: false
+        - $ref: '#/components/parameters/PageRequestParams.page'
+        - $ref: '#/components/parameters/PageRequestParams.size'
+        - $ref: '#/components/parameters/PageRequestParams.sort'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    required:
+                      - content
+                      - pageable
+                      - totalElements
+                      - totalPages
+                      - last
+                      - first
+                      - number
+                      - size
+                      - numberOfElements
+                      - empty
+                      - sort
+                    properties:
+                      content:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Listings.ListingResponse'
+                      pageable:
+                        $ref: '#/components/schemas/PageableInfo'
+                      totalElements:
+                        type: integer
+                        format: int64
+                      totalPages:
+                        type: integer
+                        format: int32
+                      last:
+                        type: boolean
+                      first:
+                        type: boolean
+                      number:
+                        type: integer
+                        format: int32
+                      size:
+                        type: integer
+                        format: int32
+                      numberOfElements:
+                        type: integer
+                        format: int32
+                      empty:
+                        type: boolean
+                      sort:
+                        $ref: '#/components/schemas/SortInfo'
+                  - $ref: '#/components/schemas/MethodArgumentNotValidException'
+      tags:
+        - Listings
+  /listings/{listingId}:
+    get:
+      operationId: Listings_get
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listings.ListingDetailsResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Listings
+    patch:
+      operationId: Listings_update
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/Listings.ListingResponse'
+                  - $ref: '#/components/schemas/MethodArgumentNotValidException'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Listings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Listings.UpdateListingRequest'
+      security:
+        - BearerAuth: []
+  /listings/{listingId}/activate:
+    post:
+      operationId: Listings_activate
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Listings
+      security:
+        - BearerAuth: []
+  /listings/{listingId}/deactivate:
+    post:
+      operationId: Listings_deactivate
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Listings
+      security:
+        - BearerAuth: []
+  /listings/{listingId}/photos:
+    post:
+      operationId: Listings_addPhoto
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listings.Photo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Listings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Listings.AddPhotoRequest'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: Listings_listPhotos
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Listings.Photo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Listings
+  /listings/{listingId}/photos/{photoId}:
+    patch:
+      operationId: Listings_updatePhoto
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/Listings.Photo'
+                  - $ref: '#/components/schemas/MethodArgumentNotValidException'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Listings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Listings.UpdatePhotoRequest'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: Listings_deletePhoto
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Listings
+      security:
+        - BearerAuth: []
+  /rents:
+    post:
+      operationId: Rents_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rents.RentResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/BusinessException'
+      tags:
+        - Rents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rents.CreateRentRequest'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: Rents_list
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/RentStatus'
+          explode: false
+        - $ref: '#/components/parameters/PageRequestParams.page'
+        - $ref: '#/components/parameters/PageRequestParams.size'
+        - $ref: '#/components/parameters/PageRequestParams.sort'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                  - pageable
+                  - totalElements
+                  - totalPages
+                  - last
+                  - first
+                  - number
+                  - size
+                  - numberOfElements
+                  - empty
+                  - sort
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Rents.RentResponse'
+                  pageable:
+                    $ref: '#/components/schemas/PageableInfo'
+                  totalElements:
+                    type: integer
+                    format: int64
+                  totalPages:
+                    type: integer
+                    format: int32
+                  last:
+                    type: boolean
+                  first:
+                    type: boolean
+                  number:
+                    type: integer
+                    format: int32
+                  size:
+                    type: integer
+                    format: int32
+                  numberOfElements:
+                    type: integer
+                    format: int32
+                  empty:
+                    type: boolean
+                  sort:
+                    $ref: '#/components/schemas/SortInfo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+      tags:
+        - Rents
+      security:
+        - BearerAuth: []
+  /rents/{rentId}:
+    get:
+      operationId: Rents_get
+      parameters:
+        - name: rentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rents.RentResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Rents
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: Rents_update
+      parameters:
+        - name: rentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/Rents.RentResponse'
+                  - $ref: '#/components/schemas/MethodArgumentNotValidException'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Rents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rents.UpdateRentRequest'
+      security:
+        - BearerAuth: []
+  /rents/{rentId}/close:
+    post:
+      operationId: Rents_close
+      parameters:
+        - name: rentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rents.RentResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Rents
+      security:
+        - BearerAuth: []
+  /users/email/confirm:
+    post:
+      operationId: Authentication_confirmEmail
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundException'
+        '409':
+          description: The request conflicts with the current state of the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictException'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Auth.EmailConfirmRequest'
+      security:
+        - BearerAuth: []
+  /users/me:
+    get:
+      operationId: Users_getMe
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Users.UserMeResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: Users_updateMe
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/Users.UserMeResponse'
+                  - $ref: '#/components/schemas/MethodArgumentNotValidException'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ConflictException'
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Users.UpdateMeRequest'
+      security:
+        - BearerAuth: []
+  /users/me/email/verify:
+    post:
+      operationId: Users_resendVerifyEmail
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedException'
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+  /users/me/profile:
+    get:
+      operationId: Users_getProfile
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Users.UserProfileResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+components:
+  parameters:
+    PageRequestParams.page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+      explode: false
+    PageRequestParams.size:
+      name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+      explode: false
+    PageRequestParams.sort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      explode: false
+  schemas:
+    Auth.EmailConfirmRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+    Auth.LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          minLength: 1
+          format: email
+        password:
+          type: string
+          minLength: 6
+    Auth.LogoutRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+    Auth.RefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+    Auth.RegisterRequest:
+      type: object
+      required:
+        - email
+        - username
+        - phone
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        phone:
+          type: string
+          pattern: ^[+]?[0-9]+$
+        password:
+          type: string
+          minLength: 6
+    Auth.RegisterResponse:
+      type: object
+      required:
+        - id
+        - email
+        - username
+        - phone
+        - verified
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        username:
+          type: string
+        phone:
+          type: string
+        verified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    Auth.TokensResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - tokenType
+        - accessExpiresIn
+        - refreshExpiresIn
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+        accessExpiresIn:
+          type: string
+        refreshExpiresIn:
+          type: string
+    BookingStatus:
+      type: string
+      enum:
+        - PENDING
+        - ACCEPTED
+        - CANCELED
+        - COMPLETED
+    Bookings.BookingResponse:
+      type: object
+      required:
+        - id
+        - listingId
+        - guestId
+        - status
+        - startDate
+        - endDate
+        - pricePerNightSnapshot
+        - totalAmount
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        listingId:
+          type: integer
+          format: int64
+        guestId:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        pricePerNightSnapshot:
+          type: number
+          format: double
+        totalAmount:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+    Bookings.CreateBookingRequest:
+      type: object
+      required:
+        - listingId
+        - startDate
+        - endDate
+      properties:
+        listingId:
+          type: integer
+          format: int64
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+    BusinessException:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+    Chats.ChatResponse:
+      type: object
+      required:
+        - id
+        - user1Id
+        - user2Id
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        user1Id:
+          type: integer
+          format: int64
+        user2Id:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+    Chats.CreateChatRequest:
+      type: object
+      required:
+        - otherUserId
+      properties:
+        otherUserId:
+          type: integer
+          format: int64
+    CommunicationMethod:
+      type: string
+      enum:
+        - CHAT
+        - CALL
+    ConflictException:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: {}
+    FieldError:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+    ForbiddenException:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+    ForbiddenResult:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          $ref: '#/components/schemas/ForbiddenException'
+    HouseType:
+      type: string
+      enum:
+        - STUDIO
+        - ONE_ROOM
+        - TWO_ROOM
+        - FOUR_ROOM
+        - FIVE_ROOM
+        - SIX_ROOM
+    Listings.AddPhotoRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+        isMain:
+          type: boolean
+    Listings.CreateListingRequest:
+      type: object
+      required:
+        - rentMode
+        - title
+        - address
+        - houseType
+      properties:
+        rentMode:
+          $ref: '#/components/schemas/RentMode'
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+        address:
+          type: string
+          minLength: 5
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        houseType:
+          $ref: '#/components/schemas/HouseType'
+    Listings.ListingDaily:
+      type: object
+      required:
+        - listingId
+        - pricePerNight
+        - minNights
+      properties:
+        listingId:
+          type: integer
+          format: int64
+        pricePerNight:
+          type: number
+          format: double
+        minNights:
+          type: integer
+          format: int32
+        maxNights:
+          type: integer
+          format: int32
+        checkInTime:
+          type: string
+        checkOutTime:
+          type: string
+    Listings.ListingDetailsResponse:
+      type: object
+      required:
+        - listing
+        - photos
+      properties:
+        listing:
+          $ref: '#/components/schemas/Listings.ListingResponse'
+        daily:
+          $ref: '#/components/schemas/Listings.ListingDaily'
+        monthly:
+          $ref: '#/components/schemas/Listings.ListingMonthly'
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Listings.Photo'
+    Listings.ListingMonthly:
+      type: object
+      required:
+        - listingId
+        - pricePerMonth
+        - deposit
+        - communalPayments
+      properties:
+        listingId:
+          type: integer
+          format: int64
+        pricePerMonth:
+          type: number
+          format: double
+        deposit:
+          type: number
+          format: double
+        communalPayments:
+          type: boolean
+        minMonth:
+          type: integer
+          format: int32
+    Listings.ListingResponse:
+      type: object
+      required:
+        - id
+        - ownerId
+        - rentMode
+        - title
+        - description
+        - address
+        - lat
+        - lng
+        - houseType
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        ownerId:
+          type: integer
+          format: int64
+        rentMode:
+          $ref: '#/components/schemas/RentMode'
+        title:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        houseType:
+          $ref: '#/components/schemas/HouseType'
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    Listings.Photo:
+      type: object
+      required:
+        - id
+        - listingId
+        - url
+        - uploadedAt
+        - isMain
+      properties:
+        id:
+          type: integer
+          format: int64
+        listingId:
+          type: integer
+          format: int64
+        url:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+        isMain:
+          type: boolean
+    Listings.UpdateListingRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+        address:
+          type: string
+          minLength: 5
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        houseType:
+          $ref: '#/components/schemas/HouseType'
+        isActive:
+          type: boolean
+    Listings.UpdatePhotoRequest:
+      type: object
+      properties:
+        isMain:
+          type: boolean
+    Messages.MessageResponse:
+      type: object
+      required:
+        - id
+        - chatId
+        - content
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        chatId:
+          type: integer
+          format: int64
+        senderId:
+          type: integer
+          format: int64
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    Messages.SendMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+    MethodArgumentNotValidException:
+      type: object
+      required:
+        - code
+        - message
+        - fieldErrors
+      properties:
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+        message:
+          type: string
+        fieldErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+    NoContent:
+      type: object
+    NotFoundException:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+    PageableInfo:
+      type: object
+      required:
+        - pageNumber
+        - pageSize
+        - offset
+        - paged
+        - unpaged
+        - sort
+      properties:
+        pageNumber:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int64
+        paged:
+          type: boolean
+        unpaged:
+          type: boolean
+        sort:
+          $ref: '#/components/schemas/SortInfo'
+    RentMode:
+      type: string
+      enum:
+        - DAILY
+        - MONTHLY
+    RentStatus:
+      type: string
+      enum:
+        - NEW
+        - IN_PROGRESS
+        - CLOSED
+    Rents.CreateRentRequest:
+      type: object
+      required:
+        - listingId
+        - communicationMethod
+      properties:
+        listingId:
+          type: integer
+          format: int64
+        communicationMethod:
+          $ref: '#/components/schemas/CommunicationMethod'
+    Rents.RentResponse:
+      type: object
+      required:
+        - id
+        - listingId
+        - guestId
+        - communicationMethod
+        - status
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        listingId:
+          type: integer
+          format: int64
+        guestId:
+          type: integer
+          format: int64
+        communicationMethod:
+          $ref: '#/components/schemas/CommunicationMethod'
+        status:
+          $ref: '#/components/schemas/RentStatus'
+        createdAt:
+          type: string
+          format: date-time
+    Rents.UpdateRentRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/RentStatus'
+        communicationMethod:
+          $ref: '#/components/schemas/CommunicationMethod'
+    SortInfo:
+      type: object
+      required:
+        - sorted
+        - unsorted
+        - empty
+      properties:
+        sorted:
+          type: boolean
+        unsorted:
+          type: boolean
+        empty:
+          type: boolean
+    SortOrder:
+      type: object
+      required:
+        - property
+        - direction
+      properties:
+        property:
+          type: string
+        direction:
+          type: string
+          enum:
+            - ASC
+            - DESC
+        ignoreCase:
+          type: boolean
+        nullHandling:
+          type: string
+          enum:
+            - NATIVE
+            - NULLS_FIRST
+            - NULLS_LAST
+    UnauthorizedException:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+    Users.UpdateMeRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          pattern: ^[+]?[0-9]+$
+        password:
+          type: string
+          minLength: 6
+    Users.UserMeResponse:
+      type: object
+      required:
+        - id
+        - email
+        - username
+        - phone
+        - verified
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        username:
+          type: string
+        phone:
+          type: string
+        verified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    Users.UserProfileResponse:
+      type: object
+      required:
+        - id
+        - username
+        - phone
+        - verified
+        - createdAt
+        - ownedListings
+        - guestBookingHistory
+        - guestRentHistory
+        - ownerBookingHistory
+        - ownerRentHistory
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        phone:
+          type: string
+        verified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        ownedListings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Listings.ListingResponse'
+        guestBookingHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bookings.BookingResponse'
+        guestRentHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rents.RentResponse'
+        ownerBookingHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bookings.BookingResponse'
+        ownerRentHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rents.RentResponse'
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: Bearer
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local
+    variables: {}
