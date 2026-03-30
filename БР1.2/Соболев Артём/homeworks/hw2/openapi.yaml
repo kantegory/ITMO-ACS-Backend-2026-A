@@ -1,0 +1,3255 @@
+openapi: 3.0.3
+info:
+  title: Платформа для фитнес-тренировок и здоровья
+  version: 1.0.0
+  description:
+    "Спецификация OpenAPI для backend-приложения платформы фитнес-тренировок
+    и здоровья. API охватывает работу с пользователями, тренировками, упражнениями, планами тренировок,
+    прогрессом, избранным, завершёнными тренировками, а также статьями и комментариями.
+    "
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальная среда разработки
+tags:
+  - name: Auth
+  - name: Profile
+  - name: Sessions
+  - name: Trainings
+  - name: Exercises
+  - name: Workout Plans
+  - name: Favourites
+  - name: Completed Trainings
+  - name: Progress
+  - name: Articles
+  - name: Comments
+  - name: Reference Data
+  - name: Videos
+  - name: Admin Users
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Зарегистрировать нового пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Пользователь успешно зарегистрирован
+          headers:
+            Set-Cookie:
+              description: HttpOnly cookie с refresh-токеном
+              schema:
+                type: string
+                example: refreshToken=abc.def.ghi; HttpOnly; Secure; SameSite=Strict; Path=/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/UserAlreadyExists"
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Войти в систему
+
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Успешная авторизация
+          headers:
+            Set-Cookie:
+              description: HttpOnly cookie с refresh-токеном
+              schema:
+                type: string
+                example: refreshToken=abc.def.ghi; HttpOnly; Secure; SameSite=Strict; Path=/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Обновить access-токен
+      security: []
+      description: |
+        Обновляет access-токен по refresh-токену, переданному в HttpOnly cookie
+      parameters:
+        - in: cookie
+          name: refreshToken
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Токены успешно обновлены
+          headers:
+            Set-Cookie:
+              description: HttpOnly cookie с refresh-токеном
+              schema:
+                type: string
+                example: refreshToken=abc.def.ghi; HttpOnly; Secure; SameSite=Strict; Path=/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenRefreshResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/RefreshTokenInvalid"
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Выйти из текущей сессии
+      description: "Роли: USER, TRAINER, ADMIN"
+      responses:
+        "204":
+          description: Выход успешно выполнен
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout-all:
+    post:
+      tags:
+        - Auth
+      summary: Выйти со всех устройств
+      description: "Роли: USER, TRAINER, ADMIN Завершает все активные сессии текущего пользователя."
+      responses:
+        "204":
+          description: Выход со всех устройств выполнен
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/email-verification/request:
+    post:
+      tags:
+        - Auth
+      summary: Отправить запрос верификации почтового адреса
+
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Письмо для верификации отправлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /auth/email-verification/confirm:
+    post:
+      tags:
+        - Auth
+      summary: Подтвердить верификацию почтового адреса
+
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailRequest"
+      responses:
+        "200":
+          description: Почтовый адрес успешно верифицирован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/EmailVerificationTokenNotFound"
+  /auth/password-reset/request:
+    post:
+      tags:
+        - Auth
+      summary: Отправить запрос на восстановление пароля
+
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      responses:
+        "202":
+          description: Запрос на восстановление пароля успешно отправлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /auth/password-reset/confirm:
+    post:
+      tags:
+        - Auth
+      summary: Подтвердить сброс пароля по токену
+
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordConfirmRequest"
+      responses:
+        "200":
+          description: Пароль успешно сброшен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/PasswordResetTokenNotFound"
+  /users/me:
+    get:
+      tags:
+        - Profile
+      summary: Получить профиль текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      responses:
+        "200":
+          description: Профиль текущего пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags:
+        - Profile
+      summary: Обновить профиль текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Профиль успешно обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /users/me/password:
+    patch:
+      tags:
+        - Profile
+      summary: Изменить пароль текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Пароль успешно изменён
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /users/me/sessions:
+    get:
+      tags:
+        - Sessions
+      summary: Получить активные сессии текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      responses:
+        "200":
+          description: Список активных сессий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags:
+        - Sessions
+      summary: Отозвать все сессии, кроме текущей
+      description: "Роли: USER, TRAINER, ADMIN"
+      responses:
+        "204":
+          description: Остальные сессии отозваны
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /users/me/sessions/{sessionId}:
+    delete:
+      tags:
+        - Sessions
+      summary: Отозвать конкретную сессию
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "204":
+          description: Сессия отозвана
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+  /trainings:
+    get:
+      tags:
+        - Trainings
+      summary: Получить список тренировок
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: level
+          in: query
+          schema:
+            $ref: "#/components/schemas/TrainingLevel"
+        - name: tag
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Постраничный список тренировок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingPageResponse"
+    post:
+      tags:
+        - Trainings
+      summary: Создать тренировку
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrainingRequest"
+      responses:
+        "201":
+          description: Тренировка создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/TrainingAlreadyExists"
+  /trainings/{trainingId}:
+    get:
+      tags:
+        - Trainings
+      summary: Получить тренировку по идентификатору
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "200":
+          description: Детали тренировки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingDetailsResponse"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+    patch:
+      tags:
+        - Trainings
+      summary: Обновить тренировку
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTrainingRequest"
+      responses:
+        "200":
+          description: Тренировка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+    delete:
+      tags:
+        - Trainings
+      summary: Удалить тренировку
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "204":
+          description: Тренировка удалена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+  /trainings/{trainingId}/ratings:
+    get:
+      tags:
+        - Trainings
+      summary: Получить сводку рейтинга тренировки
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "200":
+          description: Сводка рейтинга
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingRatingSummaryResponse"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+    post:
+      tags:
+        - Trainings
+      summary: Оценить тренировку
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateTrainingRequest"
+      responses:
+        "201":
+          description: Оценка создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingRatingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+        "409":
+          $ref: "#/components/responses/TrainingRatingAlreadyExists"
+    patch:
+      tags:
+        - Trainings
+      summary: Обновить оценку тренировки текущим пользователем
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateTrainingRequest"
+      responses:
+        "200":
+          description: Оценка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingRatingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+    delete:
+      tags:
+        - Trainings
+      summary: Удалить оценку тренировки текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "204":
+          description: Оценка удалена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TrainingRatingNotFound"
+  /trainings/{trainingId}/favourite:
+    post:
+      tags:
+        - Favourites
+      summary: Добавить тренировку в избранное
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "201":
+          description: Добавлено в избранное
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavouriteTrainingResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+        "409":
+          $ref: "#/components/responses/TrainingAlreadyInFavourites"
+    delete:
+      tags:
+        - Favourites
+      summary: Удалить тренировку из избранного
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "204":
+          description: Удалено из избранного
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+  /users/me/favourites:
+    get:
+      tags:
+        - Favourites
+      summary: Получить избранные тренировки текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Список избранных тренировок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavouriteTrainingPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /exercises:
+    get:
+      tags:
+        - Exercises
+      summary: Получить список упражнений
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: bodyPart
+          in: query
+          schema:
+            $ref: "#/components/schemas/BodyPart"
+        - name: level
+          in: query
+          schema:
+            $ref: "#/components/schemas/TrainingLevel"
+      responses:
+        "200":
+          description: Постраничный список упражнений
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExercisePageResponse"
+    post:
+      tags:
+        - Exercises
+      summary: Создать упражнение
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExerciseRequest"
+      responses:
+        "201":
+          description: Упражнение создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/VideoNotFound"
+  /exercises/{exerciseId}:
+    get:
+      tags:
+        - Exercises
+      summary: Получить упражнение по идентификатору
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+      responses:
+        "200":
+          description: Детали упражнения
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseDetailsResponse"
+        "404":
+          $ref: "#/components/responses/ExerciseNotFound"
+    patch:
+      tags:
+        - Exercises
+      summary: Обновить упражнение
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExerciseRequest"
+      responses:
+        "200":
+          description: Упражнение обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ExerciseNotFound"
+    delete:
+      tags:
+        - Exercises
+      summary: Удалить упражнение
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+      responses:
+        "204":
+          description: Упражнение удалено
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ExerciseNotFound"
+  /workout-plans:
+    get:
+      tags:
+        - Workout Plans
+      summary: Получить список планов тренировок
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: level
+          in: query
+          schema:
+            $ref: "#/components/schemas/TrainingLevel"
+      responses:
+        "200":
+          description: Постраничный список планов тренировок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutPlanPageResponse"
+    post:
+      tags:
+        - Workout Plans
+      summary: Создать план тренировок
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkoutPlanRequest"
+      responses:
+        "201":
+          description: План тренировок создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutPlanDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /workout-plans/{planId}:
+    get:
+      tags:
+        - Workout Plans
+      summary: Получить план тренировок по идентификатору
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/PlanId"
+      responses:
+        "200":
+          description: Детали плана тренировок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutPlanDetailsResponse"
+        "404":
+          $ref: "#/components/responses/WorkoutPlanNotFound"
+    patch:
+      tags:
+        - Workout Plans
+      summary: Обновить план тренировок
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/PlanId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkoutPlanRequest"
+      responses:
+        "200":
+          description: План тренировок обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutPlanDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/WorkoutPlanNotFound"
+    delete:
+      tags:
+        - Workout Plans
+      summary: Удалить план тренировок
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/PlanId"
+      responses:
+        "204":
+          description: План тренировок удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/WorkoutPlanNotFound"
+  /users/me/workout-plans:
+    get:
+      tags:
+        - Workout Plans
+      summary: Получить планы тренировок текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserWorkoutPlanStatus"
+      responses:
+        "200":
+          description: Планы тренировок текущего пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserWorkoutPlanResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Workout Plans
+      summary: Назначить план тренировок текущему пользователю
+      description: "Роли: USER, TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignWorkoutPlanRequest"
+      responses:
+        "201":
+          description: План тренировок назначен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWorkoutPlanResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WorkoutPlanNotFound"
+        "409":
+          $ref: "#/components/responses/WorkoutPlanAlreadyAssigned"
+  /users/me/workout-plans/{userWorkoutPlanId}:
+    get:
+      tags:
+        - Workout Plans
+      summary: Получить назначенный план тренировок текущего пользователя по идентификатору
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/UserWorkoutPlanId"
+      responses:
+        "200":
+          description: Детали назначенного плана тренировок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWorkoutPlanResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UserWorkoutPlanNotFound"
+    patch:
+      tags:
+        - Workout Plans
+      summary: Обновить статус плана тренировок текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/UserWorkoutPlanId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserWorkoutPlanRequest"
+      responses:
+        "200":
+          description: Назначенный план тренировок обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWorkoutPlanResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UserWorkoutPlanNotFound"
+  /users/me/completed-trainings:
+    get:
+      tags:
+        - Completed Trainings
+      summary: Получить историю завершённых тренировок текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: История завершённых тренировок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletedTrainingPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Completed Trainings
+      summary: Отметить тренировку как завершённую
+      description: "Роли: USER, TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompletedTrainingRequest"
+      responses:
+        "201":
+          description: Завершённая тренировка сохранена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletedTrainingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TrainingNotFound"
+  /users/me/progress:
+    get:
+      tags:
+        - Progress
+      summary: Получить прогресс текущего пользователя
+      description: "Роли: USER, TRAINER, ADMIN"
+      responses:
+        "200":
+          description: Сводка прогресса пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProgressResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /articles:
+    get:
+      tags:
+        - Articles
+      summary: Получить список статей
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Постраничный список статей
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticlePageResponse"
+    post:
+      tags:
+        - Articles
+      summary: Создать статью
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArticleRequest"
+      responses:
+        "201":
+          description: Статья создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /articles/{articleId}:
+    get:
+      tags:
+        - Articles
+      summary: Получить статью по идентификатору
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      responses:
+        "200":
+          description: Детали статьи
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleDetailsResponse"
+        "404":
+          $ref: "#/components/responses/ArticleNotFound"
+    patch:
+      tags:
+        - Articles
+      summary: Обновить статью
+      description: "Роли: TRAINER, ADMIN Используется optimistic locking"
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateArticleRequest"
+      responses:
+        "200":
+          description: Статья обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleDetailsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ArticleNotFound"
+        "409":
+          $ref: "#/components/responses/OptimisticLockConflict"
+    delete:
+      tags:
+        - Articles
+      summary: Удалить статью
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      responses:
+        "204":
+          description: Статья удалена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ArticleNotFound"
+  /articles/{articleId}/comments:
+    get:
+      tags:
+        - Comments
+      summary: Получить активные комментарии к статье
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Список комментариев к статье
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentPageResponse"
+        "404":
+          $ref: "#/components/responses/ArticleNotFound"
+    post:
+      tags:
+        - Comments
+      summary: Добавить комментарий к статье
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentRequest"
+      responses:
+        "201":
+          description: Комментарий создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ArticleNotFound"
+  /comments/{commentId}:
+    patch:
+      tags:
+        - Comments
+      summary: Обновить свой комментарий
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommentRequest"
+      responses:
+        "200":
+          description: Комментарий обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CommentNotFound"
+    delete:
+      tags:
+        - Comments
+      summary: Удалить свой комментарий
+      description: "Роли: USER, TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      responses:
+        "204":
+          description: Комментарий удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CommentNotFound"
+  /reference/training-types:
+    get:
+      tags:
+        - Reference Data
+      summary: Получить список типов тренировок
+
+      security: []
+      responses:
+        "200":
+          description: Список типов тренировок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TrainingTypeResponse"
+    post:
+      tags:
+        - Reference Data
+      summary: Создать тип тренировки
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrainingTypeRequest"
+      responses:
+        "201":
+          description: Тип тренировки создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingTypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /reference/training-types/{typeId}:
+    patch:
+      tags:
+        - Reference Data
+      summary: Обновить тип тренировки
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TypeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTrainingTypeRequest"
+      responses:
+        "200":
+          description: Тип тренировки обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingTypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TrainingTypeNotFound"
+    delete:
+      tags:
+        - Reference Data
+      summary: Удалить тип тренировки
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TypeId"
+      responses:
+        "204":
+          description: Тип тренировки удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TrainingTypeNotFound"
+  /reference/tags:
+    get:
+      tags:
+        - Reference Data
+      summary: Получить список тегов тренировок
+
+      security: []
+      responses:
+        "200":
+          description: Список тегов тренировок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TagResponse"
+    post:
+      tags:
+        - Reference Data
+      summary: Создать тег тренировки
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagRequest"
+      responses:
+        "201":
+          description: Тег создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /reference/tags/{tagId}:
+    patch:
+      tags:
+        - Reference Data
+      summary: Обновить тег тренировки
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTagRequest"
+      responses:
+        "200":
+          description: Тег обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TagNotFound"
+    delete:
+      tags:
+        - Reference Data
+      summary: Удалить тег тренировки
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      responses:
+        "204":
+          description: Тег удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TagNotFound"
+  /reference/categories:
+    get:
+      tags:
+        - Reference Data
+      summary: Получить список категорий статей
+
+      security: []
+      responses:
+        "200":
+          description: Список категорий статей
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CategoryResponse"
+    post:
+      tags:
+        - Reference Data
+      summary: Создать категорию статьи
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryRequest"
+      responses:
+        "201":
+          description: Категория создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /reference/categories/{categoryId}:
+    patch:
+      tags:
+        - Reference Data
+      summary: Обновить категорию статьи
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/CategoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryRequest"
+      responses:
+        "200":
+          description: Категория обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CategoryNotFound"
+    delete:
+      tags:
+        - Reference Data
+      summary: Удалить категорию статьи
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/CategoryId"
+      responses:
+        "204":
+          description: Категория удалена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CategoryNotFound"
+  /videos:
+    get:
+      tags:
+        - Videos
+      summary: Получить список видео
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Постраничный список видео
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoPageResponse"
+    post:
+      tags:
+        - Videos
+      summary: Создать видео
+      description: "Роли: TRAINER, ADMIN"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVideoRequest"
+      responses:
+        "201":
+          description: Видео создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /videos/{videoId}:
+    get:
+      tags:
+        - Videos
+      summary: Получить видео по идентификатору
+
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: Детали видео
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "404":
+          $ref: "#/components/responses/VideoNotFound"
+    patch:
+      tags:
+        - Videos
+      summary: Обновить видео
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVideoRequest"
+      responses:
+        "200":
+          description: Видео обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/VideoNotFound"
+    delete:
+      tags:
+        - Videos
+      summary: Удалить видео
+      description: "Роли: TRAINER, ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "204":
+          description: Видео удалено
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/VideoNotFound"
+  /admin/users:
+    get:
+      tags:
+        - Admin Users
+      summary: Получить список пользователей
+      description: "Роли: ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+        - name: active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Постраничный список пользователей
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAdminPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/users/{userId}:
+    get:
+      tags:
+        - Admin Users
+      summary: Получить данные пользователя
+      description: "Роли: ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAdminResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+  /admin/users/{userId}/role:
+    patch:
+      tags:
+        - Admin Users
+      summary: Изменить роль пользователя
+      description: "Роли: ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeUserRoleRequest"
+      responses:
+        "200":
+          description: Роль успешно изменена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAdminResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+  /admin/users/{userId}/status:
+    patch:
+      tags:
+        - Admin Users
+      summary: Изменить статус активности пользователя
+      description: "Роли: ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeUserStatusRequest"
+      responses:
+        "200":
+          description: Статус пользователя обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAdminResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+  /admin/comments/{commentId}:
+    delete:
+      tags:
+        - Admin Users
+      summary: Удалить комментарий как администратор
+      description: "Роли: ADMIN"
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      responses:
+        "204":
+          description: Комментарий удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CommentNotFound"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+        example: createdAt,desc
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TrainingId:
+      name: trainingId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ExerciseId:
+      name: exerciseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    PlanId:
+      name: planId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    UserWorkoutPlanId:
+      name: userWorkoutPlanId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ArticleId:
+      name: articleId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    TypeId:
+      name: typeId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    TagId:
+      name: tagId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    VideoId:
+      name: videoId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+  responses:
+    ValidationError:
+      description: Ошибка валидации запроса
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorValidationResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 400
+            code: VALIDATION_ERROR
+            message: Ошибка валидации запроса
+            path: /auth/register
+            traceId: abc-123
+            details:
+              - field: email
+                message: Значение должно быть корректным email-адресом
+    InvalidCredentials:
+      description: Неверный логин или пароль
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 401
+            code: INVALID_CREDENTIALS
+            message: Неверный логин или пароль
+            path: /auth/login
+            traceId: abc-123
+    RefreshTokenInvalid:
+      description: Refresh-токен недействителен
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 401
+            code: REFRESH_TOKEN_INVALID
+            message: Refresh-токен недействителен или истёк
+            path: /auth/refresh
+            traceId: abc-123
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 401
+            code: UNAUTHORIZED
+            message: Требуется аутентификация
+            path: /users/me
+            traceId: abc-123
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 403
+            code: ACCESS_DENIED
+            message: Недостаточно прав для выполнения операции
+            path: /admin/users
+            traceId: abc-123
+    UserAlreadyExists:
+      description: Пользователь уже существует
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 409
+            code: USER_ALREADY_EXISTS
+            message: Пользователь с такими данными уже существует
+            path: /auth/register
+            traceId: abc-123
+    TrainingNotFound:
+      description: Тренировка не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: TRAINING_NOT_FOUND
+            message: Тренировка не найдена
+            path: /trainings/1
+            traceId: abc-123
+    ExerciseNotFound:
+      description: Упражнение не найдено
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: EXERCISE_NOT_FOUND
+            message: Упражнение не найдено
+            path: /exercises/1
+            traceId: abc-123
+    WorkoutPlanNotFound:
+      description: План тренировок не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: WORKOUT_PLAN_NOT_FOUND
+            message: План тренировок не найден
+            path: /workout-plans/1
+            traceId: abc-123
+    ArticleNotFound:
+      description: Статья не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: ARTICLE_NOT_FOUND
+            message: Статья не найдена
+            path: /articles/1
+            traceId: abc-123
+    SessionNotFound:
+      description: Сессия не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: SESSION_NOT_FOUND
+            message: Сессия не найдена
+            path: /users/me/sessions/550e8400-e29b-41d4-a716-446655440000
+            traceId: abc-123
+    VideoNotFound:
+      description: Видео не найдено
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: VIDEO_NOT_FOUND
+            message: Видео не найдено
+            path: /videos/1
+            traceId: abc-123
+    UserNotFound:
+      description: Пользователь не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: USER_NOT_FOUND
+            message: Пользователь не найден
+            path: /admin/users/1
+            traceId: abc-123
+    TrainingTypeNotFound:
+      description: Тип тренировки не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: TRAINING_TYPE_NOT_FOUND
+            message: Тип тренировки не найден
+            path: /reference/training-types/1
+            traceId: abc-123
+
+    TagNotFound:
+      description: Тег не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: TAG_NOT_FOUND
+            message: Тег не найден
+            path: /reference/tags/1
+            traceId: abc-123
+    CategoryNotFound:
+      description: Категория не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: CATEGORY_NOT_FOUND
+            message: Категория не найдена
+            path: /reference/categories/1
+            traceId: abc-123
+    UserWorkoutPlanNotFound:
+      description: Назначенный план тренировок не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: USER_WORKOUT_PLAN_NOT_FOUND
+            message: Назначенный план тренировок не найден
+            path: /users/me/workout-plans/1
+            traceId: abc-123
+    CommentNotFound:
+      description: Комментарий не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: COMMENT_NOT_FOUND
+            message: Комментарий не найден
+            path: /comments/1
+            traceId: abc-123
+    TrainingAlreadyInFavourites:
+      description: Уже в избранном
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 409
+            code: TRAINING_ALREADY_IN_FAVOURITES
+            message: Тренировка уже находится в избранном
+            path: /trainings/1/favourite
+            traceId: abc-123
+    TrainingAlreadyExists:
+      description: Тренировка уже существует
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 409
+            code: TRAINING_ALREADY_EXISTS
+            message: Тренировка с такими данными уже существует
+            path: /trainings
+            traceId: abc-123
+    TrainingRatingAlreadyExists:
+      description: Оценка тренировки уже существует
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 409
+            code: TRAINING_RATING_ALREADY_EXISTS
+            message: Оценка для этой тренировки уже существует
+            path: /trainings/1/ratings
+            traceId: abc-123
+    WorkoutPlanAlreadyAssigned:
+      description: План тренировок уже назначен
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 409
+            code: WORKOUT_PLAN_ALREADY_ASSIGNED
+            message: Этот план тренировок уже назначен пользователю
+            path: /users/me/workout-plans
+            traceId: abc-123
+    OptimisticLockConflict:
+      description: Конфликт версии ресурса
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 409
+            code: OPTIMISTIC_LOCK_CONFLICT
+            message: Ресурс был изменён другим запросом
+            path: /articles/1
+            traceId: abc-123
+    EmailVerificationTokenNotFound:
+      description: Токен подтверждения email не найден или недействителен
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: EMAIL_VERIFICATION_TOKEN_NOT_FOUND
+            message: Токен подтверждения электронной почты не найден, недействителен или истёк
+            path: /auth/email-verification/confirm
+            traceId: abc-123
+    PasswordResetTokenNotFound:
+      description: Токен сброса пароля не найден или недействителен
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: PASSWORD_RESET_TOKEN_NOT_FOUND
+            message: Токен сброса пароля не найден, недействителен или истёк
+            path: /auth/password-reset/confirm
+            traceId: abc-123
+    TrainingRatingNotFound:
+      description: Оценка тренировки не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            timestamp: "2026-03-29T08:42:09.459Z"
+            status: 404
+            code: TRAINING_RATING_NOT_FOUND
+            message: Оценка тренировки не найдена
+            path: /trainings/1/ratings
+            traceId: abc-123
+  schemas:
+    UserRole:
+      type: string
+      enum:
+        - USER
+        - TRAINER
+        - ADMIN
+    TokenStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - USED
+        - REVOKED
+        - EXPIRED
+    TrainingLevel:
+      type: string
+      enum:
+        - BEGINNER
+        - INTERMEDIATE
+        - ADVANCED
+    BodyPart:
+      type: string
+      enum:
+        - FULL_BODY
+        - CHEST
+        - BACK
+        - LEGS
+        - SHOULDERS
+        - ARMS
+        - CORE
+        - GLUTES
+        - CARDIO
+    UserWorkoutPlanStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - COMPLETED
+        - CANCELLED
+        - PAUSED
+    ErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - code
+        - message
+        - path
+        - traceId
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-29T08:42:09.459Z"
+        status:
+          type: integer
+          example: 404
+        code:
+          type: string
+          example: RESOURCE_NOT_FOUND
+        message:
+          type: string
+          example: Ресурс не найден
+        path:
+          type: string
+          example: /api/resource/1
+        traceId:
+          type: string
+          example: abc-123
+    ErrorValidationResponse:
+      allOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+        - type: object
+          required:
+            - details
+          properties:
+            details:
+              type: array
+              items:
+                $ref: "#/components/schemas/ErrorDetail"
+    ErrorDetail:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          example: email
+        message:
+          type: string
+          example: Значение должно быть корректным email-адресом
+    MessageResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: Операция успешно выполнена
+    PageMeta:
+      type: object
+      required:
+        - page
+        - size
+        - totalElements
+        - totalPages
+        - first
+        - last
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        first:
+          type: boolean
+        last:
+          type: boolean
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - confirmPassword
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 255
+        confirmPassword:
+          type: string
+          minLength: 8
+          maxLength: 255
+    LoginRequest:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          description: Имя пользователя или email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 255
+    EmailRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+    VerifyEmailRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+    ResetPasswordConfirmRequest:
+      type: object
+      required:
+        - token
+        - newPassword
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 255
+    ChangePasswordRequest:
+      type: object
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 255
+    AuthResponse:
+      type: object
+      required:
+        - accessToken
+        - user
+      properties:
+        accessToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserSummary"
+    TokenRefreshResponse:
+      type: object
+      required:
+        - accessToken
+      properties:
+        accessToken:
+          type: string
+    UserSummary:
+      type: object
+      required:
+        - id
+        - username
+        - email
+        - role
+        - active
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/UserRole"
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProfileResponse:
+      type: object
+      required:
+        - id
+        - firstName
+        - lastName
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+        lastName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UserProfileResponse:
+      type: object
+      required:
+        - user
+        - profile
+      properties:
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        profile:
+          $ref: "#/components/schemas/ProfileResponse"
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          maxLength: 128
+        lastName:
+          type: string
+          maxLength: 128
+    SessionResponse:
+      type: object
+      required:
+        - id
+        - status
+        - expiresAt
+        - createdAt
+        - current
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/TokenStatus"
+        expiresAt:
+          type: string
+          format: date-time
+        usedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+    TrainingTypeResponse:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        slug:
+          type: string
+    TagResponse:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+    VideoResponse:
+      type: object
+      required:
+        - id
+        - url
+        - title
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ExerciseSummaryResponse:
+      type: object
+      required:
+        - id
+        - name
+        - bodyPart
+        - level
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        bodyPart:
+          $ref: "#/components/schemas/BodyPart"
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+    TrainingExerciseResponse:
+      type: object
+      required:
+        - orderNumber
+        - exercise
+      properties:
+        orderNumber:
+          type: integer
+        exercise:
+          $ref: "#/components/schemas/ExerciseSummaryResponse"
+    TrainingSummaryResponse:
+      type: object
+      required:
+        - id
+        - title
+        - level
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        estimatedDurationMinutes:
+          type: integer
+          nullable: true
+        averageRating:
+          type: number
+          format: double
+          nullable: true
+        types:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingTypeResponse"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/TagResponse"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TrainingDetailsResponse:
+      allOf:
+        - $ref: "#/components/schemas/TrainingSummaryResponse"
+        - type: object
+          properties:
+            exercises:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainingExerciseResponse"
+    TrainingPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingSummaryResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateTrainingRequest:
+      type: object
+      required:
+        - title
+        - level
+        - exerciseLinks
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        estimatedDurationMinutes:
+          type: integer
+          minimum: 1
+        typeIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        tagIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        exerciseLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingExerciseLinkRequest"
+          minItems: 1
+    UpdateTrainingRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        estimatedDurationMinutes:
+          type: integer
+          minimum: 1
+        typeIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        tagIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        videoIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        exerciseLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingExerciseLinkRequest"
+    TrainingExerciseLinkRequest:
+      type: object
+      required:
+        - exerciseId
+        - orderNumber
+      properties:
+        exerciseId:
+          type: integer
+          format: int64
+        orderNumber:
+          type: integer
+          minimum: 1
+    RateTrainingRequest:
+      type: object
+      required:
+        - rating
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+    TrainingRatingResponse:
+      type: object
+      properties:
+        trainingId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        rating:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    TrainingRatingSummaryResponse:
+      type: object
+      properties:
+        trainingId:
+          type: integer
+          format: int64
+        averageRating:
+          type: number
+          format: double
+        ratingsCount:
+          type: integer
+          format: int64
+        currentUserRating:
+          type: integer
+          nullable: true
+    FavouriteTrainingResponse:
+      type: object
+      properties:
+        training:
+          $ref: "#/components/schemas/TrainingSummaryResponse"
+        createdAt:
+          type: string
+          format: date-time
+    FavouriteTrainingPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FavouriteTrainingResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    ExerciseDetailsResponse:
+      allOf:
+        - $ref: "#/components/schemas/ExerciseSummaryResponse"
+        - type: object
+          properties:
+            videos:
+              type: array
+              items:
+                $ref: "#/components/schemas/VideoResponse"
+    ExercisePageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExerciseSummaryResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateExerciseRequest:
+      type: object
+      required:
+        - name
+        - bodyPart
+        - level
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        bodyPart:
+          $ref: "#/components/schemas/BodyPart"
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        videoIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+    UpdateExerciseRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        bodyPart:
+          $ref: "#/components/schemas/BodyPart"
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        videoIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+    WorkoutPlanTrainingResponse:
+      type: object
+      properties:
+        trainingDay:
+          type: integer
+        orderNumber:
+          type: integer
+        training:
+          $ref: "#/components/schemas/TrainingSummaryResponse"
+    WorkoutPlanSummaryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        durationDays:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    WorkoutPlanDetailsResponse:
+      allOf:
+        - $ref: "#/components/schemas/WorkoutPlanSummaryResponse"
+        - type: object
+          properties:
+            trainings:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkoutPlanTrainingResponse"
+    WorkoutPlanPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutPlanSummaryResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    WorkoutPlanTrainingLinkRequest:
+      type: object
+      required:
+        - trainingId
+        - trainingDay
+        - orderNumber
+      properties:
+        trainingId:
+          type: integer
+          format: int64
+        trainingDay:
+          type: integer
+          minimum: 1
+        orderNumber:
+          type: integer
+          minimum: 1
+    CreateWorkoutPlanRequest:
+      type: object
+      required:
+        - title
+        - level
+        - durationDays
+        - trainings
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        durationDays:
+          type: integer
+          minimum: 1
+        trainings:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutPlanTrainingLinkRequest"
+          minItems: 1
+    UpdateWorkoutPlanRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        level:
+          $ref: "#/components/schemas/TrainingLevel"
+        durationDays:
+          type: integer
+          minimum: 1
+        trainings:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutPlanTrainingLinkRequest"
+    AssignWorkoutPlanRequest:
+      type: object
+      required:
+        - workoutPlanId
+        - startDate
+      properties:
+        workoutPlanId:
+          type: integer
+          format: int64
+        startDate:
+          type: string
+          format: date
+    UpdateUserWorkoutPlanRequest:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/UserWorkoutPlanStatus"
+        currentDay:
+          type: integer
+          minimum: 1
+        completedAt:
+          type: string
+          format: date
+          nullable: true
+    UserWorkoutPlanResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        workoutPlan:
+          $ref: "#/components/schemas/WorkoutPlanSummaryResponse"
+        startDate:
+          type: string
+          format: date
+        completedAt:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: "#/components/schemas/UserWorkoutPlanStatus"
+        currentDay:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    CreateCompletedTrainingRequest:
+      type: object
+      required:
+        - trainingId
+        - completedAt
+        - durationMinutes
+        - caloriesBurned
+      properties:
+        trainingId:
+          type: integer
+          format: int64
+        completedAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+          minimum: 1
+        caloriesBurned:
+          type: integer
+          minimum: 0
+    CompletedTrainingResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        training:
+          $ref: "#/components/schemas/TrainingSummaryResponse"
+        completedAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+        caloriesBurned:
+          type: integer
+    CompletedTrainingPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletedTrainingResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    UserProgressResponse:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        totalTrainings:
+          type: integer
+        totalMinutes:
+          type: integer
+        totalCalories:
+          type: integer
+        currentStreak:
+          type: integer
+        maxStreak:
+          type: integer
+        lastTrainingDate:
+          type: string
+          format: date
+          nullable: true
+    CategoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+    ArticleSummaryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        excerpt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryResponse"
+    ArticleDetailsResponse:
+      allOf:
+        - $ref: "#/components/schemas/ArticleSummaryResponse"
+        - type: object
+          properties:
+            content:
+              type: string
+            videos:
+              type: array
+              items:
+                $ref: "#/components/schemas/VideoResponse"
+    ArticlePageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArticleSummaryResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateArticleRequest:
+      type: object
+      required:
+        - title
+        - content
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        categoryIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        videoIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+    UpdateArticleRequest:
+      type: object
+      required:
+        - version
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        categoryIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        videoIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        version:
+          type: integer
+    CreateCommentRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+    UpdateCommentRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        articleId:
+          type: integer
+          format: int64
+        author:
+          $ref: "#/components/schemas/UserSummary"
+        text:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CommentPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateTrainingTypeRequest:
+      type: object
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+    UpdateTrainingTypeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+    CreateTagRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    UpdateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    CreateCategoryRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    CreateVideoRequest:
+      type: object
+      required:
+        - url
+        - title
+      properties:
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+    UpdateVideoRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+    VideoPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    UserAdminResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        profile:
+          $ref: "#/components/schemas/ProfileResponse"
+    UserAdminPageResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserAdminResponse"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    ChangeUserRoleRequest:
+      type: object
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/UserRole"
+    ChangeUserStatusRequest:
+      type: object
+      required:
+        - active
+      properties:
+        active:
+          type: boolean
