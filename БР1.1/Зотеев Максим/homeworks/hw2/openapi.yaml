@@ -1,0 +1,1103 @@
+openapi: 3.0.3
+info:
+  title: Сервис аренды недвижимости API
+  description: REST API для сервиса аренды недвижимости
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080/api/v1
+
+tags:
+  - name: Auth
+    description: Регистрация и аутентификация
+  - name: Users
+    description: Профиль пользователя
+  - name: Properties
+    description: Объекты недвижимости
+  - name: Rentals
+    description: Сделки аренды
+  - name: Messages
+    description: Сообщения
+
+paths:
+  # ==================== AUTH ====================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Некорректные данные запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Пользователь с таким email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== USERS ====================
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить профиль текущего пользователя
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags: [Users]
+      summary: Обновить профиль текущего пользователя
+      operationId: updateCurrentUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/properties:
+    get:
+      tags: [Users]
+      summary: Список объектов текущего пользователя (для арендодателя)
+      operationId: getMyProperties
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Список объектов пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/rentals:
+    get:
+      tags: [Users]
+      summary: Список сделок текущего пользователя (арендованные и арендующиеся объекты)
+      operationId: getMyRentals
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, cancelled]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Список сделок
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== PROPERTIES ====================
+  /properties:
+    get:
+      tags: [Properties]
+      summary: Поиск недвижимости с фильтрацией
+      operationId: searchProperties
+      parameters:
+        - name: property_type_id
+          in: query
+          description: Фильтр по типу недвижимости
+          schema:
+            type: integer
+        - name: city
+          in: query
+          description: Фильтр по городу
+          schema:
+            type: string
+        - name: district
+          in: query
+          description: Фильтр по району
+          schema:
+            type: string
+        - name: price_min
+          in: query
+          description: Минимальная цена аренды в месяц
+          schema:
+            type: number
+            format: double
+        - name: price_max
+          in: query
+          description: Максимальная цена аренды в месяц
+          schema:
+            type: number
+            format: double
+        - name: rooms_min
+          in: query
+          description: Минимальное количество комнат
+          schema:
+            type: integer
+        - name: rooms_max
+          in: query
+          description: Максимальное количество комнат
+          schema:
+            type: integer
+        - name: sort_by
+          in: query
+          description: Поле сортировки
+          schema:
+            type: string
+            enum: [price_asc, price_desc, created_at_desc]
+            default: created_at_desc
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Список объектов недвижимости
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListResponse'
+
+    post:
+      tags: [Properties]
+      summary: Создать объект недвижимости
+      operationId: createProperty
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyRequest'
+      responses:
+        '201':
+          description: Объект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyResponse'
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Только арендодатель может создавать объекты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /properties/{id}:
+    get:
+      tags: [Properties]
+      summary: Получить страницу объекта недвижимости
+      operationId: getProperty
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Детальная информация об объекте
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetailResponse'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Properties]
+      summary: Обновить объект недвижимости
+      operationId: updateProperty
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyRequest'
+      responses:
+        '200':
+          description: Объект обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetailResponse'
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет прав на редактирование этого объекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Properties]
+      summary: Удалить объект недвижимости
+      operationId: deleteProperty
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Объект удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет прав на удаление этого объекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /properties/{id}/photos:
+    post:
+      tags: [Properties]
+      summary: Добавить фото к объекту
+      operationId: addPropertyPhoto
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                sort_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: Фото добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет прав на редактирование этого объекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /properties/{id}/photos/{photoId}:
+    delete:
+      tags: [Properties]
+      summary: Удалить фото объекта
+      operationId: deletePropertyPhoto
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Фото удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет прав на удаление
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Фото или объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== PROPERTY TYPES ====================
+  /property-types:
+    get:
+      tags: [Properties]
+      summary: Получить список типов недвижимости
+      operationId: getPropertyTypes
+      responses:
+        '200':
+          description: Список типов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyTypeResponse'
+
+  # ==================== RENTALS ====================
+  /properties/{id}/rentals:
+    post:
+      tags: [Rentals]
+      summary: Создать заявку на аренду объекта
+      operationId: createRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRentalRequest'
+      responses:
+        '201':
+          description: Заявка на аренду создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalResponse'
+        '400':
+          description: Некорректные данные или объект недоступен для аренды
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rentals/{id}:
+    get:
+      tags: [Rentals]
+      summary: Получить информацию о сделке
+      operationId: getRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Информация о сделке
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет доступа к этой сделке
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Сделка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rentals/{id}/complete:
+    post:
+      tags: [Rentals]
+      summary: Завершить сделку аренды
+      operationId: completeRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Сделка завершена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalResponse'
+        '400':
+          description: Сделка не может быть завершена (уже завершена или отменена)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет прав на завершение этой сделки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Сделка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rentals/{id}/cancel:
+    post:
+      tags: [Rentals]
+      summary: Отменить сделку аренды
+      operationId: cancelRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Сделка отменена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalResponse'
+        '400':
+          description: Сделка не может быть отменена (уже завершена или отменена)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет прав на отмену этой сделки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Сделка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== MESSAGES ====================
+  /rentals/{id}/messages:
+    get:
+      tags: [Messages]
+      summary: Получить историю сообщений по сделке
+      operationId: getRentalMessages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Список сообщений
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет доступа к сообщениям этой сделки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Сделка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [Messages]
+      summary: Отправить сообщение в рамках сделки
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Пустое сообщение
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет доступа к этой сделке
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Сделка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    PageParam:
+      name: page
+      in: query
+      description: Номер страницы (начиная с 0)
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    SizeParam:
+      name: size
+      in: query
+      description: Количество элементов на странице
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  responses:
+    Unauthorized:
+      description: Не авторизован — отсутствует или невалидный токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    # ===== Auth =====
+    RegisterRequest:
+      type: object
+      required: [email, password, name, role]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          example: securePass123
+        name:
+          type: string
+          example: Иван Иванов
+        phone:
+          type: string
+          example: "+79001234567"
+        role:
+          type: string
+          enum: [tenant, landlord]
+          example: tenant
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          example: securePass123
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Время жизни токена в секундах
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    # ===== User =====
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        email:
+          type: string
+          example: user@example.com
+        name:
+          type: string
+          example: Иван Иванов
+        phone:
+          type: string
+          example: "+79001234567"
+        role:
+          type: string
+          enum: [tenant, landlord]
+          example: tenant
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Иван Петров
+        phone:
+          type: string
+          example: "+79009876543"
+
+    # ===== Property =====
+    CreatePropertyRequest:
+      type: object
+      required: [title, description, property_type_id, price_per_month, location]
+      properties:
+        title:
+          type: string
+          example: Уютная квартира в центре
+        description:
+          type: string
+          example: Просторная двухкомнатная квартира с видом на парк
+        property_type_id:
+          type: integer
+          example: 1
+        price_per_month:
+          type: number
+          format: double
+          example: 45000.00
+        area_sqm:
+          type: number
+          format: double
+          example: 65.5
+        rooms:
+          type: integer
+          example: 2
+        rental_conditions:
+          type: string
+          example: Без животных, залог 1 месяц
+        location:
+          $ref: '#/components/schemas/LocationRequest'
+
+    UpdatePropertyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        property_type_id:
+          type: integer
+        price_per_month:
+          type: number
+          format: double
+        area_sqm:
+          type: number
+          format: double
+        rooms:
+          type: integer
+        rental_conditions:
+          type: string
+        is_available:
+          type: boolean
+        location:
+          $ref: '#/components/schemas/LocationRequest'
+
+    LocationRequest:
+      type: object
+      required: [city, address]
+      properties:
+        city:
+          type: string
+          example: Санкт-Петербург
+        district:
+          type: string
+          example: Центральный
+        address:
+          type: string
+          example: ул. Пушкина, д. 10, кв. 5
+
+    PropertyResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        title:
+          type: string
+          example: Уютная квартира в центре
+        description:
+          type: string
+        property_type:
+          $ref: '#/components/schemas/PropertyTypeResponse'
+        price_per_month:
+          type: number
+          format: double
+          example: 45000.00
+        area_sqm:
+          type: number
+          format: double
+          example: 65.5
+        rooms:
+          type: integer
+          example: 2
+        is_available:
+          type: boolean
+          example: true
+        location:
+          $ref: '#/components/schemas/LocationResponse'
+        created_at:
+          type: string
+          format: date-time
+
+    PropertyDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/PropertyResponse'
+        - type: object
+          properties:
+            rental_conditions:
+              type: string
+              example: Без животных, залог 1 месяц
+            photos:
+              type: array
+              items:
+                $ref: '#/components/schemas/PhotoResponse'
+            owner:
+              $ref: '#/components/schemas/UserResponse'
+
+    PropertyListResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyResponse'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 20
+        total_elements:
+          type: integer
+          format: int64
+          example: 42
+        total_pages:
+          type: integer
+          example: 3
+
+    PropertyTypeResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Квартира
+
+    LocationResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        city:
+          type: string
+          example: Санкт-Петербург
+        district:
+          type: string
+          example: Центральный
+        address:
+          type: string
+          example: ул. Пушкина, д. 10, кв. 5
+
+    PhotoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        url:
+          type: string
+          example: /uploads/properties/1/photo1.jpg
+        sort_order:
+          type: integer
+          example: 0
+
+    # ===== Rental =====
+    CreateRentalRequest:
+      type: object
+      required: [start_date]
+      properties:
+        start_date:
+          type: string
+          format: date
+          example: "2026-04-01"
+        end_date:
+          type: string
+          format: date
+          example: "2026-10-01"
+
+    RentalResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        property:
+          $ref: '#/components/schemas/PropertyResponse'
+        tenant:
+          $ref: '#/components/schemas/UserResponse'
+        start_date:
+          type: string
+          format: date
+          example: "2026-04-01"
+        end_date:
+          type: string
+          format: date
+          example: "2026-10-01"
+        status:
+          type: string
+          enum: [active, completed, cancelled]
+          example: active
+        created_at:
+          type: string
+          format: date-time
+
+    RentalListResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/RentalResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        total_elements:
+          type: integer
+          format: int64
+        total_pages:
+          type: integer
+
+    # ===== Message =====
+    SendMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          example: Здравствуйте, интересует аренда с мая.
+
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        sender:
+          $ref: '#/components/schemas/UserResponse'
+        body:
+          type: string
+          example: Здравствуйте, интересует аренда с мая.
+        created_at:
+          type: string
+          format: date-time
+
+    MessageListResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        total_elements:
+          type: integer
+          format: int64
+        total_pages:
+          type: integer
+
+    # ===== Error =====
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Код ошибки
+          example: not_found
+        message:
+          type: string
+          description: Человекочитаемое описание ошибки
+          example: Объект недвижимости не найден
+        details:
+          type: array
+          description: Детали валидации (для ошибок 400)
+          items:
+            $ref: '#/components/schemas/FieldError'
+
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          example: email
+        message:
+          type: string
+          example: Некорректный формат email
