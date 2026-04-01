@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  title: "Rent Service API"
+  title: "Rent service"
   version: 1.0.0
 tags:
   - name: Authentication
@@ -10,6 +10,7 @@ tags:
   - name: Rents
   - name: Chats
   - name: Messages
+  - name: Payments
 paths:
   /auth/login:
     post:
@@ -332,6 +333,130 @@ paths:
                   - $ref: '#/components/schemas/ConflictException'
       tags:
         - Bookings
+      security:
+        - BearerAuth: []
+  /bookings/{bookingId}/payments:
+    post:
+      operationId: Payments_createPayment
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payments.PaymentResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+                  - $ref: '#/components/schemas/BusinessException'
+      tags:
+        - Payments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Payments.CreatePaymentRequest'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: Payments_listPayments
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Payments.PaymentStatus'
+          explode: false
+        - $ref: '#/components/parameters/PageRequestParams.page'
+        - $ref: '#/components/parameters/PageRequestParams.size'
+        - $ref: '#/components/parameters/PageRequestParams.sort'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - content
+                  - pageable
+                  - totalElements
+                  - totalPages
+                  - last
+                  - first
+                  - number
+                  - size
+                  - numberOfElements
+                  - empty
+                  - sort
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payments.PaymentResponse'
+                  pageable:
+                    $ref: '#/components/schemas/PageableInfo'
+                  totalElements:
+                    type: integer
+                    format: int64
+                  totalPages:
+                    type: integer
+                    format: int32
+                  last:
+                    type: boolean
+                  first:
+                    type: boolean
+                  number:
+                    type: integer
+                    format: int32
+                  size:
+                    type: integer
+                    format: int32
+                  numberOfElements:
+                    type: integer
+                    format: int32
+                  empty:
+                    type: boolean
+                  sort:
+                    $ref: '#/components/schemas/SortInfo'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Payments
       security:
         - BearerAuth: []
   /chats:
@@ -961,6 +1086,111 @@ paths:
                   - $ref: '#/components/schemas/NotFoundException'
       tags:
         - Listings
+      security:
+        - BearerAuth: []
+  /payments/{paymentId}:
+    get:
+      operationId: Payments_getPayment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payments.PaymentResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+      tags:
+        - Payments
+      security:
+        - BearerAuth: []
+  /payments/{paymentId}/receipt:
+    get:
+      operationId: Payments_getReceipt
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payments.PaymentReceiptResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/BusinessException'
+      tags:
+        - Payments
+      security:
+        - BearerAuth: []
+  /payments/{paymentId}/retry:
+    post:
+      operationId: Payments_retryPayment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodArgumentNotValidException'
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payments.PaymentResponse'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedException'
+                  - $ref: '#/components/schemas/ForbiddenException'
+                  - $ref: '#/components/schemas/NotFoundException'
+                  - $ref: '#/components/schemas/ConflictException'
+                  - $ref: '#/components/schemas/BusinessException'
+      tags:
+        - Payments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Payments.PaymentRetryRequest'
       security:
         - BearerAuth: []
   /rents:
@@ -1839,6 +2069,96 @@ components:
           type: boolean
         sort:
           $ref: '#/components/schemas/SortInfo'
+    Payments.CreatePaymentRequest:
+      type: object
+      required:
+        - paymentMethod
+      properties:
+        paymentMethod:
+          $ref: '#/components/schemas/Payments.PaymentMethod'
+    Payments.PaymentMethod:
+      type: string
+      enum:
+        - CARD
+        - SPB
+    Payments.PaymentReceiptResponse:
+      type: object
+      required:
+        - paymentId
+        - bookingId
+        - amount
+        - commission
+        - paidAt
+        - paymentMethod
+      properties:
+        paymentId:
+          type: integer
+          format: int64
+        bookingId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+        paidAt:
+          type: string
+          format: date-time
+        paymentMethod:
+          $ref: '#/components/schemas/Payments.PaymentMethod'
+    Payments.PaymentResponse:
+      type: object
+      required:
+        - id
+        - bookingId
+        - amount
+        - commission
+        - status
+        - paymentMethod
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        bookingId:
+          type: integer
+          format: int64
+        paymentSystemId:
+          type: string
+        amount:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+        status:
+          $ref: '#/components/schemas/Payments.PaymentStatus'
+        paymentMethod:
+          $ref: '#/components/schemas/Payments.PaymentMethod'
+        failureReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: string
+          format: date-time
+    Payments.PaymentRetryRequest:
+      type: object
+      required:
+        - paymentMethod
+      properties:
+        paymentMethod:
+          $ref: '#/components/schemas/Payments.PaymentMethod'
+    Payments.PaymentStatus:
+      type: string
+      enum:
+        - NEW
+        - SUCCESS
+        - CANCELED
+        - FAILED
     RentMode:
       type: string
       enum:

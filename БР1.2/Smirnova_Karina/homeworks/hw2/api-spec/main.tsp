@@ -630,4 +630,101 @@ namespace RentalService {
       @body body: MessageResponse;
     } | MethodArgumentNotValidException | UnauthorizedException | ForbiddenException | NotFoundException;
   }
+
+  // Payments
+
+  @tag("Payments")
+  namespace Payments {
+    enum PaymentStatus {
+      NEW,
+      SUCCESS,
+      CANCELED,
+      FAILED
+    }
+
+    enum PaymentMethod {
+      CARD,
+      SPB
+    }
+
+    model CreatePaymentRequest {
+      paymentMethod: PaymentMethod;
+    }
+
+    model PaymentResponse {
+      id: Id;
+      bookingId: Id;
+      paymentSystemId?: string;
+      amount: float64;
+      commission: float64;
+      status: PaymentStatus;
+      paymentMethod: PaymentMethod;
+      failureReason?: string;
+      createdAt: utcDateTime;
+      paidAt?: utcDateTime;
+    }
+
+    model PaymentReceiptResponse {
+      paymentId: Id;
+      bookingId: Id;
+      amount: float64;
+      commission: float64;
+      paidAt: utcDateTime;
+      paymentMethod: PaymentMethod;
+    }
+
+    model PaymentRetryRequest {
+      paymentMethod: PaymentMethod;
+    }
+
+    @useAuth(BearerAuth)
+    @route("/bookings/{bookingId}/payments")
+    @post
+    op createPayment(
+      @path bookingId: Id,
+      @body request: CreatePaymentRequest
+    ): {
+      @statusCode status: 201;
+      @body body: PaymentResponse;
+    } | MethodArgumentNotValidException | UnauthorizedException | ForbiddenException | NotFoundException | ConflictException | BusinessException;
+
+    @useAuth(BearerAuth)
+    @route("/bookings/{bookingId}/payments")
+    @get
+    op listPayments(
+      @path bookingId: Id,
+      @query status?: PaymentStatus,
+      ...PageRequestParams
+    ): {
+      @statusCode status: 200;
+      @body body: Page<PaymentResponse>;
+    } | UnauthorizedException | ForbiddenException | NotFoundException;
+
+    @useAuth(BearerAuth)
+    @route("/payments/{paymentId}")
+    @get
+    op getPayment(@path paymentId: Id): {
+      @statusCode status: 200;
+      @body body: PaymentResponse;
+    } | UnauthorizedException | ForbiddenException | NotFoundException;
+
+    @useAuth(BearerAuth)
+    @route("/payments/{paymentId}/retry")
+    @post
+    op retryPayment(
+      @path paymentId: Id,
+      @body request: PaymentRetryRequest
+    ): {
+      @statusCode status: 201;
+      @body body: PaymentResponse;
+    } | MethodArgumentNotValidException | UnauthorizedException | ForbiddenException | NotFoundException | ConflictException | BusinessException;
+
+    @useAuth(BearerAuth)
+    @route("/payments/{paymentId}/receipt")
+    @get
+    op getReceipt(@path paymentId: Id): {
+      @statusCode status: 200;
+      @body body: PaymentReceiptResponse;
+    } | UnauthorizedException | ForbiddenException | NotFoundException | BusinessException;
+  }
 }
