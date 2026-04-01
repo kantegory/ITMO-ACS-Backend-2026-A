@@ -1,0 +1,1406 @@
+openapi: 3.0.0
+info:
+  title: GuardMarket API
+  description: Маркетплейс охранных услуг
+  version: 1.0.0
+  contact:
+    name: Москалец Данила Алексеевич
+
+servers:
+  - url: https://api.guardmarket.ru/v1
+    description: Production server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Общие схемы
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+            message:
+              type: string
+            details:
+              type: object
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        has_more:
+          type: boolean
+
+    # User
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [ADMIN, USER, OWNER]
+        first_name:
+          type: string
+        last_name:
+          type: string
+        middle_name:
+          type: string
+        is_verified:
+          type: boolean
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - first_name
+        - last_name
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        first_name:
+          type: string
+        last_name:
+          type: string
+        middle_name:
+          type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            expires_in:
+              type: integer
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        middle_name:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - old_password
+        - new_password
+      properties:
+        old_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 6
+
+    # Company
+    Company:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        logo:
+          type: string
+        website:
+          type: string
+        avg_rating:
+          type: number
+          format: float
+        total_reviews:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CompanyDetail:
+      allOf:
+        - $ref: '#/components/schemas/Company'
+        - type: object
+          properties:
+            owner:
+              type: object
+              properties:
+                id:
+                  type: integer
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+            services:
+              type: array
+              items:
+                $ref: '#/components/schemas/Service'
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/Review'
+
+    CreateCompanyRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        logo:
+          type: string
+        website:
+          type: string
+
+    # Category
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        is_published:
+          type: boolean
+
+    # Service
+    Service:
+      type: object
+      properties:
+        id:
+          type: integer
+        company_id:
+          type: integer
+        company_title:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: decimal
+        final_price:
+          type: number
+          format: decimal
+        discount_percentage:
+          type: integer
+        is_published:
+          type: boolean
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        avg_rating:
+          type: number
+          format: float
+
+    CreateServiceRequest:
+      type: object
+      required:
+        - name
+        - price
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        is_published:
+          type: boolean
+        category_ids:
+          type: array
+          items:
+            type: integer
+
+    UpdateServiceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        is_published:
+          type: boolean
+        category_ids:
+          type: array
+          items:
+            type: integer
+
+    # Discount
+    Discount:
+      type: object
+      properties:
+        id:
+          type: integer
+        service_id:
+          type: integer
+        percentage:
+          type: integer
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+
+    CreateDiscountRequest:
+      type: object
+      required:
+        - percentage
+        - start_at
+        - end_at
+      properties:
+        percentage:
+          type: integer
+          minimum: 1
+          maximum: 100
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+
+    # Request
+    Request:
+      type: object
+      properties:
+        id:
+          type: integer
+        service:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            company:
+              type: object
+              properties:
+                id:
+                  type: integer
+                title:
+                  type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+            first_name:
+              type: string
+            last_name:
+              type: string
+            phone:
+              type: string
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+        description:
+          type: string
+        reply:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateRequestRequest:
+      type: object
+      properties:
+        description:
+          type: string
+
+    UpdateStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        reply:
+          type: string
+
+    # Review
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        service_id:
+          type: integer
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+            first_name:
+              type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateReviewRequest:
+      type: object
+      required:
+        - rating
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+
+    # Favorite
+    Favorite:
+      type: object
+      properties:
+        service_id:
+          type: integer
+        name:
+          type: string
+        company:
+          type: object
+          properties:
+            id:
+              type: integer
+            title:
+              type: string
+        price:
+          type: number
+        final_price:
+          type: number
+        added_at:
+          type: string
+          format: date-time
+
+    # Report
+    ActivityReport:
+      type: object
+      properties:
+        total_users:
+          type: integer
+        total_companies:
+          type: integer
+        total_requests:
+          type: integer
+        total_reviews:
+          type: integer
+        top_companies:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              title:
+                type: string
+              requests_count:
+                type: integer
+        requests_by_status:
+          type: object
+          properties:
+            pending:
+              type: integer
+            accepted:
+              type: integer
+            rejected:
+              type: integer
+            cancelled:
+              type: integer
+
+    # Общий ответ
+    SuccessResponse:
+      type: object
+      properties:
+        data:
+          type: object
+        message:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================== AUTH ====================
+  /auth/register:
+    post:
+      summary: Регистрация
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        201:
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        400:
+          description: Невалидные данные
+        409:
+          description: Email уже существует
+
+  /auth/login:
+    post:
+      summary: Вход
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        200:
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        401:
+          description: Неверный email или пароль
+
+  /auth/me:
+    get:
+      summary: Получить текущего пользователя
+      tags: [Auth]
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        401:
+          description: Не авторизован
+
+  /auth/refresh:
+    post:
+      summary: Обновить JWT
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        200:
+          description: Новый токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        401:
+          description: Невалидный refresh token
+
+  # ==================== PROFILE ====================
+  /profile:
+    put:
+      summary: Обновить профиль
+      tags: [Profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        200:
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+
+  /profile/password:
+    put:
+      summary: Сменить пароль
+      tags: [Profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        200:
+          description: Пароль изменен
+        400:
+          description: Неверный старый пароль или слабый новый
+
+  # ==================== COMPANIES ====================
+  /companies:
+    get:
+      summary: Список компаний
+      tags: [Companies]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: price_min
+          in: query
+          schema:
+            type: number
+        - name: price_max
+          in: query
+          schema:
+            type: number
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [price, rating]
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Company'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      summary: Создать компанию
+      tags: [Companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        201:
+          description: Компания создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Company'
+        403:
+          description: Пользователь уже владеет компанией
+
+  /companies/{id}:
+    get:
+      summary: Детальная информация о компании
+      tags: [Companies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyDetail'
+        404:
+          description: Компания не найдена
+
+    put:
+      summary: Обновить компанию
+      tags: [Companies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        200:
+          description: Компания обновлена
+        403:
+          description: Доступ запрещен
+
+    delete:
+      summary: Удалить компанию
+      tags: [Companies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Компания удалена
+        403:
+          description: Доступ запрещен
+
+  # ==================== CATEGORIES ====================
+  /categories:
+    get:
+      summary: Список категорий
+      tags: [Categories]
+      security: []
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+
+  # ==================== SERVICES ====================
+  /services:
+    get:
+      summary: Список услуг
+      tags: [Services]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: company_id
+          in: query
+          schema:
+            type: integer
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: price_min
+          in: query
+          schema:
+            type: number
+        - name: price_max
+          in: query
+          schema:
+            type: number
+        - name: is_published
+          in: query
+          schema:
+            type: boolean
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Service'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /services/{id}:
+    get:
+      summary: Детальная информация об услуге
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Service'
+        404:
+          description: Услуга не найдена
+
+    put:
+      summary: Обновить услугу
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceRequest'
+      responses:
+        200:
+          description: Услуга обновлена
+        403:
+          description: Доступ запрещен
+
+    delete:
+      summary: Удалить услугу
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Услуга удалена
+        403:
+          description: Доступ запрещен
+
+  /companies/{company_id}/services:
+    post:
+      summary: Создать услугу
+      tags: [Services]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequest'
+      responses:
+        201:
+          description: Услуга создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Service'
+        403:
+          description: Доступ запрещен
+
+  # ==================== DISCOUNTS ====================
+  /services/{service_id}/discount:
+    get:
+      summary: Получить скидку услуги
+      tags: [Discounts]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Discount'
+        404:
+          description: Скидка не найдена
+
+    post:
+      summary: Создать скидку
+      tags: [Discounts]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiscountRequest'
+      responses:
+        201:
+          description: Скидка создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Discount'
+        409:
+          description: У услуги уже есть активная скидка
+
+  /discounts/{id}:
+    put:
+      summary: Обновить скидку
+      tags: [Discounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiscountRequest'
+      responses:
+        200:
+          description: Скидка обновлена
+        403:
+          description: Доступ запрещен
+
+    delete:
+      summary: Удалить скидку
+      tags: [Discounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Скидка удалена
+        403:
+          description: Доступ запрещен
+
+  # ==================== REQUESTS ====================
+  /requests:
+    get:
+      summary: История заявок пользователя
+      tags: [Requests]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Request'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /companies/{company_id}/requests:
+    get:
+      summary: Входящие заявки компании
+      tags: [Requests]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Request'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        403:
+          description: Доступ запрещен
+
+  /services/{service_id}/requests:
+    post:
+      summary: Создать заявку
+      tags: [Requests]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequestRequest'
+      responses:
+        201:
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Request'
+        403:
+          description: Нельзя создать заявку на свою услугу
+        404:
+          description: Услуга не найдена
+
+  /requests/{id}/status:
+    put:
+      summary: Изменить статус заявки
+      tags: [Requests]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        200:
+          description: Статус изменен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Request'
+        400:
+          description: Некорректный статус
+        403:
+          description: Доступ запрещен
+
+  /requests/{id}/cancel:
+    put:
+      summary: Отменить заявку
+      tags: [Requests]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Заявка отменена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Request'
+        400:
+          description: Невозможно отменить заявку
+        403:
+          description: Доступ запрещен
+
+  # ==================== REVIEWS ====================
+  /services/{service_id}/reviews:
+    get:
+      summary: Отзывы об услуге
+      tags: [Reviews]
+      security: []
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Review'
+
+    post:
+      summary: Оставить отзыв
+      tags: [Reviews]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        201:
+          description: Отзыв оставлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Review'
+        403:
+          description: Нельзя оставить отзыв
+
+  /reviews/{id}:
+    delete:
+      summary: Удалить отзыв
+      tags: [Reviews]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Отзыв удален
+        403:
+          description: Доступ запрещен
+
+  # ==================== FAVORITES ====================
+  /favorites:
+    get:
+      summary: Список избранных услуг
+      tags: [Favorites]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Favorite'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /favorites/{service_id}:
+    post:
+      summary: Добавить в избранное
+      tags: [Favorites]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        201:
+          description: Добавлено
+        409:
+          description: Уже в избранном
+
+    delete:
+      summary: Удалить из избранного
+      tags: [Favorites]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Удалено
+
+  # ==================== ADMIN ====================
+  /admin/users:
+    get:
+      summary: Список пользователей
+      tags: [Admin]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        403:
+          description: Доступ запрещен
+
+  /admin/companies:
+    get:
+      summary: Список компаний
+      tags: [Admin]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Company'
+
+  /admin/requests:
+    get:
+      summary: Список всех заявок
+      tags: [Admin]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Request'
+
+  /admin/reports/activity:
+    get:
+      summary: Отчет по активности платформы
+      tags: [Admin]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: month
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ActivityReport'
