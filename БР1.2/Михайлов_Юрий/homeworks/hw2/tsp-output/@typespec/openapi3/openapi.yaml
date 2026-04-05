@@ -6,11 +6,100 @@ tags:
   - name: Auth
   - name: Users
   - name: Properties
+  - name: attributes
   - name: booking
   - name: messages
   - name: payments
   - name: reviews
 paths:
+  /attributes:
+    post:
+      operationId: AttributesApi_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int32
+                required:
+                  - id
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+      tags:
+        - attributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                property_id:
+                  type: integer
+                  format: int32
+                floor:
+                  type: integer
+                  format: int32
+                building_type:
+                  type: string
+                bathrooms_count:
+                  type: integer
+                  format: int32
+                has_washing_machine:
+                  type: boolean
+                view_type:
+                  type: string
+                has_kitchen:
+                  type: boolean
+              required:
+                - property_id
+                - floor
+                - building_type
+                - bathrooms_count
+                - has_washing_machine
+                - view_type
+                - has_kitchen
+  /attributes/{id}:
+    get:
+      operationId: AttributesApi_get
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyAttributes'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+      tags:
+        - attributes
   /auth:
     post:
       operationId: AuthApi_register
@@ -37,12 +126,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BadRequest'
-        '409':
-          description: The request conflicts with the current state of the server.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Conflict'
       tags:
         - Auth
       requestBody:
@@ -349,6 +432,56 @@ paths:
                 $ref: '#/components/schemas/Unauthorized'
       tags:
         - messages
+    post:
+      operationId: ConversationApi_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int32
+                required:
+                  - id
+        '400':
+          description: The server could not understand the request due to invalid syntax.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+      tags:
+        - messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user1_id:
+                  type: integer
+                  format: int32
+                user2_id:
+                  type: integer
+                  format: int32
+                property_id:
+                  type: integer
+                  format: int32
+              required:
+                - user1_id
+                - user2_id
+                - property_id
   /conversations/{id}/messages:
     get:
       operationId: ConversationApi_messages
@@ -786,6 +919,58 @@ paths:
                 $ref: '#/components/schemas/NotFound'
       tags:
         - Properties
+  /properties/{id}/attributes:
+    get:
+      operationId: PropertiesApi_getAttributes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyAttributes'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+      tags:
+        - Properties
+  /properties/{id}/conversations:
+    get:
+      operationId: PropertiesApi_getConversations
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Conversation'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+      tags:
+        - Properties
   /properties/{id}/reviews:
     get:
       operationId: PropertiesApi_getReviews
@@ -986,19 +1171,13 @@ components:
           format: date-time
         comments:
           type: string
-    Conflict:
-      type: object
-      required:
-        - body
-      properties:
-        body:
-          $ref: '#/components/schemas/Error'
     Conversation:
       type: object
       required:
         - id
         - user1_id
         - user2_id
+        - property_id
       properties:
         id:
           type: integer
@@ -1007,6 +1186,9 @@ components:
           type: integer
           format: int32
         user2_id:
+          type: integer
+          format: int32
+        property_id:
           type: integer
           format: int32
     Error:
@@ -1123,6 +1305,38 @@ components:
         owner_id:
           type: integer
           format: int32
+    PropertyAttributes:
+      type: object
+      required:
+        - id
+        - property_id
+        - floor
+        - building_type
+        - bathrooms_count
+        - has_washing_machine
+        - view_type
+        - has_kitchen
+      properties:
+        id:
+          type: integer
+          format: int32
+        property_id:
+          type: integer
+          format: int32
+        floor:
+          type: integer
+          format: int32
+        building_type:
+          type: string
+        bathrooms_count:
+          type: integer
+          format: int32
+        has_washing_machine:
+          type: boolean
+        view_type:
+          type: string
+        has_kitchen:
+          type: boolean
     Review:
       type: object
       required:

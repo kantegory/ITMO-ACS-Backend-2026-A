@@ -27,6 +27,17 @@ model Property {
   owner_id: int32;
 }
 
+model PropertyAttributes {
+  id: int32;
+  property_id: int32;
+  floor : int32;
+  building_type : string;
+  bathrooms_count : int32;
+  has_washing_machine : boolean;
+  view_type : string;
+  has_kitchen : boolean;
+}
+
 model Location {
   address: string;
   city: string;
@@ -72,6 +83,7 @@ model Conversation {
   id: int32;
   user1_id: int32;
   user2_id: int32;
+  property_id: int32;
 }
 
 model Review {

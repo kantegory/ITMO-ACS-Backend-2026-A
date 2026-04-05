@@ -118,6 +118,38 @@ interface PropertiesApi {
   @get
   @route("/{id}/reviews")
   op getReviews(@path id: int32): Review[] | NotFound;
+
+  @get
+  @route("/{id}/conversations")
+  op getConversations(@path id: int32): Conversation[] | NotFound;
+
+  @get
+  @route("/{id}/attributes")
+  op getAttributes(@path id: int32): PropertyAttributes | NotFound;
+}
+
+// attributes
+
+@tag("attributes")
+@route("/attributes")
+interface AttributesApi {
+
+  @post
+  op create(
+    @body body: {
+      property_id: int32;
+      floor: int32;
+      building_type: string;
+      bathrooms_count: int32;
+      has_washing_machine: boolean;
+      view_type: string;
+      has_kitchen: boolean;
+    }
+  ): { id: int32 } | Unauthorized | BadRequest;
+
+  @get
+  @route("/{id}")
+  op get(@path id: int32): PropertyAttributes | NotFound;
 }
 
 
@@ -177,6 +209,15 @@ interface ConversationApi {
 
   @get
   op list(): Conversation[] | Unauthorized;
+
+  @post
+  op create(
+    @body body: {
+      user1_id: int32;
+      user2_id: int32;
+      property_id: int32;
+    }
+  ): { id: int32 } | Unauthorized | BadRequest;
 
   @get
   @route("/{id}/messages")
