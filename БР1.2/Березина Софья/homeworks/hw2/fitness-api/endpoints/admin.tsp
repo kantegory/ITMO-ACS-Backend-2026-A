@@ -15,12 +15,31 @@ namespace FitnessApi {
     @route("/admin/workouts/{workout_id}")
     updateWorkout(
       @path workout_id: string,
-      @body request: CreateWorkoutRequest,
+      @body request: UpdateWorkoutRequest,
     ): Workout;
 
     @delete
     @route("/admin/workouts/{workout_id}")
     deleteWorkout(@path workout_id: string): void;
+  }
+
+  @tag("Admin Exercises")
+  interface AdminExercises {
+
+    @post
+    @route("/admin/exercises")
+    createExercise(@body request: CreateExerciseRequest): Exercise;
+
+    @put
+    @route("/admin/exercises/{exercise_id}")
+    updateExercise(
+      @path exercise_id: string,
+      @body request: CreateExerciseRequest,
+    ): Exercise;
+
+    @delete
+    @route("/admin/exercises/{exercise_id}")
+    deleteExercise(@path exercise_id: string): void;
   }
 
   @tag("Admin Blog")

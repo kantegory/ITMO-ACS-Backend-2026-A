@@ -8,6 +8,7 @@ import "./endpoints/auth.tsp";
 import "./endpoints/users.tsp";
 import "./endpoints/progress.tsp";
 import "./endpoints/workouts.tsp";
+import "./endpoints/exercises.tsp";
 import "./endpoints/user_workouts.tsp";
 import "./endpoints/blog.tsp";
 import "./endpoints/admin.tsp";

@@ -19,7 +19,7 @@ namespace FitnessApi {
 
     @get
     @route("/workouts/{workout_id}/exercises")
-    getWorkoutExercises(@path workout_id: string): string[];
+    getWorkoutExercises(@path workout_id: string): Exercise[];
   }
 
 }

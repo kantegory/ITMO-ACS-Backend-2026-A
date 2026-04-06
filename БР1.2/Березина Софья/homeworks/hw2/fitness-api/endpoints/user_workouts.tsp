@@ -8,7 +8,7 @@ namespace FitnessApi {
   interface UserWorkouts {
     @get
     @route("/user/workouts")
-    getUserWorkouts(@query status?: UserWorkoutStatus): UserWorkout[];
+    getUserWorkouts(...UserWorkoutFilterParams): UserWorkout[];
 
     @post
     @route("/user/workouts")

@@ -7,9 +7,11 @@ tags:
   - name: Users
   - name: Progress
   - name: Workouts
+  - name: Exercises
   - name: User Workouts
   - name: Blog
   - name: Admin Workouts
+  - name: Admin Exercises
   - name: Admin Blog
 paths:
   /admin/blog/posts:
@@ -68,6 +70,62 @@ paths:
           description: 'There is no content to send for this request, but the headers may be useful. '
       tags:
         - Admin Blog
+  /admin/exercises:
+    post:
+      operationId: AdminExercises_createExercise
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+      tags:
+        - Admin Exercises
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExerciseRequest'
+  /admin/exercises/{exercise_id}:
+    put:
+      operationId: AdminExercises_updateExercise
+      parameters:
+        - name: exercise_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+      tags:
+        - Admin Exercises
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExerciseRequest'
+    delete:
+      operationId: AdminExercises_deleteExercise
+      parameters:
+        - name: exercise_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+      tags:
+        - Admin Exercises
   /admin/workouts:
     post:
       operationId: AdminWorkouts_createWorkout
@@ -110,7 +168,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateWorkoutRequest'
+              $ref: '#/components/schemas/UpdateWorkoutRequest'
     delete:
       operationId: AdminWorkouts_deleteWorkout
       parameters:
@@ -238,6 +296,44 @@ paths:
                 $ref: '#/components/schemas/BlogPost'
       tags:
         - Blog
+  /exercises:
+    get:
+      operationId: Exercises_getExercises
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
+      tags:
+        - Exercises
+  /exercises/{exercise_id}:
+    get:
+      operationId: Exercises_getExerciseById
+      parameters:
+        - name: exercise_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exercise:
+                    $ref: '#/components/schemas/Exercise'
+                required:
+                  - exercise
+      tags:
+        - Exercises
   /progress:
     get:
       operationId: Progress_getProgress
@@ -310,12 +406,11 @@ paths:
     get:
       operationId: UserWorkouts_getUserWorkouts
       parameters:
-        - name: status
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/UserWorkoutStatus'
-          explode: false
+        - $ref: '#/components/parameters/UserWorkoutFilterParams.status'
+        - $ref: '#/components/parameters/UserWorkoutFilterParams.scheduled_from'
+        - $ref: '#/components/parameters/UserWorkoutFilterParams.scheduled_to'
+        - $ref: '#/components/parameters/UserWorkoutFilterParams.completed_from'
+        - $ref: '#/components/parameters/UserWorkoutFilterParams.completed_to'
       responses:
         '200':
           description: The request has succeeded.
@@ -484,11 +579,50 @@ paths:
               schema:
                 type: array
                 items:
-                  type: string
+                  $ref: '#/components/schemas/Exercise'
       tags:
         - Workouts
 components:
   parameters:
+    UserWorkoutFilterParams.completed_from:
+      name: completed_from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      explode: false
+    UserWorkoutFilterParams.completed_to:
+      name: completed_to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      explode: false
+    UserWorkoutFilterParams.scheduled_from:
+      name: scheduled_from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      explode: false
+    UserWorkoutFilterParams.scheduled_to:
+      name: scheduled_to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      explode: false
+    UserWorkoutFilterParams.status:
+      name: status
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/UserWorkoutStatus'
+      explode: false
     WorkoutFilterParams.difficulty_level:
       name: difficulty_level
       in: query
@@ -537,6 +671,7 @@ components:
           type: string
         scheduled_date:
           type: string
+          format: date
     AuthResponse:
       type: object
       required:
@@ -609,6 +744,23 @@ components:
           type: string
         category:
           $ref: '#/components/schemas/BlogCategory'
+    CreateExerciseRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        target_muscle_group:
+          type: string
+        equipment:
+          type: string
+        instructions:
+          type: string
+        video_url:
+          type: string
     CreateProgressRequest:
       type: object
       required:
@@ -653,7 +805,7 @@ components:
         exercises:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/Exercise'
     DifficultyLevel:
       type: string
       enum:
@@ -674,6 +826,26 @@ components:
         status_code:
           type: integer
           format: int32
+    Exercise:
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        target_muscle_group:
+          type: string
+        equipment:
+          type: string
+        instructions:
+          type: string
+        video_url:
+          type: string
     FitnessLevel:
       type: string
       enum:
@@ -803,6 +975,30 @@ components:
         rating:
           type: integer
           format: int32
+        result:
+          $ref: '#/components/schemas/WorkoutResult'
+    UpdateWorkoutRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        difficulty_level:
+          $ref: '#/components/schemas/DifficultyLevel'
+        description:
+          type: string
+        duration_min:
+          type: integer
+          format: int32
+        video_url:
+          type: string
+        instructions:
+          type: string
+        exercise_ids:
+          type: array
+          items:
+            type: string
     User:
       type: object
       required:
@@ -903,12 +1099,15 @@ components:
           $ref: '#/components/schemas/UserWorkoutStatus'
         scheduled_date:
           type: string
+          format: date
         completed_date:
           type: string
-          format: date-time
+          format: date
         rating:
           type: integer
           format: int32
+        result:
+          $ref: '#/components/schemas/WorkoutResult'
     UserWorkoutStatus:
       type: string
       enum:
@@ -944,11 +1143,26 @@ components:
           type: string
         instructions:
           type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/Exercise'
         created_by:
           type: string
         created_at:
           type: string
           format: date-time
+    WorkoutResult:
+      type: object
+      properties:
+        duration_min:
+          type: integer
+          format: int32
+        completed_exercises_count:
+          type: integer
+          format: int32
+        notes:
+          type: string
     WorkoutType:
       type: string
       enum:
