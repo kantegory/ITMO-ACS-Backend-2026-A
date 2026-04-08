@@ -1,0 +1,1476 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Table Booking API
+  version: 1.0.0
+  description: |
+    REST API для учебного backend-проекта бронирования столиков в ресторанах.
+    Все запросы и ответы передаются в формате JSON.
+    Авторизация защищенных методов выполняется через Bearer JWT.
+    Даты передаются в формате YYYY-MM-DD.
+    Время передается в формате HH:mm:ss и интерпретируется во временной зоне ресторана.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Регистрация и вход пользователя
+  - name: Users
+    description: Профиль текущего пользователя
+  - name: Restaurants
+    description: Поиск ресторанов, меню, отзывы, фотографии
+  - name: Cuisines
+    description: Справочник кухонь
+  - name: Reservations
+    description: Бронирования пользователя
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Регистрация пользователя
+      description: Создает нового пользователя и возвращает JWT для дальнейшей работы с защищенными методами.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Вход пользователя
+      description: Проверяет учетные данные и возвращает JWT.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Получить профиль текущего пользователя
+      description: Возвращает данные пользователя из JWT-контекста.
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags:
+        - Users
+      summary: Обновить профиль текущего пользователя
+      description: Частично обновляет редактируемые поля профиля текущего пользователя.
+      operationId: patchCurrentUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Профиль успешно обновлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /restaurants:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить список ресторанов
+      description: Возвращает список ресторанов с фильтрацией по городу, кухне и ценовой категории.
+      operationId: listRestaurants
+      parameters:
+        - $ref: '#/components/parameters/CityParam'
+        - $ref: '#/components/parameters/CuisineIdParam'
+        - $ref: '#/components/parameters/PriceCategoryParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Список ресторанов.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedRestaurantsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /restaurants/{restaurantId}:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить детальную информацию о ресторане
+      description: Возвращает карточку ресторана с основной информацией.
+      operationId: getRestaurantById
+      parameters:
+        - $ref: '#/components/parameters/RestaurantIdParam'
+      responses:
+        '200':
+          description: Детальная информация о ресторане.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /restaurants/{restaurantId}/menu:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить меню ресторана
+      description: Возвращает меню ресторана, сгруппированное по категориям.
+      operationId: getRestaurantMenu
+      parameters:
+        - $ref: '#/components/parameters/RestaurantIdParam'
+      responses:
+        '200':
+          description: Меню ресторана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /restaurants/{restaurantId}/reviews:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить отзывы ресторана
+      description: Возвращает список отзывов ресторана с пагинацией.
+      operationId: listRestaurantReviews
+      parameters:
+        - $ref: '#/components/parameters/RestaurantIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Список отзывов ресторана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedReviewsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Restaurants
+      summary: Добавить отзыв к ресторану
+      description: Создает отзыв текущего авторизованного пользователя.
+      operationId: createRestaurantReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RestaurantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+      responses:
+        '201':
+          description: Отзыв успешно создан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /restaurants/{restaurantId}/photos:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить фотографии ресторана
+      description: Возвращает список фотографий ресторана.
+      operationId: listRestaurantPhotos
+      parameters:
+        - $ref: '#/components/parameters/RestaurantIdParam'
+      responses:
+        '200':
+          description: Список фотографий ресторана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantPhotosResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /cuisines:
+    get:
+      tags:
+        - Cuisines
+      summary: Получить список кухонь
+      description: Возвращает справочник кухонь для фильтрации ресторанов.
+      operationId: listCuisines
+      responses:
+        '200':
+          description: Список кухонь.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CuisinesResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /reservations/me:
+    get:
+      tags:
+        - Reservations
+      summary: Получить историю бронирований текущего пользователя
+      description: Возвращает список бронирований текущего пользователя с пагинацией и опциональным фильтром по статусу.
+      operationId: listCurrentUserReservations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationStatusParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Список бронирований пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedReservationsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /reservations:
+    post:
+      tags:
+        - Reservations
+      summary: Создать бронирование
+      description: |
+        Создает бронирование для текущего пользователя.
+        Клиент передает ресторан, дату, интервал времени и количество гостей.
+        Подходящий активный столик подбирается сервером автоматически.
+      operationId: createReservation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationCreateRequest'
+      responses:
+        '201':
+          description: Бронирование успешно создано.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /reservations/{reservationId}:
+    get:
+      tags:
+        - Reservations
+      summary: Получить одно бронирование
+      description: Возвращает конкретное бронирование текущего пользователя.
+      operationId: getReservationById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdParam'
+      responses:
+        '200':
+          description: Данные бронирования.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /reservations/{reservationId}/cancel:
+    patch:
+      tags:
+        - Reservations
+      summary: Отменить бронирование
+      description: Отменяет собственное бронирование. Для простоты используется отдельный доменный endpoint вместо общего обновления статуса.
+      operationId: cancelReservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelReservationRequest'
+      responses:
+        '200':
+          description: Бронирование успешно отменено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    RestaurantIdParam:
+      name: restaurantId
+      in: path
+      required: true
+      description: Идентификатор ресторана.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 10
+
+    ReservationIdParam:
+      name: reservationId
+      in: path
+      required: true
+      description: Идентификатор бронирования.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 9001
+
+    CityParam:
+      name: city
+      in: query
+      required: false
+      description: Фильтр по городу.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+      example: Москва
+
+    CuisineIdParam:
+      name: cuisine_id
+      in: query
+      required: false
+      description: Фильтр по идентификатору кухни.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+
+    PriceCategoryParam:
+      name: price_category
+      in: query
+      required: false
+      description: Фильтр по ценовой категории.
+      schema:
+        type: string
+        enum:
+          - budget
+          - medium
+          - premium
+      example: medium
+
+    ReservationStatusParam:
+      name: status
+      in: query
+      required: false
+      description: Фильтр по статусу бронирования.
+      schema:
+        type: string
+        enum:
+          - pending
+          - confirmed
+          - cancelled
+          - completed
+      example: confirmed
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: Номер страницы.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      description: Количество элементов на странице.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      example: 10
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Некорректные параметры запроса.
+
+    Unauthorized:
+      description: Требуется авторизация.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Требуется Bearer JWT или токен недействителен.
+
+    Forbidden:
+      description: Доступ запрещен.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: FORBIDDEN
+              message: У пользователя нет прав на выполнение операции.
+
+    NotFound:
+      description: Ресурс не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Запрошенный ресурс не найден.
+
+    Conflict:
+      description: Конфликт состояния ресурса.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CONFLICT
+              message: Столик недоступен на выбранное время.
+
+    ValidationError:
+      description: Ошибка валидации.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Некоторые поля заполнены некорректно.
+              details:
+                - field: guestsCount
+                  message: Значение должно быть больше 0.
+                - field: endTime
+                  message: Время окончания должно быть позже времени начала.
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_SERVER_ERROR
+              message: Внутренняя ошибка сервера.
+
+  schemas:
+    User:
+      type: object
+      description: Публичная модель пользователя.
+      required:
+        - userId
+        - firstName
+        - lastName
+        - email
+        - phone
+        - createdAt
+        - updatedAt
+      properties:
+        userId:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        phone:
+          type: string
+          pattern: '^\+?[1-9][0-9]{7,14}$'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      example:
+        userId: 101
+        firstName: Гена
+        lastName: Роналду
+        email: gena.ronaldu@example.com
+        phone: "+79991234567"
+        createdAt: "2026-04-08T12:00:00Z"
+        updatedAt: "2026-04-08T12:00:00Z"
+
+    RegisterRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - email
+        - phone
+        - password
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        phone:
+          type: string
+          pattern: '^\+?[1-9][0-9]{7,14}$'
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+      example:
+        firstName: Гена
+        lastName: Роналду
+        email: gena.ronaldu@example.com
+        phone: "+79991234567"
+        password: StrongPass123
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+      example:
+        email: gena.ronaldu@example.com
+        password: StrongPass123
+
+    AuthResponse:
+      type: object
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+        - user
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token.
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Время жизни токена в секундах.
+          minimum: 1
+        user:
+          $ref: '#/components/schemas/User'
+      example:
+        accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.token
+        tokenType: Bearer
+        expiresIn: 3600
+        user:
+          userId: 101
+          firstName: Гена
+          lastName: Роналду
+          email: gena.ronaldu@example.com
+          phone: "+79991234567"
+          createdAt: "2026-04-08T12:00:00Z"
+          updatedAt: "2026-04-08T12:00:00Z"
+
+    UserUpdateRequest:
+      type: object
+      description: Запрос на обновление профиля. Должно быть передано хотя бы одно поле.
+      minProperties: 1
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        phone:
+          type: string
+          pattern: '^\+?[1-9][0-9]{7,14}$'
+      example:
+        firstName: Гена
+        lastName: Роналду
+        email: gena.ronaldu@example.com
+        phone: "+79998887766"
+
+    Cuisine:
+      type: object
+      required:
+        - cuisineId
+        - name
+      properties:
+        cuisineId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+      example:
+        cuisineId: 1
+        name: Итальянская
+
+    RestaurantShort:
+      type: object
+      required:
+        - restaurantId
+        - name
+        - description
+        - address
+        - city
+        - priceCategory
+        - openingTime
+        - closingTime
+        - cuisines
+        - averageRating
+        - mainPhotoUrl
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        address:
+          type: string
+          minLength: 1
+          maxLength: 255
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        priceCategory:
+          type: string
+          enum:
+            - budget
+            - medium
+            - premium
+        openingTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        closingTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        cuisines:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cuisine'
+        averageRating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          nullable: true
+        mainPhotoUrl:
+          type: string
+          format: uri
+          nullable: true
+      example:
+        restaurantId: 10
+        name: La Piazza
+        description: Итальянский ресторан с домашней пастой и пиццей.
+        address: ул. Тверская, 10
+        city: Москва
+        priceCategory: medium
+        openingTime: "10:00:00"
+        closingTime: "23:00:00"
+        cuisines:
+          - cuisineId: 1
+            name: Итальянская
+        averageRating: 4.7
+        mainPhotoUrl: https://cdn.example.com/restaurants/10/main.jpg
+
+    RestaurantDetails:
+      type: object
+      required:
+        - restaurantId
+        - name
+        - description
+        - address
+        - city
+        - priceCategory
+        - phone
+        - openingTime
+        - closingTime
+        - cuisines
+        - averageRating
+        - reviewsCount
+        - photosCount
+        - createdAt
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        address:
+          type: string
+          minLength: 1
+          maxLength: 255
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        priceCategory:
+          type: string
+          enum:
+            - budget
+            - medium
+            - premium
+        phone:
+          type: string
+          pattern: '^\+?[1-9][0-9]{7,14}$'
+        openingTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        closingTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        cuisines:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cuisine'
+        averageRating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          nullable: true
+        reviewsCount:
+          type: integer
+          minimum: 0
+        photosCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+      example:
+        restaurantId: 10
+        name: La Piazza
+        description: Итальянский ресторан с домашней пастой и пиццей, винной картой и семейной атмосферой.
+        address: ул. Тверская, 10
+        city: Москва
+        priceCategory: medium
+        phone: "+74951234567"
+        openingTime: "10:00:00"
+        closingTime: "23:00:00"
+        cuisines:
+          - cuisineId: 1
+            name: Итальянская
+        averageRating: 4.7
+        reviewsCount: 128
+        photosCount: 14
+        createdAt: "2026-01-10T09:00:00Z"
+
+    MenuItem:
+      type: object
+      required:
+        - itemId
+        - categoryId
+        - name
+        - description
+        - price
+        - isAvailable
+      properties:
+        itemId:
+          type: integer
+          format: int64
+        categoryId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        price:
+          type: number
+          format: float
+          minimum: 0
+        isAvailable:
+          type: boolean
+      example:
+        itemId: 501
+        categoryId: 11
+        name: Карбонара
+        description: Паста с беконом, сыром и сливочным соусом.
+        price: 690.0
+        isAvailable: true
+
+    MenuCategory:
+      type: object
+      required:
+        - categoryId
+        - restaurantId
+        - name
+        - items
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+        restaurantId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItem'
+      example:
+        categoryId: 11
+        restaurantId: 10
+        name: Паста
+        items:
+          - itemId: 501
+            categoryId: 11
+            name: Карбонара
+            description: Паста с беконом, сыром и сливочным соусом.
+            price: 690.0
+            isAvailable: true
+          - itemId: 502
+            categoryId: 11
+            name: Болоньезе
+            description: Паста с мясным соусом.
+            price: 710.0
+            isAvailable: true
+
+    MenuResponse:
+      type: object
+      required:
+        - restaurantId
+        - categories
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuCategory'
+      example:
+        restaurantId: 10
+        categories:
+          - categoryId: 11
+            restaurantId: 10
+            name: Паста
+            items:
+              - itemId: 501
+                categoryId: 11
+                name: Карбонара
+                description: Паста с беконом, сыром и сливочным соусом.
+                price: 690.0
+                isAvailable: true
+          - categoryId: 12
+            restaurantId: 10
+            name: Пицца
+            items:
+              - itemId: 503
+                categoryId: 12
+                name: Маргарита
+                description: Классическая пицца с томатами и моцареллой.
+                price: 650.0
+                isAvailable: true
+
+    Review:
+      type: object
+      required:
+        - reviewId
+        - userId
+        - restaurantId
+        - userName
+        - rating
+        - comment
+        - createdAt
+      properties:
+        reviewId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        restaurantId:
+          type: integer
+          format: int64
+        userName:
+          type: string
+          minLength: 1
+          maxLength: 201
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        createdAt:
+          type: string
+          format: date-time
+      example:
+        reviewId: 7001
+        userId: 101
+        restaurantId: 10
+        userName: Гена Роналду
+        rating: 5
+        comment: Отличная кухня, быстрое обслуживание и уютная атмосфера.
+        createdAt: "2026-04-08T13:00:00Z"
+
+    ReviewCreateRequest:
+      type: object
+      required:
+        - rating
+        - comment
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      example:
+        rating: 5
+        comment: Отличная кухня, быстрое обслуживание и уютная атмосфера.
+
+    RestaurantPhoto:
+      type: object
+      required:
+        - photoId
+        - restaurantId
+        - photoUrl
+        - uploadedAt
+      properties:
+        photoId:
+          type: integer
+          format: int64
+        restaurantId:
+          type: integer
+          format: int64
+        photoUrl:
+          type: string
+          format: uri
+        uploadedAt:
+          type: string
+          format: date-time
+      example:
+        photoId: 801
+        restaurantId: 10
+        photoUrl: https://cdn.example.com/restaurants/10/photo-1.jpg
+        uploadedAt: "2026-03-20T14:30:00Z"
+
+    Reservation:
+      type: object
+      description: Модель бронирования с данными ресторана и назначенного столика.
+      required:
+        - reservationId
+        - userId
+        - restaurantId
+        - restaurantName
+        - tableId
+        - tableNumber
+        - reservationDate
+        - startTime
+        - endTime
+        - guestsCount
+        - status
+        - createdAt
+      properties:
+        reservationId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        restaurantId:
+          type: integer
+          format: int64
+        restaurantName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        tableId:
+          type: integer
+          format: int64
+        tableNumber:
+          type: string
+          maxLength: 50
+        reservationDate:
+          type: string
+          format: date
+        startTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        endTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        guestsCount:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - pending
+            - confirmed
+            - cancelled
+            - completed
+        createdAt:
+          type: string
+          format: date-time
+      example:
+        reservationId: 9001
+        userId: 101
+        restaurantId: 10
+        restaurantName: La Piazza
+        tableId: 301
+        tableNumber: "12"
+        reservationDate: "2026-05-15"
+        startTime: "19:00:00"
+        endTime: "21:00:00"
+        guestsCount: 4
+        status: confirmed
+        createdAt: "2026-04-08T12:30:00Z"
+
+    ReservationCreateRequest:
+      type: object
+      description: Запрос на создание бронирования. Столик подбирается сервером автоматически.
+      required:
+        - restaurantId
+        - reservationDate
+        - startTime
+        - endTime
+        - guestsCount
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+          minimum: 1
+        reservationDate:
+          type: string
+          format: date
+        startTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        endTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        guestsCount:
+          type: integer
+          minimum: 1
+      example:
+        restaurantId: 10
+        reservationDate: "2026-05-15"
+        startTime: "19:00:00"
+        endTime: "21:00:00"
+        guestsCount: 4
+
+    CancelReservationRequest:
+      type: object
+      description: Необязательное пояснение причины отмены бронирования.
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          nullable: true
+      example:
+        reason: Планы изменились
+
+    PaginationMeta:
+      type: object
+      required:
+        - page
+        - limit
+        - totalItems
+        - totalPages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+      example:
+        page: 1
+        limit: 10
+        totalItems: 25
+        totalPages: 3
+
+    PagedRestaurantsResponse:
+      type: object
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantShort'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+      example:
+        items:
+          - restaurantId: 10
+            name: La Piazza
+            description: Итальянский ресторан с домашней пастой и пиццей.
+            address: ул. Тверская, 10
+            city: Москва
+            priceCategory: medium
+            openingTime: "10:00:00"
+            closingTime: "23:00:00"
+            cuisines:
+              - cuisineId: 1
+                name: Итальянская
+            averageRating: 4.7
+            mainPhotoUrl: https://cdn.example.com/restaurants/10/main.jpg
+        pagination:
+          page: 1
+          limit: 10
+          totalItems: 25
+          totalPages: 3
+
+    PagedReviewsResponse:
+      type: object
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+      example:
+        items:
+          - reviewId: 7001
+            userId: 101
+            restaurantId: 10
+            userName: Гена Роналду
+            rating: 5
+            comment: Отличная кухня, быстрое обслуживание и уютная атмосфера.
+            createdAt: "2026-04-08T13:00:00Z"
+        pagination:
+          page: 1
+          limit: 10
+          totalItems: 42
+          totalPages: 5
+
+    RestaurantPhotosResponse:
+      type: object
+      required:
+        - restaurantId
+        - items
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantPhoto'
+      example:
+        restaurantId: 10
+        items:
+          - photoId: 801
+            restaurantId: 10
+            photoUrl: https://cdn.example.com/restaurants/10/photo-1.jpg
+            uploadedAt: "2026-03-20T14:30:00Z"
+          - photoId: 802
+            restaurantId: 10
+            photoUrl: https://cdn.example.com/restaurants/10/photo-2.jpg
+            uploadedAt: "2026-03-20T14:35:00Z"
+
+    CuisinesResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cuisine'
+      example:
+        items:
+          - cuisineId: 1
+            name: Итальянская
+          - cuisineId: 2
+            name: Японская
+          - cuisineId: 3
+            name: Грузинская
+
+    PagedReservationsResponse:
+      type: object
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reservation'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+      example:
+        items:
+          - reservationId: 9001
+            userId: 101
+            restaurantId: 10
+            restaurantName: La Piazza
+            tableId: 301
+            tableNumber: "12"
+            reservationDate: "2026-05-15"
+            startTime: "19:00:00"
+            endTime: "21:00:00"
+            guestsCount: 4
+            status: confirmed
+            createdAt: "2026-04-08T12:30:00Z"
+        pagination:
+          page: 1
+          limit: 10
+          totalItems: 6
+          totalPages: 1
+
+    ValidationErrorDetail:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+      example:
+        field: guestsCount
+        message: Значение должно быть больше 0.
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationErrorDetail'
+      example:
+        error:
+          code: VALIDATION_ERROR
+          message: Некоторые поля заполнены некорректно.
+          details:
+            - field: guestsCount
+              message: Значение должно быть больше 0.
