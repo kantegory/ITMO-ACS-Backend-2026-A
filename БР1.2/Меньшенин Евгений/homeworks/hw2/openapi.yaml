@@ -1,0 +1,510 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking API
+  description: API для бронирования столиков в ресторанах
+  version: 1.0.0
+
+servers:
+  - url: https://api.restaurantbooking.com/v1
+    description: Production server
+
+paths:
+  /auth/register:
+    post:
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Некорректные данные
+        '409':
+          description: Пользователь с таким email уже существует
+
+  /auth/login:
+    post:
+      summary: Аутентификация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Некорректные данные
+        '401':
+          description: Неверные учетные данные
+
+  /restaurants:
+    get:
+      summary: Получение списка ресторанов с фильтрацией
+      parameters:
+        - name: cuisine
+          in: query
+          schema:
+            type: string
+        - name: location
+          in: query
+          schema:
+            type: string
+        - name: minRating
+          in: query
+          schema:
+            type: number
+            format: float
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список ресторанов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantsResponse'
+        '400':
+          description: Некорректные параметры запроса
+
+  /restaurants/{id}:
+    get:
+      summary: Получение информации о ресторане
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Информация о ресторане
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetails'
+        '404':
+          description: Ресторан не найден
+
+  /restaurants/{id}/tables:
+    get:
+      summary: Получение списка столиков в ресторане
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: guests
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список столиков
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TablesResponse'
+        '404':
+          description: Ресторан не найден
+
+  /bookings:
+    post:
+      summary: Создание бронирования
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Некорректные данные
+        '409':
+          description: Столик уже забронирован на это время
+
+    get:
+      summary: Получение списка бронирований пользователя
+      responses:
+        '200':
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingsResponse'
+
+  /bookings/{id}:
+    get:
+      summary: Получение информации о бронировании
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Информация о бронировании
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Бронирование не найдено
+
+    put:
+      summary: Обновление бронирования
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookingRequest'
+      responses:
+        '200':
+          description: Бронирование обновлено
+        '400':
+          description: Некорректные данные
+        '404':
+          description: Бронирование не найдено
+        '409':
+          description: Столик уже забронирован на это время
+
+    delete:
+      summary: Отмена бронирования
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Бронирование отменено
+        '404':
+          description: Бронирование не найдено
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+
+    RegisterResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [client, restaurant_owner, admin]
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [client, restaurant_owner, admin]
+
+    RestaurantsResponse:
+      type: object
+      properties:
+        restaurants:
+          type: array
+          items:
+            $ref: '#/components/schemas/Restaurant'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Restaurant:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        cuisineType:
+          type: string
+        rating:
+          type: number
+          format: float
+        imageUrl:
+          type: string
+
+    RestaurantDetails:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        cuisineType:
+          type: string
+        openingTime:
+          type: string
+          format: time
+        closingTime:
+          type: string
+          format: time
+        rating:
+          type: number
+          format: float
+        menu:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItem'
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+        category:
+          type: string
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TablesResponse:
+      type: object
+      properties:
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/Table'
+        date:
+          type: string
+          format: date
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: integer
+        tableNumber:
+          type: integer
+        capacity:
+          type: integer
+        locationDescription:
+          type: string
+        isAvailable:
+          type: boolean
+        availableTimeSlots:
+          type: array
+          items:
+            type: string
+            format: time
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - tableId
+        - date
+        - startTime
+        - endTime
+        - guests
+      properties:
+        tableId:
+          type: integer
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          format: time
+        endTime:
+          type: string
+          format: time
+        guests:
+          type: integer
+        specialRequests:
+          type: string
+
+    BookingResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        tableId:
+          type: integer
+        restaurantId:
+          type: integer
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          format: time
+        endTime:
+          type: string
+          format: time
+        guests:
+          type: integer
+        specialRequests:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+        createdAt:
+          type: string
+          format: date-time
+
+    BookingsResponse:
+      type: object
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingResponse'
+
+    UpdateBookingRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          format: time
+        endTime:
+          type: string
+          format: time
+        guests:
+          type: integer
+        specialRequests:
+          type: string
