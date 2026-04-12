@@ -50,10 +50,7 @@ export async function create(req: Request, res: Response) {
     throw E.notFound();
   if (property.ownerId === user.id) throw E.forbidden();
   const dealRepo = AppDataSource.getRepository(Deal);
-  const pending = await dealRepo.findOne({
-    where: { propertyId: property_id, status: "PENDING" },
-  });
-  if (pending) throw E.conflict();
+  await dealRepo.delete({ propertyId: property_id, status: "PENDING" });
   const price = parseFloat(property.price);
   const total = computeTotal(price, start_date, end_date, total_price_raw);
   const d = dealRepo.create({
@@ -104,10 +101,15 @@ export async function patch(req: Request, res: Response) {
   if (cur === "ACTIVE" && status === "COMPLETED") ok = true;
   if (!ok) throw E.conflict();
   if (status === "ACTIVE") {
-    const active = await dealRepo.findOne({
+    const others = await dealRepo.find({
       where: { propertyId: prop.id, status: "ACTIVE" },
     });
-    if (active && active.id !== d.id) throw E.conflict();
+    for (const other of others) {
+      if (other.id !== d.id) {
+        other.status = "COMPLETED";
+        await dealRepo.save(other);
+      }
+    }
   }
   d.status = status;
   await dealRepo.save(d);

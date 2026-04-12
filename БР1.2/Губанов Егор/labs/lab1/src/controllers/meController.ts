@@ -34,8 +34,8 @@ export async function owning(req: Request, res: Response) {
   for (const p of props) {
     const active_deals = await dealRepo
       .createQueryBuilder("d")
-      .leftJoinAndSelect("d.property", "property")
-      .where("d.property_id = :pid", { pid: p.id })
+      .leftJoinAndSelect("d.property", "prop")
+      .where("d.propertyId = :pid", { pid: p.id })
       .andWhere("d.status IN (:...st)", { st: ["PENDING", "ACTIVE"] })
       .getMany();
     rows.push({
@@ -58,9 +58,9 @@ export async function owningDeals(req: Request, res: Response) {
   const dealRepo = AppDataSource.getRepository(Deal);
   const items = await dealRepo
     .createQueryBuilder("d")
-    .leftJoinAndSelect("d.property", "property")
-    .where("d.property_id IN (:...ids)", { ids })
-    .orderBy("d.created_at", "DESC")
+    .leftJoinAndSelect("d.property", "prop")
+    .where("d.propertyId IN (:...ids)", { ids })
+    .orderBy("d.createdAt", "DESC")
     .getMany();
   res.json({
     items: items.map((d) => dealOut(d, d.property)),

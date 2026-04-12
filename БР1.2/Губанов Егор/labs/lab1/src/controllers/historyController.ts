@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Brackets } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { Message } from "../entities/Message";
 import { Deal } from "../entities/Deal";
@@ -9,16 +10,28 @@ export async function all(req: Request, res: Response) {
   const msgRepo = AppDataSource.getRepository(Message);
   const messages = await msgRepo
     .createQueryBuilder("m")
-    .where("m.sender_id = :uid OR m.receiver_id = :uid", { uid })
-    .orderBy("m.created_at", "DESC")
+    .where(
+      new Brackets((qb) => {
+        qb.where("m.senderId = :uid", { uid }).orWhere("m.receiverId = :uid", {
+          uid,
+        });
+      })
+    )
+    .orderBy("m.createdAt", "DESC")
     .take(200)
     .getMany();
   const dealRepo = AppDataSource.getRepository(Deal);
   const deals = await dealRepo
     .createQueryBuilder("d")
     .leftJoinAndSelect("d.property", "p")
-    .where("(d.tenant_id = :uid OR p.owner_id = :uid)", { uid })
-    .orderBy("d.created_at", "DESC")
+    .where(
+      new Brackets((qb) => {
+        qb.where("d.tenantId = :uid", { uid }).orWhere("p.ownerId = :uid", {
+          uid,
+        });
+      })
+    )
+    .orderBy("d.createdAt", "DESC")
     .take(200)
     .getMany();
   res.json({

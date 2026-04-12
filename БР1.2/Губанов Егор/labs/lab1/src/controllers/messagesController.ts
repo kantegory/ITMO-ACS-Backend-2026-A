@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Brackets } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { Message } from "../entities/Message";
 import { User } from "../entities/User";
@@ -23,13 +24,20 @@ export async function list(req: Request, res: Response) {
   const repo = AppDataSource.getRepository(Message);
   const qb = repo
     .createQueryBuilder("m")
-    .where("(m.sender_id = :uid OR m.receiver_id = :uid)", { uid: user.id });
-  if (property_id) qb.andWhere("m.property_id = :pid", { pid: property_id });
-  if (after) qb.andWhere("m.created_at > :after", { after });
-  if (before) qb.andWhere("m.created_at < :before", { before });
+    .where(
+      new Brackets((q) => {
+        q.where("m.senderId = :uid", { uid: user.id }).orWhere(
+          "m.receiverId = :uid",
+          { uid: user.id }
+        );
+      })
+    );
+  if (property_id) qb.andWhere("m.propertyId = :pid", { pid: property_id });
+  if (after) qb.andWhere("m.createdAt > :after", { after });
+  if (before) qb.andWhere("m.createdAt < :before", { before });
   const total = await qb.getCount();
   const items = await qb
-    .orderBy("m.created_at", order as "ASC" | "DESC")
+    .orderBy("m.createdAt", order as "ASC" | "DESC")
     .skip((page - 1) * pageSize)
     .take(pageSize)
     .getMany();
