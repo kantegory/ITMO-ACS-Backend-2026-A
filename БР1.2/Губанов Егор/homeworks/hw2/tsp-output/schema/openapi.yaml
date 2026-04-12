@@ -13,7 +13,7 @@ tags:
 paths:
   /api/v1/auth/login:
     post:
-      operationId: AuthRoutes_login
+      operationId: AuthPublic_login
       parameters: []
       responses:
         '200':
@@ -39,9 +39,111 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/LoginBody'
+  /api/v1/auth/logout:
+    post:
+      operationId: AuthSession_logout
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedError'
+                  - $ref: '#/components/schemas/ServerError'
+      tags:
+        - Auth
+      security:
+        - BearerAuth: []
+  /api/v1/auth/password/request-reset:
+    post:
+      operationId: AuthPublic_requestReset
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleOk'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ServerError'
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestResetBody'
+  /api/v1/auth/password/reset:
+    post:
+      operationId: AuthPublic_resetPassword
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleOk'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/UnauthorizedError'
+                  - $ref: '#/components/schemas/ServerError'
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordBody'
+  /api/v1/auth/refresh:
+    post:
+      operationId: AuthPublic_refresh
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthOk'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedError'
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ServerError'
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshBody'
   /api/v1/auth/register:
     post:
-      operationId: AuthRoutes_register
+      operationId: AuthPublic_register
       parameters: []
       responses:
         '200':
@@ -67,6 +169,32 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RegisterBody'
+  /api/v1/conditions/{id}:
+    delete:
+      operationId: ConditionRoutes_remove
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedError'
+                  - $ref: '#/components/schemas/ForbiddenError'
+                  - $ref: '#/components/schemas/NotFoundError'
+                  - $ref: '#/components/schemas/ServerError'
+      tags:
+        - Properties
+      security:
+        - BearerAuth: []
   /api/v1/deals/:
     post:
       operationId: DealRoutes_create
@@ -287,6 +415,9 @@ paths:
       operationId: MessageRoutes_list
       parameters:
         - $ref: '#/components/parameters/MessageListQuery.property_id'
+        - $ref: '#/components/parameters/MessageListQuery.after'
+        - $ref: '#/components/parameters/MessageListQuery.before'
+        - $ref: '#/components/parameters/MessageListQuery.order'
         - $ref: '#/components/parameters/MessageListQuery.page'
         - $ref: '#/components/parameters/MessageListQuery.page_size'
       responses:
@@ -540,6 +671,43 @@ paths:
         - Properties
       security:
         - BearerAuth: []
+  /api/v1/properties/{propertyId}/conditions:
+    post:
+      operationId: OwnerProperties_addCondition
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalConditionOut'
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/UnauthorizedError'
+                  - $ref: '#/components/schemas/ForbiddenError'
+                  - $ref: '#/components/schemas/NotFoundError'
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/ServerError'
+      tags:
+        - Properties
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConditionCreateBody'
+      security:
+        - BearerAuth: []
   /api/v1/properties/{propertyId}/photos:
     post:
       operationId: OwnerProperties_addPhoto
@@ -600,6 +768,29 @@ paths:
         - Property types
 components:
   parameters:
+    MessageListQuery.after:
+      name: after
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      explode: false
+    MessageListQuery.before:
+      name: before
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      explode: false
+    MessageListQuery.order:
+      name: order
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/MessageOrder'
+      explode: false
     MessageListQuery.page:
       name: page
       in: query
@@ -679,6 +870,8 @@ components:
       properties:
         access_token:
           type: string
+        refresh_token:
+          type: string
         token_type:
           type: string
         user:
@@ -700,6 +893,16 @@ components:
             - bearer
           description: bearer auth scheme
       description: ''
+    ConditionCreateBody:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+        sort_order:
+          type: integer
+          format: int32
     ConflictError:
       type: object
       required:
@@ -873,6 +1076,11 @@ components:
         total:
           type: integer
           format: int32
+    MessageOrder:
+      type: string
+      enum:
+        - asc
+        - desc
     MessageOut:
       type: object
       required:
@@ -991,7 +1199,6 @@ components:
         - city
         - address
         - description
-        - rental_conditions
         - price
         - is_published
       properties:
@@ -1004,8 +1211,6 @@ components:
         address:
           type: string
         description:
-          type: string
-        rental_conditions:
           type: string
         price:
           type: number
@@ -1022,12 +1227,12 @@ components:
         - city
         - address
         - description
-        - rental_conditions
         - price
         - is_published
         - created_at
         - updated_at
         - photos
+        - conditions
         - owner
       properties:
         id:
@@ -1044,8 +1249,6 @@ components:
           type: string
         description:
           type: string
-        rental_conditions:
-          type: string
         price:
           type: number
           format: double
@@ -1061,6 +1264,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PhotoOut'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RentalConditionOut'
         owner:
           $ref: '#/components/schemas/OwnerShort'
     PropertyListResponse:
@@ -1147,13 +1354,18 @@ components:
           type: string
         description:
           type: string
-        rental_conditions:
-          type: string
         price:
           type: number
           format: double
         is_published:
           type: boolean
+    RefreshBody:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
     RegisterBody:
       type: object
       required:
@@ -1173,6 +1385,27 @@ components:
           type: string
         role:
           $ref: '#/components/schemas/Role'
+    RentalConditionOut:
+      type: object
+      required:
+        - id
+        - property_id
+        - text
+        - sort_order
+        - created_at
+      properties:
+        id:
+          type: string
+        property_id:
+          type: string
+        text:
+          type: string
+        sort_order:
+          type: integer
+          format: int32
+        created_at:
+          type: string
+          format: date-time
     RentingResponse:
       type: object
       required:
@@ -1186,6 +1419,23 @@ components:
         total:
           type: integer
           format: int32
+    RequestResetBody:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+    ResetPasswordBody:
+      type: object
+      required:
+        - reset_token
+        - new_password
+      properties:
+        reset_token:
+          type: string
+        new_password:
+          type: string
     Role:
       type: string
       enum:
@@ -1208,6 +1458,13 @@ components:
             - Сервер упал
       allOf:
         - $ref: '#/components/schemas/Error'
+    SimpleOk:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
     UnauthorizedError:
       type: object
       required:
@@ -1275,6 +1532,6 @@ components:
       type: http
       scheme: bearer
 servers:
-  - url: http://localhost:8001
-    description: local
+  - url: http://localhost:3000
+    description: ЛР1 API
     variables: {}

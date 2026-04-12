@@ -37,4 +37,8 @@ interface OwnerProperties {
   @post
   @route("/{propertyId}/photos")
   addPhoto(@path propertyId: string, @body body: PhotoCreateBody): PhotoOut | UnauthorizedError | ForbiddenError | NotFoundError | ValidationError | ServerError;
+
+  @post
+  @route("/{propertyId}/conditions")
+  addCondition(@path propertyId: string, @body body: ConditionCreateBody): RentalConditionOut | UnauthorizedError | ForbiddenError | NotFoundError | ValidationError | ServerError;
 }

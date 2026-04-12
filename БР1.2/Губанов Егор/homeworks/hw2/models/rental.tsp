@@ -40,8 +40,26 @@ model LoginBody {
 
 model AuthOk {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   user: UserPublic;
+}
+
+model RefreshBody {
+  refresh_token: string;
+}
+
+model RequestResetBody {
+  email: string;
+}
+
+model ResetPasswordBody {
+  reset_token: string;
+  new_password: string;
+}
+
+model SimpleOk {
+  ok: boolean;
 }
 
 model OwnerShort {
@@ -79,6 +97,14 @@ model PhotoOut {
   created_at: utcDateTime;
 }
 
+model RentalConditionOut {
+  id: string;
+  property_id: string;
+  text: string;
+  sort_order: int32;
+  created_at: utcDateTime;
+}
+
 model PropertyDetail {
   id: string;
   owner_id: string;
@@ -87,12 +113,12 @@ model PropertyDetail {
   city: string;
   address: string;
   description: string;
-  rental_conditions: string;
   price: float64;
   is_published: boolean;
   created_at: utcDateTime;
   updated_at: utcDateTime;
   photos: PhotoOut[];
+  conditions: RentalConditionOut[];
   owner: OwnerShort;
 }
 
@@ -127,7 +153,6 @@ model PropertyCreateBody {
   city: string;
   address: string;
   description: string;
-  rental_conditions: string;
   price: float64;
   is_published: boolean;
 }
@@ -138,9 +163,13 @@ model PropertyUpdateBody {
   city?: string;
   address?: string;
   description?: string;
-  rental_conditions?: string;
   price?: float64;
   is_published?: boolean;
+}
+
+model ConditionCreateBody {
+  text: string;
+  sort_order?: int32;
 }
 
 model PhotoCreateBody {
@@ -193,9 +222,23 @@ model MessageCreateBody {
   content: string;
 }
 
+enum MessageOrder {
+  asc,
+  desc,
+}
+
 model MessageListQuery {
   @query
   property_id?: string;
+
+  @query
+  after?: utcDateTime;
+
+  @query
+  before?: utcDateTime;
+
+  @query
+  order?: MessageOrder;
 
   @query
   page?: int32;
