@@ -20,6 +20,12 @@ const authMiddleware = (
     const { authorization } = headers;
 
     try {
+        if (!authorization) {
+            return response
+                .status(401)
+                .send({ message: 'Unauthorized: no token provided' });
+        }
+
         const [, accessToken] = authorization.split(' ');
 
         if (!accessToken) {

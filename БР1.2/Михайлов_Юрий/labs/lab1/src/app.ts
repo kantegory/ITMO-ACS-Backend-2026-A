@@ -8,6 +8,15 @@ import SETTINGS from './config/settings';
 import dataSource from './config/data-source';
 import { useSwagger } from './swagger';
 import AuthController from './controllers/auth.controller';
+import UserController from './controllers/user.controller';
+import PropertiesController from './controllers/properties.controller';
+import AttributesController from './controllers/attributes.controller';
+import BookingRequestsController from './controllers/booking-requests.controller';
+import BookingsController from './controllers/bookings.controller';
+import ConversationsController from './controllers/conversations.controller';
+import MessagesController from './controllers/messages.controller';
+import PaymentsController from './controllers/payments.controller';
+import ReviewsController from './controllers/reviews.controller';
 
 class App {
     public port: number;
@@ -42,7 +51,18 @@ class App {
         const options = {
             routePrefix: SETTINGS.APP_API_PREFIX,
             // controllers: [__dirname + this.controllersPath],
-            controllers: [AuthController],
+            controllers: [
+                AuthController,
+                UserController,
+                PropertiesController,
+                AttributesController,
+                BookingRequestsController,
+                BookingsController,
+                ConversationsController,
+                MessagesController,
+                PaymentsController,
+                ReviewsController,
+            ],
             validation: true,
             classTransformer: true,
             defaultErrorHandler: true,

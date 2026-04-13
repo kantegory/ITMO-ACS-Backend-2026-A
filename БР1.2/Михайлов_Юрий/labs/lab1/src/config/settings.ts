@@ -6,7 +6,10 @@ class Settings {
     APP_PORT: number = parseInt(env.APP_PORT) || 8000;
     APP_PROTOCOL: string = env.APP_PROTOCOL || 'http';
     APP_CONTROLLERS_PATH: string =
-        env.APP_CONTROLLERS_PATH || '/controllers/*.controller.js';
+        env.APP_CONTROLLERS_PATH ||
+        (env.NODE_ENV === 'development'
+            ? '/controllers/*.controller.ts'
+            : '/controllers/*.controller.js');
     APP_API_PREFIX: string = env.APP_API_PREFIX || '/api';
 
     // db connection settings
@@ -15,8 +18,16 @@ class Settings {
     DB_NAME = env.DB_NAME || 'maindb';
     DB_USER = env.DB_USER || 'maindb';
     DB_PASSWORD = env.DB_PASSWORD || 'maindb';
-    DB_ENTITIES = env.DB_ENTITIES || 'dist/models/*.entity.js';
-    DB_SUBSCRIBERS = env.DB_SUBSCRIBERS || 'dist/models/*.subscriber.js';
+    DB_ENTITIES =
+        env.DB_ENTITIES ||
+        (env.NODE_ENV === 'development'
+            ? 'src/models/*.entity.ts'
+            : 'dist/models/*.entity.js');
+    DB_SUBSCRIBERS =
+        env.DB_SUBSCRIBERS ||
+        (env.NODE_ENV === 'development'
+            ? 'src/models/*.subscriber.ts'
+            : 'dist/models/*.subscriber.js');
 
     // jwt settings
     JWT_SECRET_KEY = env.JWT_SECRET_KEY || 'secret';
