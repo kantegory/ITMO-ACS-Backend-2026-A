@@ -34,9 +34,9 @@ export async function listPublic(req: Request, res: Response) {
   );
   const qb = AppDataSource.getRepository(Property)
     .createQueryBuilder("p")
-    .innerJoinAndSelect("p.type", "type")
+    .innerJoinAndSelect("p.type", "ptype")
     .where("p.is_published = true")
-    .andWhere("type.is_published = true");
+    .andWhere("ptype.is_published = true");
   const typeId = q.type_id ? String(q.type_id) : "";
   if (typeId) qb.andWhere("p.type_id = :typeId", { typeId });
   const city = q.city ? String(q.city) : "";
@@ -45,12 +45,11 @@ export async function listPublic(req: Request, res: Response) {
   if (!Number.isNaN(minP)) qb.andWhere("CAST(p.price AS DECIMAL) >= :minP", { minP });
   const maxP = q.max_price != null ? parseFloat(String(q.max_price)) : NaN;
   if (!Number.isNaN(maxP)) qb.andWhere("CAST(p.price AS DECIMAL) <= :maxP", { maxP });
-  const total = await qb.getCount();
-  const items = await qb
-    .orderBy("p.created_at", "DESC")
+  const [items, total] = await qb
+    .orderBy("p.createdAt", "DESC")
     .skip((page - 1) * pageSize)
     .take(pageSize)
-    .getMany();
+    .getManyAndCount();
   res.json({
     items: items.map(propertyShort),
     total,

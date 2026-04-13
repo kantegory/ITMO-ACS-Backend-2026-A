@@ -7,6 +7,9 @@ import { Property } from "../entities/Property";
 import { E } from "../http/errors";
 import { messageOut } from "../serializers";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function list(req: Request, res: Response) {
   const user = req.user!;
   const q = req.query;
@@ -16,6 +19,7 @@ export async function list(req: Request, res: Response) {
     Math.max(1, parseInt(String(q.page_size ?? "20"), 10) || 20)
   );
   const property_id = q.property_id ? String(q.property_id) : "";
+  if (property_id && !UUID_RE.test(property_id)) throw E.validation();
   const after = q.after ? new Date(String(q.after)) : null;
   const before = q.before ? new Date(String(q.before)) : null;
   const order = String(q.order || "asc").toLowerCase() === "desc" ? "DESC" : "ASC";
@@ -25,22 +29,20 @@ export async function list(req: Request, res: Response) {
   const qb = repo
     .createQueryBuilder("m")
     .where(
-      new Brackets((q) => {
-        q.where("m.senderId = :uid", { uid: user.id }).orWhere(
-          "m.receiverId = :uid",
-          { uid: user.id }
-        );
+      new Brackets((sub) => {
+        sub
+          .where("m.senderId = :uid", { uid: user.id })
+          .orWhere("m.receiverId = :uid", { uid: user.id });
       })
     );
   if (property_id) qb.andWhere("m.propertyId = :pid", { pid: property_id });
   if (after) qb.andWhere("m.createdAt > :after", { after });
   if (before) qb.andWhere("m.createdAt < :before", { before });
-  const total = await qb.getCount();
-  const items = await qb
+  const [items, total] = await qb
     .orderBy("m.createdAt", order as "ASC" | "DESC")
     .skip((page - 1) * pageSize)
     .take(pageSize)
-    .getMany();
+    .getManyAndCount();
   res.json({
     items: items.map(messageOut),
     total,
