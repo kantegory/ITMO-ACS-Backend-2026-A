@@ -1,0 +1,182 @@
+openapi: 3.0.3
+info:
+  title: API
+  version: 1.0.0
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      responses:
+        '201':
+          description: Успешная регистрация
+        '400':
+          description: Ошибка валидации (неверный формат email или слабый пароль)
+        '409':
+          description: Конфликт (пользователь с таким email уже существует)
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Авторизация
+      responses:
+        '200':
+          description: Успешный вход
+        '401':
+          description: Неверные учетные данные (логин или пароль)
+
+  /recipes:
+    get:
+      tags: [Recipes]
+      summary: Список рецептов
+      parameters:
+        - name: sort
+          in: query
+          description: Сортировка (new, popular, difficulty)
+          schema: { type: string }
+      responses:
+        '200':
+          description: Список получен
+        '400':
+          description: Некорректные параметры фильтрации
+    post:
+      tags: [Recipes]
+      summary: Создание рецепта
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Рецепт создан
+        '400':
+          description: Ошибка в теле запроса (пропущены ингредиенты или шаги)
+        '401':
+          description: Не авторизован
+
+  /recipes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Recipes]
+      summary: Детали рецепта
+      responses:
+        '200':
+          description: Данные найдены
+        '404':
+          description: Рецепт не существует
+    put:
+      tags: [Recipes]
+      summary: Редактирование
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Обновлено
+        '403':
+          description: Отказ в доступе (редактирование чужого контента)
+        '404':
+          description: Рецепт не найден
+    delete:
+      tags: [Recipes]
+      summary: Удаление
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204':
+          description: Удалено успешно
+        '403':
+          description: Нет прав на удаление
+
+  /recipes/{id}/comments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Social]
+      summary: Список комментариев
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Рецепт не найден
+    post:
+      tags: [Social]
+      summary: Добавить комментарий
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Опубликовано
+        '400':
+          description: Пустой комментарий или слишком длинный текст
+
+  /recipes/{id}/like:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [Social]
+      summary: Поставить лайк
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Лайк поставлен
+        '401':
+          description: Нужно войти в систему
+        '409':
+          description: Лайк уже стоит
+
+  /favorites/{recipeId}:
+    parameters:
+      - name: recipeId
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [User]
+      summary: В избранное
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Добавлено
+        '401':
+          description: Не авторизован
+        '404':
+          description: Рецепт не найден
+    delete:
+      tags: [User]
+      summary: Из избранного
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          description: Запись в избранном не найдена
+
+  /users/{userId}/follow:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [Social]
+      summary: Подписаться
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Подписка оформлена
+        '400':
+          description: Нельзя подписаться на самого себя
+        '404':
+          description: Автор не найден
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
