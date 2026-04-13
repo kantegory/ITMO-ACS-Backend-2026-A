@@ -1,13 +1,13 @@
 openapi: 3.0.0
 info:
-  title: GuardMarket API
+  title: Sangel API
   description: Маркетплейс охранных услуг
   version: 1.0.0
   contact:
     name: Москалец Данила Алексеевич
 
 servers:
-  - url: https://api.guardmarket.ru/v1
+  - url: https://api.sangel.ru/v1
     description: Production server
   - url: http://localhost:8000/v1
     description: Development server
@@ -206,6 +206,25 @@ components:
         is_published:
           type: boolean
 
+    CreateCategoryRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        is_published:
+          type: boolean
+          default: true
+
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        is_published:
+          type: boolean
+
     # Service
     Service:
       type: object
@@ -337,8 +356,6 @@ components:
               type: string
             last_name:
               type: string
-            phone:
-              type: string
         status:
           type: string
           enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
@@ -375,12 +392,20 @@ components:
           type: integer
         service_id:
           type: integer
+        service_name:
+          type: string
+        company_id:
+          type: integer
+        company_title:
+          type: string
         user:
           type: object
           properties:
             id:
               type: integer
             first_name:
+              type: string
+            last_name:
               type: string
         rating:
           type: integer
@@ -523,6 +548,38 @@ paths:
         401:
           description: Неверный email или пароль
 
+  /auth/logout:
+    post:
+      summary: Выход из системы
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        200:
+          description: Успешный выход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Successfully logged out
+        400:
+          description: Токен не предоставлен
+        401:
+          description: Невалидный токен
+
   /auth/me:
     get:
       summary: Получить текущего пользователя
@@ -600,7 +657,92 @@ paths:
         200:
           description: Пароль изменен
         400:
-          description: Неверный старый пароль или слабый новый
+          description: Неверный старый пароль
+        422:
+          description: Новый пароль не соответствует требованиям
+
+  # ==================== ME (личный кабинет) ====================
+  /me/company:
+    get:
+      summary: Получить свою компанию
+      tags: [Me]
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyDetail'
+        404:
+          description: У пользователя нет компании
+
+  /me/reviews:
+    get:
+      summary: Получить все мои отзывы
+      tags: [Me]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Review'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /me/requests:
+    get:
+      summary: Получить все мои заявки
+      tags: [Me]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Request'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
 
   # ==================== COMPANIES ====================
   /companies:
@@ -725,6 +867,8 @@ paths:
           description: Компания обновлена
         403:
           description: Доступ запрещен
+        404:
+          description: Компания не найдена
 
     delete:
       summary: Удалить компанию
@@ -740,6 +884,9 @@ paths:
           description: Компания удалена
         403:
           description: Доступ запрещен
+        404:
+          description: Компания не найдена
+
 
   # ==================== CATEGORIES ====================
   /categories:
@@ -759,6 +906,78 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Category'
+
+    post:
+      summary: Создать категорию (только ADMIN)
+      tags: [Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+      responses:
+        201:
+          description: Категория создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+        403:
+          description: Доступ запрещен (только ADMIN)
+        400:
+          description: Невалидные данные
+
+  /categories/{id}:
+    put:
+      summary: Обновить категорию (только ADMIN)
+      tags: [Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryRequest'
+      responses:
+        200:
+          description: Категория обновлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+        403:
+          description: Доступ запрещен (только ADMIN)
+        404:
+          description: Категория не найдена
+
+    delete:
+      summary: Удалить категорию (только ADMIN)
+      tags: [Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Категория удалена
+        403:
+          description: Доступ запрещен (только ADMIN)
+        404:
+          description: Категория не найдена
 
   # ==================== SERVICES ====================
   /services:
@@ -854,6 +1073,8 @@ paths:
           description: Услуга обновлена
         403:
           description: Доступ запрещен
+        404:
+          description: Услуга не найдена
 
     delete:
       summary: Удалить услугу
@@ -869,6 +1090,8 @@ paths:
           description: Услуга удалена
         403:
           description: Доступ запрещен
+        404:
+          description: Услуга не найдена
 
   /companies/{company_id}/services:
     post:
@@ -898,6 +1121,52 @@ paths:
                     $ref: '#/components/schemas/Service'
         403:
           description: Доступ запрещен
+        404:
+          description: Компания не найдена
+
+  /services/{service_id}/requests:
+    get:
+      summary: Получить все заявки на услугу
+      tags: [Services]
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+      responses:
+        200:
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Request'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        403:
+          description: Доступ запрещен (не владелец компании)
+        404:
+          description: Услуга не найдена
 
   # ==================== DISCOUNTS ====================
   /services/{service_id}/discount:
@@ -948,6 +1217,10 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/Discount'
+        403:
+          description: Доступ запрещен
+        404:
+          description: Услуга не найдена
         409:
           description: У услуги уже есть активная скидка
 
@@ -970,8 +1243,17 @@ paths:
       responses:
         200:
           description: Скидка обновлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Discount'
         403:
           description: Доступ запрещен
+        404:
+          description: Скидка не найдена
 
     delete:
       summary: Удалить скидку
@@ -987,43 +1269,10 @@ paths:
           description: Скидка удалена
         403:
           description: Доступ запрещен
+        404:
+          description: Скидка не найдена
 
   # ==================== REQUESTS ====================
-  /requests:
-    get:
-      summary: История заявок пользователя
-      tags: [Requests]
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 20
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
-      responses:
-        200:
-          description: Успешно
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Request'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
-
   /companies/{company_id}/requests:
     get:
       summary: Входящие заявки компании
@@ -1065,8 +1314,10 @@ paths:
                     $ref: '#/components/schemas/Pagination'
         403:
           description: Доступ запрещен
+        404:
+          description: Компания не найдена
 
-  /services/{service_id}/requests:
+  /services/{service_id}/create_requests:
     post:
       summary: Создать заявку
       tags: [Requests]
@@ -1127,6 +1378,8 @@ paths:
           description: Некорректный статус
         403:
           description: Доступ запрещен
+        404:
+          description: Заявка не найдена
 
   /requests/{id}/cancel:
     put:
@@ -1152,6 +1405,8 @@ paths:
           description: Невозможно отменить заявку
         403:
           description: Доступ запрещен
+        404:
+          description: Заявка не найдена
 
   # ==================== REVIEWS ====================
   /services/{service_id}/reviews:
@@ -1205,6 +1460,8 @@ paths:
                     $ref: '#/components/schemas/Review'
         403:
           description: Нельзя оставить отзыв
+        404:
+          description: Услуга не найдена
 
   /reviews/{id}:
     delete:
@@ -1221,6 +1478,8 @@ paths:
           description: Отзыв удален
         403:
           description: Доступ запрещен
+        404:
+          description: Отзыв не найден
 
   # ==================== FAVORITES ====================
   /favorites:
@@ -1268,6 +1527,8 @@ paths:
           description: Добавлено
         409:
           description: Уже в избранном
+        404:
+          description: Услуга не найдена
 
     delete:
       summary: Удалить из избранного
@@ -1281,6 +1542,8 @@ paths:
       responses:
         200:
           description: Удалено
+        404:
+          description: Услуга не найдена в избранном
 
   # ==================== ADMIN ====================
   /admin/users:
@@ -1310,8 +1573,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
         403:
-          description: Доступ запрещен
+          description: Доступ запрещен (только ADMIN)
 
   /admin/companies:
     get:
@@ -1340,6 +1605,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Company'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        403:
+          description: Доступ запрещен (только ADMIN)
 
   /admin/requests:
     get:
@@ -1360,6 +1629,7 @@ paths:
           in: query
           schema:
             type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
       responses:
         200:
           description: Успешно
@@ -1372,6 +1642,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Request'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        403:
+          description: Доступ запрещен (только ADMIN)
 
   /admin/reports/activity:
     get:
@@ -1404,3 +1678,5 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/ActivityReport'
+        403:
+          description: Доступ запрещен (только ADMIN)
