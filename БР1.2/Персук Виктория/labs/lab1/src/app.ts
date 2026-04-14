@@ -7,7 +7,16 @@ import { useExpressServer } from 'routing-controllers';
 import SETTINGS from './config/settings';
 import dataSource from './config/data-source';
 import { useSwagger } from './swagger';
+
 import AuthController from './controllers/auth.controller';
+import UserController from './controllers/user.controller';
+import CuisineController from './controllers/cuisine.controller';
+import RestaurantController from './controllers/restaurant.controller';
+import MenuItemController from './controllers/menu-item.controller';
+import TableController from './controllers/table.controller';
+import ReservationController from './controllers/reservation.controller';
+import ReviewController from './controllers/review.controller';
+import PhotoController from './controllers/photo.controller';
 
 class App {
     public port: number;
@@ -41,8 +50,17 @@ class App {
 
         const options = {
             routePrefix: SETTINGS.APP_API_PREFIX,
-            // controllers: [__dirname + this.controllersPath],
-            controllers: [AuthController],
+            controllers: [
+                AuthController,
+                UserController,
+                CuisineController,
+                RestaurantController,
+                MenuItemController,
+                TableController,
+                ReservationController,
+                ReviewController,
+                PhotoController,
+            ],
             validation: true,
             classTransformer: true,
             defaultErrorHandler: true,

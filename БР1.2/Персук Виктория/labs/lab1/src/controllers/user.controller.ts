@@ -1,71 +1,94 @@
 import {
-    Param,
     Body,
     Get,
-    Post,
     Patch,
     UseBefore,
     Req,
-    Res,
 } from 'routing-controllers';
-import { ObjectLiteral } from 'typeorm';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
-
 import { User } from '../models/user.entity';
+import { Reservation } from '../models/reservation.entity';
+import authMiddleware, { RequestWithUser } from '../middlewares/auth.middleware';
+import dataSource from '../config/data-source';
 
-import authMiddleware, {
-    RequestWithUser,
-} from '../middlewares/auth.middleware';
+class UpdateUserDto {
+    @IsOptional()
+    @IsString()
+    @Type(() => String)
+    first_name?: string;
+
+    @IsOptional()
+    @IsString()
+    @Type(() => String)
+    middle_name?: string;
+
+    @IsOptional()
+    @IsString()
+    @Type(() => String)
+    last_name?: string;
+
+    @IsOptional()
+    @IsString()
+    @Type(() => String)
+    phone?: string;
+}
 
 @EntityController({
     baseRoute: '/users',
     entity: User,
 })
 class UserController extends BaseController {
-    @Get('')
-    async getAll() {
-        return await this.repository.find();
-    }
-
-    @Post('')
-    async create(@Body() user: User) {
-        const createdUser = this.repository.create(user);
-        const results = await this.repository.save(createdUser);
-
-        return results;
-    }
-
     @Get('/me')
     @UseBefore(authMiddleware)
+    @OpenAPI({ summary: 'Get current user profile', security: [{ bearerAuth: [] }] })
     async me(@Req() request: RequestWithUser) {
         const { user } = request;
-        const results = await this.repository.findOneBy({ id: user.id });
-
-        return results;
+        const result = await this.repository.findOne({
+            where: { user_id: user.id },
+            relations: ['role'],
+        });
+        return result;
     }
 
-    @Get('/:id')
+    @Patch('/me')
     @UseBefore(authMiddleware)
-    async getById(@Param('id') id: number): Promise<ObjectLiteral> {
-        const results = await this.repository.findOneBy({ id });
+    @OpenAPI({ summary: 'Update current user profile', security: [{ bearerAuth: [] }] })
+    async updateMe(
+        @Req() request: RequestWithUser,
+        @Body({ type: UpdateUserDto }) updateData: UpdateUserDto,
+    ) {
+        const { user } = request;
+        const existingUser = await this.repository.findOneBy({ user_id: user.id });
+        if (!existingUser) {
+            return { message: 'User not found' };
+        }
 
-        return results;
+        const allowed: (keyof UpdateUserDto)[] = ['first_name', 'middle_name', 'last_name', 'phone'];
+        for (const key of allowed) {
+            if (updateData[key] !== undefined) {
+                (existingUser as any)[key] = updateData[key];
+            }
+        }
+
+        return await this.repository.save(existingUser);
     }
 
-    @Patch('/:id')
+    @Get('/me/reservations')
     @UseBefore(authMiddleware)
-    async update(
-        @Param('id') id: number,
-        @Body() user: Partial<User>,
-    ): Promise<ObjectLiteral> {
-        const userForUpdate = await this.repository.findOneBy({ id });
-        Object.assign(userForUpdate, user);
-
-        const results = await this.repository.save(userForUpdate);
-
-        return results;
+    @OpenAPI({ summary: 'Get current user reservations', security: [{ bearerAuth: [] }] })
+    async myReservations(@Req() request: RequestWithUser) {
+        const { user } = request;
+        const reservationRepo = dataSource.getRepository(Reservation);
+        const reservations = await reservationRepo.find({
+            where: { user_id: user.id },
+            relations: ['table', 'table.restaurant'],
+        });
+        return reservations;
     }
 }
 
