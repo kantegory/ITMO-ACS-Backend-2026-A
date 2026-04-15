@@ -1,0 +1,246 @@
+{
+  "info": {
+    "name": "Restaurant Booking Main Flow",
+    "_postman_id": "a3d18126-0ab6-48a6-a7a8-1a1e2bfbf001",
+    "description": "Комплексный сценарий: регистрация -> вход -> список ресторанов -> фильтрация -> детали ресторана -> бронирование -> история бронирований.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman Student\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.expect(json.token).to.be.a('string');",
+              "pm.environment.set('token', json.token);",
+              "pm.environment.set('userId', json.user.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.expect(json.token).to.be.a('string');",
+              "pm.environment.set('token', json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Restaurants list",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/restaurants",
+          "host": ["{{baseUrl}}"],
+          "path": ["restaurants"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.expect(json.length).to.be.above(0);",
+              "pm.environment.set('restaurantId', json[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Restaurants filtered",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/restaurants?city={{cityFilter}}&cuisine={{cuisineFilter}}&priceMax={{priceMaxFilter}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["restaurants"],
+          "query": [
+            { "key": "city", "value": "{{cityFilter}}" },
+            { "key": "cuisine", "value": "{{cuisineFilter}}" },
+            { "key": "priceMax", "value": "{{priceMaxFilter}}" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "const arr = pm.response.json();",
+              "pm.expect(arr).to.be.an('array');",
+              "if (arr.length > 0) { pm.environment.set('restaurantId', arr[0].id); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Restaurant details",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/restaurants/{{restaurantId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["restaurants", "{{restaurantId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.expect(json).to.have.property('MenuItems');",
+              "pm.expect(json).to.have.property('RestaurantPhotos');",
+              "pm.expect(json).to.have.property('Reviews');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Create reservation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/restaurants/{{restaurantId}}/reservations",
+          "host": ["{{baseUrl}}"],
+          "path": ["restaurants", "{{restaurantId}}", "reservations"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"guests_count\": 2,\n  \"reservation_datetime\": \"{{reservationDateTime}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.expect(json).to.have.property('id');",
+              "pm.environment.set('reservationId', json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Reservation history",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/users/me/reservations",
+          "host": ["{{baseUrl}}"],
+          "path": ["users", "me", "reservations"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+              "const arr = pm.response.json();",
+              "pm.expect(arr).to.be.an('array');",
+              "const found = arr.some(x => String(x.id) === String(pm.environment.get('reservationId')));",
+              "pm.test('Created reservation exists in history', function () { pm.expect(found).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "userEmail", "value": "student1@example.com" },
+    { "key": "userPassword", "value": "student123" },
+    { "key": "cityFilter", "value": "Moscow" },
+    { "key": "cuisineFilter", "value": "Italian" },
+    { "key": "priceMaxFilter", "value": "3000" },
+    { "key": "reservationDateTime", "value": "2026-05-01T18:30:00.000Z" },
+    { "key": "token", "value": "" },
+    { "key": "restaurantId", "value": "" },
+    { "key": "reservationId", "value": "" },
+    { "key": "userId", "value": "" }
+  ]
+}
