@@ -10,7 +10,7 @@ import {
     UseBefore,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
-import { IsInt, IsString } from 'class-validator';
+import {IsDateString, IsInt, IsString} from 'class-validator';
 import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
@@ -22,6 +22,8 @@ import { Booking } from '../models/booking.entity';
 import { Property } from '../models/property.entity';
 import {ObjectLiteral} from "typeorm";
 
+import { JSONSchema } from 'class-validator-jsonschema';
+
 class CreateBookingDto {
     @IsInt()
     @Type(() => Number)
@@ -31,16 +33,15 @@ class CreateBookingDto {
     @Type(() => Number)
     tenant_id: number;
 
-    @IsString()
-    @Type(() => String)
+    @IsDateString()
+    @JSONSchema({ format: 'date' })
     start_date: string;
 
-    @IsString()
-    @Type(() => String)
+    @IsDateString()
+    @JSONSchema({ format: 'date' })
     end_date: string;
 
     @IsString()
-    @Type(() => String)
     details: string;
 }
 
@@ -61,7 +62,7 @@ class BookingsController extends BaseController {
         const propertyRepo = dataSource.getRepository(Property);
         const property = await propertyRepo.findOneBy({ id: body.property_id });
         if (!property) throw new BadRequestError('Property does not exist');
-        if (property.owner_id === user.id) {
+        if (property.owner_id === body.tenant_id) {
             throw new ForbiddenError('Owner cannot book own property');
         }
 

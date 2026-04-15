@@ -38,6 +38,10 @@ export function useSwagger(
             },
         });
 
+        app.get('/docs-json', (req, res) => {
+            res.json(spec);
+        });
+
         app.use(
             '/docs',
             swaggerUi.serve,
