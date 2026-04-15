@@ -1,0 +1,1749 @@
+openapi: 3.0.3
+info:
+  title: Rental Service BFF API
+  description: Backend For Frontend API для сервиса аренды недвижимости
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Auth
+    description: Аутентификация и регистрация
+  - name: Profile
+    description: Личный кабинет пользователя
+  - name: Properties
+    description: Каталог недвижимости
+  - name: Rentals
+    description: Аренда
+  - name: Transactions
+    description: Платежи
+  - name: Conversations
+    description: Сообщения
+  - name: Reviews
+    description: Отзывы
+  - name: Favorites
+    description: Избранное
+
+# ─────────────────────────────────────────────
+# SECURITY
+# ─────────────────────────────────────────────
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ─────────────────────────────────────────
+  # ENUMS
+  # ─────────────────────────────────────────
+  schemas:
+    UserRole:
+      type: string
+      enum: [landlord, renter]
+
+    PropertyType:
+      type: string
+      enum: [apartment, house, room, studio]
+
+    PropertyStatus:
+      type: string
+      enum: [active, rented, archived]
+
+    RentalStatus:
+      type: string
+      enum: [pending, active, completed, cancelled]
+
+    TransactionStatus:
+      type: string
+      enum: [pending, completed, failed]
+
+    PaymentMethod:
+      type: string
+      enum: [card, cash, transfer]
+
+    CurrencyType:
+      type: string
+      enum: [RUB, USD, EUR]
+
+    DepositStatus:
+      type: string
+      enum: [held, returned, partially_returned, withheld]
+
+    TransactionType:
+      type: string
+      enum: [rent, deposit, deposit_return]
+
+    # ─────────────────────────────────────
+    # ERROR
+    # ─────────────────────────────────────
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: "Поле email обязательно"
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    # ─────────────────────────────────────
+    # AUTH
+    # ─────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [first_name, last_name, email, password, role]
+      properties:
+        first_name:
+          type: string
+          example: "Алексей"
+        last_name:
+          type: string
+          example: "Малахов"
+        email:
+          type: string
+          format: email
+          example: "alex@example.com"
+        password:
+          type: string
+          minLength: 8
+          example: "securePass123"
+        phone:
+          type: string
+          example: "+79001234567"
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserShort'
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    # ─────────────────────────────────────
+    # USER
+    # ─────────────────────────────────────
+    UserShort:
+      type: object
+      properties:
+        id:
+          type: integer
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserRole'
+
+    ProfileResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+        is_verified:
+          type: boolean
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserRole'
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+        avatar_url:
+          type: string
+
+    # ─────────────────────────────────────
+    # BFF: DASHBOARD
+    # ─────────────────────────────────────
+    DashboardResponse:
+      type: object
+      description: "BFF-агрегация: данные для личного кабинета за один запрос"
+      properties:
+        profile:
+          $ref: '#/components/schemas/ProfileResponse'
+        active_rentals:
+          type: array
+          items:
+            $ref: '#/components/schemas/RentalCard'
+        recent_transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionShort'
+        unread_messages_count:
+          type: integer
+        favorites_count:
+          type: integer
+
+    # ─────────────────────────────────────
+    # PROPERTY
+    # ─────────────────────────────────────
+    CreatePropertyRequest:
+      type: object
+      required: [type, title, street, building, city, country, price_per_month]
+      properties:
+        type:
+          $ref: '#/components/schemas/PropertyType'
+        title:
+          type: string
+          example: "Уютная студия в центре"
+        description:
+          type: string
+        street:
+          type: string
+        building:
+          type: string
+        apartment:
+          type: string
+        postal_code:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        latitude:
+          type: number
+          format: float
+        longitude:
+          type: number
+          format: float
+        rooms:
+          type: integer
+        area_sqm:
+          type: number
+        floor:
+          type: integer
+        price_per_month:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        rental_conditions:
+          type: string
+
+    UpdatePropertyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price_per_month:
+          type: number
+        rental_conditions:
+          type: string
+        status:
+          $ref: '#/components/schemas/PropertyStatus'
+        rooms:
+          type: integer
+        area_sqm:
+          type: number
+        floor:
+          type: integer
+
+    PropertyCard:
+      type: object
+      description: "Карточка объекта для списка/поиска"
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          $ref: '#/components/schemas/PropertyType'
+        city:
+          type: string
+        price_per_month:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        rooms:
+          type: integer
+        area_sqm:
+          type: number
+        main_photo_url:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PropertyStatus'
+        is_favorited:
+          type: boolean
+          description: "BFF: избранное текущего пользователя"
+
+    PropertyDetailResponse:
+      type: object
+      description: "BFF-агрегация: полная страница объекта за один запрос"
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          $ref: '#/components/schemas/PropertyType'
+        description:
+          type: string
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            building:
+              type: string
+            apartment:
+              type: string
+              nullable: true
+            postal_code:
+              type: string
+              nullable: true
+            city:
+              type: string
+            country:
+              type: string
+            latitude:
+              type: number
+              nullable: true
+            longitude:
+              type: number
+              nullable: true
+        rooms:
+          type: integer
+        area_sqm:
+          type: number
+        floor:
+          type: integer
+        price_per_month:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        rental_conditions:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PropertyStatus'
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyPhoto'
+        owner:
+          $ref: '#/components/schemas/OwnerInfo'
+        price_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriceHistoryItem'
+        average_rating:
+          type: number
+          nullable: true
+          description: "BFF: средний рейтинг владельца"
+        is_favorited:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    PropertyPhoto:
+      type: object
+      properties:
+        id:
+          type: integer
+        url:
+          type: string
+        is_main:
+          type: boolean
+        sort_order:
+          type: integer
+
+    OwnerInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        first_name:
+          type: string
+        last_name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        rating:
+          type: number
+          nullable: true
+        reviews_count:
+          type: integer
+
+    PriceHistoryItem:
+      type: object
+      properties:
+        price_per_month:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        changed_at:
+          type: string
+          format: date-time
+
+    PropertySearchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyCard'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+
+    # ─────────────────────────────────────
+    # PHOTO
+    # ─────────────────────────────────────
+    UploadPhotoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        url:
+          type: string
+        is_main:
+          type: boolean
+        sort_order:
+          type: integer
+
+    # ─────────────────────────────────────
+    # RENTAL
+    # ─────────────────────────────────────
+    CreateRentalRequest:
+      type: object
+      required: [property_id, start_date]
+      properties:
+        property_id:
+          type: integer
+        agreed_price:
+          type: number
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        deposit_amount:
+          type: number
+          nullable: true
+
+    UpdateRentalStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/RentalStatus'
+        cancel_reason:
+          type: string
+
+    RentalCard:
+      type: object
+      description: "Карточка аренды для списков"
+      properties:
+        id:
+          type: integer
+        property_title:
+          type: string
+        property_main_photo:
+          type: string
+          nullable: true
+        city:
+          type: string
+        agreed_price:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/RentalStatus'
+
+    RentalDetailResponse:
+      type: object
+      description: "BFF-агрегация: детали аренды"
+      properties:
+        id:
+          type: integer
+        property:
+          $ref: '#/components/schemas/PropertyCard'
+        renter:
+          $ref: '#/components/schemas/UserShort'
+        agreed_price:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        deposit_amount:
+          type: number
+          nullable: true
+        deposit_status:
+          $ref: '#/components/schemas/DepositStatus'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/RentalStatus'
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionShort'
+        cancel_reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ─────────────────────────────────────
+    # TRANSACTION
+    # ─────────────────────────────────────
+    CreateTransactionRequest:
+      type: object
+      required: [rental_id, type, amount, payment_method]
+      properties:
+        rental_id:
+          type: integer
+        type:
+          $ref: '#/components/schemas/TransactionType'
+        amount:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+
+    TransactionShort:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: '#/components/schemas/TransactionType'
+        amount:
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyType'
+        status:
+          $ref: '#/components/schemas/TransactionStatus'
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+        payment_date:
+          type: string
+          format: date-time
+          nullable: true
+        period_start:
+          type: string
+          format: date
+          nullable: true
+        period_end:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ─────────────────────────────────────
+    # CONVERSATION & MESSAGE
+    # ─────────────────────────────────────
+    ConversationListItem:
+      type: object
+      description: "BFF: превью диалога для списка"
+      properties:
+        id:
+          type: integer
+        companion:
+          $ref: '#/components/schemas/UserShort'
+        property_title:
+          type: string
+          nullable: true
+        last_message:
+          type: string
+          nullable: true
+        last_message_at:
+          type: string
+          format: date-time
+          nullable: true
+        unread_count:
+          type: integer
+
+    ConversationDetailResponse:
+      type: object
+      description: "BFF: диалог с сообщениями"
+      properties:
+        id:
+          type: integer
+        companion:
+          $ref: '#/components/schemas/UserShort'
+        property:
+          $ref: '#/components/schemas/PropertyCard'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageItem'
+        total_messages:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    MessageItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        sender_id:
+          type: integer
+        content:
+          type: string
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+
+    StartConversationRequest:
+      type: object
+      required: [recipient_id, content]
+      properties:
+        recipient_id:
+          type: integer
+        property_id:
+          type: integer
+          nullable: true
+        content:
+          type: string
+
+    # ─────────────────────────────────────
+    # REVIEW
+    # ─────────────────────────────────────
+    CreateReviewRequest:
+      type: object
+      required: [rental_id, rating]
+      properties:
+        rental_id:
+          type: integer
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+
+    ReviewItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        reviewer:
+          $ref: '#/components/schemas/UserShort'
+        rating:
+          type: integer
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ReviewListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewItem'
+        average_rating:
+          type: number
+        total:
+          type: integer
+
+    # ─────────────────────────────────────
+    # FAVORITE
+    # ─────────────────────────────────────
+    FavoriteListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyCard'
+        total:
+          type: integer
+
+  # ─────────────────────────────────────────
+  # COMMON RESPONSES
+  # ─────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: VALIDATION_ERROR
+            message: "Ошибка валидации"
+            details:
+              - field: email
+                message: "Некорректный формат email"
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: UNAUTHORIZED
+            message: "Токен отсутствует или недействителен"
+    Forbidden:
+      description: Нет доступа
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FORBIDDEN
+            message: "Недостаточно прав для выполнения операции"
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: NOT_FOUND
+            message: "Ресурс не найден"
+    Conflict:
+      description: Конфликт данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: CONFLICT
+            message: "Ресурс уже существует"
+
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+paths:
+
+  # ═══════════════ AUTH ═══════════════
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email уже зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: EMAIL_ALREADY_EXISTS
+                message: "Пользователь с таким email уже зарегистрирован"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные учётные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_CREDENTIALS
+                message: "Неверный email или пароль"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление токена
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Токен обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Невалидный refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_REFRESH_TOKEN
+                message: "Refresh token недействителен или истёк"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход из системы
+      responses:
+        '204':
+          description: Успешный выход
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ═══════════════ PROFILE (BFF) ═══════════════
+  /profile:
+    get:
+      tags: [Profile]
+      summary: Получить профиль текущего пользователя
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Profile]
+      summary: Обновить профиль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /profile/dashboard:
+    get:
+      tags: [Profile]
+      summary: "BFF: Данные для личного кабинета (агрегация)"
+      description: >
+        Возвращает профиль, активные аренды, последние транзакции,
+        количество непрочитанных сообщений и избранных объектов за один запрос.
+      responses:
+        '200':
+          description: Данные дашборда
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /profile/roles:
+    post:
+      tags: [Profile]
+      summary: Добавить роль пользователю
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: '#/components/schemas/UserRole'
+      responses:
+        '201':
+          description: Роль добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '409':
+          description: Роль уже назначена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ROLE_ALREADY_ASSIGNED
+                message: "Роль уже назначена пользователю"
+
+  # ═══════════════ PROPERTIES ═══════════════
+  /properties:
+    get:
+      tags: [Properties]
+      summary: Поиск недвижимости с фильтрацией
+      security: []
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/PropertyType'
+        - name: price_min
+          in: query
+          schema:
+            type: number
+        - name: price_max
+          in: query
+          schema:
+            type: number
+        - name: rooms_min
+          in: query
+          schema:
+            type: integer
+        - name: rooms_max
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/PropertyStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [price_asc, price_desc, created_at, area_sqm]
+      responses:
+        '200':
+          description: Список объектов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySearchResponse'
+
+    post:
+      tags: [Properties]
+      summary: Создать объект недвижимости
+      description: "Доступно только пользователям с ролью landlord"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyRequest'
+      responses:
+        '201':
+          description: Объект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет роли landlord
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ROLE_REQUIRED
+                message: "Для создания объекта необходима роль арендодателя"
+
+  /properties/{id}:
+    get:
+      tags: [Properties]
+      summary: "BFF: Полная страница объекта (агрегация)"
+      description: >
+        Возвращает объект + фото + владельца + историю цен + рейтинг
+        владельца + статус избранного за один запрос.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Детали объекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Properties]
+      summary: Обновить объект
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyRequest'
+      responses:
+        '200':
+          description: Объект обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Properties]
+      summary: Удалить объект (soft delete)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Объект удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════ PHOTOS ═══════════════
+  /properties/{id}/photos:
+    post:
+      tags: [Properties]
+      summary: Загрузить фото объекта
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                is_main:
+                  type: boolean
+                  default: false
+                sort_order:
+                  type: integer
+      responses:
+        '201':
+          description: Фото загружено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadPhotoResponse'
+        '400':
+          description: Превышен лимит фото или неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: PHOTO_LIMIT_EXCEEDED
+                message: "Максимум 20 фото на объект"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /properties/{propertyId}/photos/{photoId}:
+    delete:
+      tags: [Properties]
+      summary: Удалить фото
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Фото удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════ FAVORITES ═══════════════
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: Список избранных объектов
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Избранные объекты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /favorites/{propertyId}:
+    post:
+      tags: [Favorites]
+      summary: Добавить в избранное
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '201':
+          description: Добавлено в избранное
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Уже в избранном
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ALREADY_FAVORITED
+                message: "Объект уже в избранном"
+    delete:
+      tags: [Favorites]
+      summary: Удалить из избранного
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Удалено из избранного
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════ RENTALS ═══════════════
+  /rentals:
+    get:
+      tags: [Rentals]
+      summary: Список аренд текущего пользователя
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/RentalStatus'
+        - name: role
+          in: query
+          description: "Фильтр: как арендатор или арендодатель"
+          schema:
+            type: string
+            enum: [renter, landlord]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список аренд
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RentalCard'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Rentals]
+      summary: Создать заявку на аренду
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRentalRequest'
+      responses:
+        '201':
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Объект уже арендован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: PROPERTY_ALREADY_RENTED
+                message: "Объект уже арендован на указанные даты"
+
+  /rentals/{id}:
+    get:
+      tags: [Rentals]
+      summary: "BFF: Детали аренды (агрегация)"
+      description: >
+        Возвращает аренду + объект + арендатора + транзакции за один запрос.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Детали аренды
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rentals/{id}/status:
+    patch:
+      tags: [Rentals]
+      summary: Изменить статус аренды
+      description: >
+        Арендодатель: pending -> active/cancelled.
+        Обе стороны: active -> completed/cancelled.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRentalStatusRequest'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalDetailResponse'
+        '400':
+          description: Недопустимый переход статуса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_STATUS_TRANSITION
+                message: "Невозможно перевести аренду из статуса completed в active"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════ TRANSACTIONS ═══════════════
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: История транзакций пользователя
+      parameters:
+        - name: rental_id
+          in: query
+          schema:
+            type: integer
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/TransactionType'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TransactionStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список транзакций
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransactionShort'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Transactions]
+      summary: Создать транзакцию
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransactionRequest'
+      responses:
+        '201':
+          description: Транзакция создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionShort'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Аренда не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ═══════════════ CONVERSATIONS ═══════════════
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: "BFF: Список диалогов с превью"
+      description: >
+        Возвращает диалоги с именем собеседника, последним сообщением
+        и количеством непрочитанных за один запрос.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список диалогов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConversationListItem'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Conversations]
+      summary: Начать новый диалог
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartConversationRequest'
+      responses:
+        '201':
+          description: Диалог создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Диалог уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: CONVERSATION_EXISTS
+                message: "Диалог с этим пользователем по данному объекту уже существует"
+
+  /conversations/{id}:
+    get:
+      tags: [Conversations]
+      summary: "BFF: Диалог с сообщениями"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Диалог с сообщениями
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{id}/messages:
+    post:
+      tags: [Conversations]
+      summary: Отправить сообщение
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{id}/read:
+    post:
+      tags: [Conversations]
+      summary: Отметить сообщения как прочитанные
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Сообщения отмечены как прочитанные
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ═══════════════ REVIEWS ═══════════════
+  /landlords/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: "BFF: Отзывы об арендодателе с рейтингом"
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Отзывы с агрегированным рейтингом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reviews:
+    post:
+      tags: [Reviews]
+      summary: Оставить отзыв об арендодателе
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewItem'
+        '400':
+          description: Аренда не завершена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: RENTAL_NOT_COMPLETED
+                message: "Отзыв можно оставить только после завершения аренды"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Отзыв уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: REVIEW_ALREADY_EXISTS
+                message: "Вы уже оставили отзыв за эту аренду"
