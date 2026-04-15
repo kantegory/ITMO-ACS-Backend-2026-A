@@ -1,5 +1,4 @@
 import {
-    BadRequestError,
     Body,
     Delete,
     ForbiddenError,
@@ -14,6 +13,9 @@ import {
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
 import {
+    IsArray,
+    IsBoolean,
+    IsInt,
     IsNumber,
     IsOptional,
     IsString,
@@ -60,6 +62,39 @@ class LocationDto {
     longitude: number;
 }
 
+
+class CreatePropertyAttributesDto {
+    @IsInt()
+    @Type(() => Number)
+    floor: number;
+
+    @IsString()
+    @Type(() => String)
+    building_type: string;
+
+    @IsInt()
+    @Type(() => Number)
+    bathrooms_count: number;
+
+    @IsBoolean()
+    @Type(() => Boolean)
+    has_washing_machine: boolean;
+
+    @IsString()
+    @Type(() => String)
+    view_type: string;
+
+    @IsBoolean()
+    @Type(() => Boolean)
+    has_kitchen: boolean;
+}
+
+class CreatePropertyImageDto {
+    @IsString()
+    @Type(() => String)
+    url: string;
+}
+
 class CreatePropertyDto {
     @IsString()
     @Type(() => String)
@@ -81,9 +116,21 @@ class CreatePropertyDto {
     @Type(() => String)
     type: string;
 
+    @IsOptional()
     @ValidateNested()
     @Type(() => LocationDto)
-    location: LocationDto;
+    location?: LocationDto;
+
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => CreatePropertyAttributesDto)
+    attributes?: CreatePropertyAttributesDto;
+
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreatePropertyImageDto)
+    images?: CreatePropertyImageDto[];
 }
 
 class UpdatePropertyDto {
@@ -168,7 +215,7 @@ class PropertiesController extends BaseController {
               square: number;
               type: string;
               owner_id: number;
-              location: LocationDto;
+              location?: LocationDto;
               images: { url: string }[];
           }
         | never
@@ -181,20 +228,21 @@ class PropertiesController extends BaseController {
         if (!property) throw new NotFoundError('Property not found');
 
         const location = await locationRepo.findOneBy({ property_id: id });
-        if (!location) throw new NotFoundError('Property location not found');
 
         const images = await imageRepo.findBy({ property_id: id });
 
         return {
             ...property,
-            location: {
-                address: location.address,
-                city: location.city,
-                country: location.country,
-                metro_station: location.metro_station || undefined,
-                latitude: location.latitude,
-                longitude: location.longitude,
-            },
+            location: location
+                ? {
+                      address: location.address,
+                      city: location.city,
+                      country: location.country,
+                      metro_station: location.metro_station || undefined,
+                      latitude: location.latitude,
+                      longitude: location.longitude,
+                  }
+                : undefined,
             images: images.map((i) => ({ url: i.url })),
         };
     }
@@ -206,13 +254,11 @@ class PropertiesController extends BaseController {
         @Req() request: RequestWithUser,
         @Body({ type: CreatePropertyDto }) body: CreatePropertyDto,
     ): Promise<{ id: number }> {
-        if (!body?.location) {
-            throw new BadRequestError('location is required');
-        }
-
         const { user } = request;
         const propertyRepo = dataSource.getRepository(Property);
         const locationRepo = dataSource.getRepository(PropertyLocation);
+        const attributesRepo = dataSource.getRepository(PropertyAttributes);
+        const imageRepo = dataSource.getRepository(PropertyImage);
 
         const created = propertyRepo.create({
             title: body.title,
@@ -224,12 +270,29 @@ class PropertiesController extends BaseController {
         });
         const saved = await propertyRepo.save(created);
 
-        const location = locationRepo.create({
-            property_id: saved.id,
-            ...body.location,
-            metro_station: body.location.metro_station ?? null,
-        });
-        await locationRepo.save(location);
+        if (body.location) {
+            const location = locationRepo.create({
+                property_id: saved.id,
+                ...body.location,
+                metro_station: body.location.metro_station ?? null,
+            });
+            await locationRepo.save(location);
+        }
+
+        if (body.attributes) {
+            const attributes = attributesRepo.create({
+                property_id: saved.id,
+                ...body.attributes,
+            });
+            await attributesRepo.save(attributes);
+        }
+
+        if (body.images?.length) {
+            const images = body.images.map((image) =>
+                imageRepo.create({ property_id: saved.id, url: image.url }),
+            );
+            await imageRepo.save(images);
+        }
 
         return { id: saved.id };
     }

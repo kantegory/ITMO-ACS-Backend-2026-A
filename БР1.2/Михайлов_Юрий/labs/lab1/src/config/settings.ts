@@ -33,7 +33,7 @@ class Settings {
     JWT_SECRET_KEY = env.JWT_SECRET_KEY || 'secret';
     JWT_TOKEN_TYPE = env.JWT_SECRET_KEY || 'Bearer';
     JWT_ACCESS_TOKEN_LIFETIME: number =
-        parseInt(env.JWT_ACCESS_TOKEN_LIFETIME) || 60 * 5;
+        parseInt(env.JWT_ACCESS_TOKEN_LIFETIME) || 60 * 60;
 }
 
 const SETTINGS = new Settings();

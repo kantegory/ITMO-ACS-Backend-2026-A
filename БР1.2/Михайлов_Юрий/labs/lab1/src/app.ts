@@ -2,6 +2,8 @@ import 'reflect-metadata';
 
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 import { useExpressServer } from 'routing-controllers';
 
 import SETTINGS from './config/settings';
@@ -17,6 +19,8 @@ import ConversationsController from './controllers/conversations.controller';
 import MessagesController from './controllers/messages.controller';
 import PaymentsController from './controllers/payments.controller';
 import ReviewsController from './controllers/reviews.controller';
+import PropertyLocationsController from './controllers/property-locations.controller';
+import PropertyImagesController from './controllers/property-images.controller';
 
 class App {
     public port: number;
@@ -47,6 +51,9 @@ class App {
         // middlewares section
         app.use(cors());
         app.use(express.json());
+        const uploadsDir = path.resolve(process.cwd(), 'uploads');
+        fs.mkdirSync(uploadsDir, { recursive: true });
+        app.use('/uploads', express.static(uploadsDir));
 
         const options = {
             routePrefix: SETTINGS.APP_API_PREFIX,
@@ -62,6 +69,8 @@ class App {
                 MessagesController,
                 PaymentsController,
                 ReviewsController,
+                PropertyLocationsController,
+                PropertyImagesController,
             ],
             validation: true,
             classTransformer: true,

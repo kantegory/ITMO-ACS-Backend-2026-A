@@ -19,6 +19,7 @@ import dataSource from '../config/data-source';
 
 import { Conversation } from '../models/conversation.entity';
 import { Message } from '../models/message.entity';
+import {ObjectLiteral} from "typeorm";
 
 class CreateConversationDto {
     @IsInt()
@@ -40,11 +41,10 @@ class CreateConversationDto {
 })
 class ConversationsController extends BaseController {
 
-    public repository = dataSource.getRepository(Conversation);
     @UseBefore(authMiddleware)
     @Get('')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
-    async list(@Req() request: RequestWithUser): Promise<Conversation[]> {
+    async list(@Req() request: RequestWithUser): Promise<ObjectLiteral[]> {
         const { user } = request;
         return await this.repository
             .createQueryBuilder('c')

@@ -18,6 +18,7 @@ import dataSource from '../config/data-source';
 
 import { BookingRequest } from '../models/booking-request.entity';
 import { Property } from '../models/property.entity';
+import {ObjectLiteral} from "typeorm";
 
 class CreateBookingRequestDto {
     @IsInt()
@@ -34,8 +35,6 @@ class CreateBookingRequestDto {
     entity: BookingRequest,
 })
 class BookingRequestsController extends BaseController {
-
-    public repository = dataSource.getRepository(BookingRequest);
     @UseBefore(authMiddleware)
     @Post('')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
@@ -61,7 +60,7 @@ class BookingRequestsController extends BaseController {
     @UseBefore(authMiddleware)
     @Get('/my')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
-    async my(@Req() request: RequestWithUser): Promise<BookingRequest[]> {
+    async my(@Req() request: RequestWithUser): Promise<ObjectLiteral[]> {
         const { user } = request;
         return await this.repository.findBy({ tenant_id: user.id });
     }
@@ -72,7 +71,7 @@ class BookingRequestsController extends BaseController {
     async byProperty(
         @Req() request: RequestWithUser,
         @Param('id') id: number,
-    ): Promise<BookingRequest[]> {
+    ): Promise<ObjectLiteral[]> {
         const { user } = request;
 
         const propertyRepo = dataSource.getRepository(Property);

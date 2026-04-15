@@ -20,6 +20,7 @@ import dataSource from '../config/data-source';
 
 import { Booking } from '../models/booking.entity';
 import { Property } from '../models/property.entity';
+import {ObjectLiteral} from "typeorm";
 
 class CreateBookingDto {
     @IsInt()
@@ -48,8 +49,6 @@ class CreateBookingDto {
     entity: Booking,
 })
 class BookingsController extends BaseController {
-
-    public repository = dataSource.getRepository(Booking);
     @UseBefore(authMiddleware)
     @Post('')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
@@ -58,9 +57,6 @@ class BookingsController extends BaseController {
         @Body({ type: CreateBookingDto }) body: CreateBookingDto,
     ): Promise<{ id: number }> {
         const { user } = request;
-        if (body.tenant_id !== user.id) {
-            throw new ForbiddenError();
-        }
 
         const propertyRepo = dataSource.getRepository(Property);
         const property = await propertyRepo.findOneBy({ id: body.property_id });
@@ -80,7 +76,7 @@ class BookingsController extends BaseController {
     @UseBefore(authMiddleware)
     @Get('/my')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
-    async my(@Req() request: RequestWithUser): Promise<Booking[]> {
+    async my(@Req() request: RequestWithUser): Promise<ObjectLiteral[]> {
         const { user } = request;
         return await this.repository.findBy({ tenant_id: user.id });
     }
@@ -105,7 +101,7 @@ class BookingsController extends BaseController {
         const canSee = booking.tenant_id === user.id || property.owner_id === user.id;
         if (!canSee) throw new ForbiddenError();
 
-        return booking;
+        return booking as Booking;
     }
 }
 

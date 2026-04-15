@@ -17,6 +17,7 @@ import dataSource from '../config/data-source';
 
 import { Payment } from '../models/payment.entity';
 import { Booking } from '../models/booking.entity';
+import {ObjectLiteral} from "typeorm";
 
 class CreatePaymentDto {
     @IsInt()
@@ -33,8 +34,6 @@ class CreatePaymentDto {
     entity: Payment,
 })
 class PaymentsController extends BaseController {
-
-    public repository = dataSource.getRepository(Payment);
     @UseBefore(authMiddleware)
     @Post('')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
@@ -61,7 +60,7 @@ class PaymentsController extends BaseController {
     @UseBefore(authMiddleware)
     @Get('/my')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
-    async my(@Req() request: RequestWithUser): Promise<Payment[]> {
+    async my(@Req() request: RequestWithUser): Promise<ObjectLiteral[]> {
         const { user } = request;
 
         return await this.repository

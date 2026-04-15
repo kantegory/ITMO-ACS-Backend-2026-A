@@ -5,6 +5,7 @@ import {
     NotFoundError,
     Param,
     Post,
+    Put,
     Req,
     UseBefore,
 } from 'routing-controllers';
@@ -86,6 +87,28 @@ class AttributesController extends BaseController {
         const attrs = await this.repository.findOneBy({ id });
         if (!attrs) throw new NotFoundError('Attributes not found');
         return attrs as PropertyAttributes;
+    }
+
+    @UseBefore(authMiddleware)
+    @Put('/:id')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
+    async update(
+        @Req() request: RequestWithUser,
+        @Param('id') id: number,
+        @Body({ type: CreateAttributesDto }) body: CreateAttributesDto,
+    ): Promise<{ success: boolean }> {
+        const { user } = request;
+        const attrs = await this.repository.findOneBy({ id });
+        if (!attrs) throw new NotFoundError('Attributes not found');
+
+        const propertyRepo = dataSource.getRepository(Property);
+        const property = await propertyRepo.findOneBy({ id: attrs.property_id });
+        if (!property) throw new NotFoundError('Property not found');
+        if (property.owner_id !== user.id) throw new BadRequestError('Not owner');
+
+        Object.assign(attrs, body, { property_id: attrs.property_id });
+        await this.repository.save(attrs);
+        return { success: true };
     }
 }
 
