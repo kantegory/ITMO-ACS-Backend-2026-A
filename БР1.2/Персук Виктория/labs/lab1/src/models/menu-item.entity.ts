@@ -13,7 +13,7 @@ export class MenuItem {
     @PrimaryGeneratedColumn()
     item_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     menu_id!: number;
 
     @Column({ type: 'varchar', length: 300, nullable: false })

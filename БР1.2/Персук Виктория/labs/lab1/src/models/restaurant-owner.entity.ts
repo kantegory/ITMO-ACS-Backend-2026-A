@@ -4,10 +4,10 @@ import { Restaurant } from './restaurant.entity';
 
 @Entity('restaurant_owners')
 export class RestaurantOwner {
-    @PrimaryColumn()
+    @PrimaryColumn({ type: 'int' })
     user_id!: number;
 
-    @PrimaryColumn()
+    @PrimaryColumn({ type: 'int' })
     restaurant_id!: number;
 
     @ManyToOne(() => User)

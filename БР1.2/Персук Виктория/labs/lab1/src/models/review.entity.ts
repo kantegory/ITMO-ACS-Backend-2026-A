@@ -16,10 +16,10 @@ export class Review {
     @PrimaryGeneratedColumn()
     review_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     user_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     restaurant_id!: number;
 
     @Column({ type: 'enum', enum: RatingEnum, nullable: true })

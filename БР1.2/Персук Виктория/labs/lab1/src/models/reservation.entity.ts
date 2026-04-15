@@ -16,10 +16,10 @@ export class Reservation {
     @PrimaryGeneratedColumn()
     reservation_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     user_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     table_id!: number;
 
     @Column({ type: 'timestamp' })

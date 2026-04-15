@@ -14,7 +14,7 @@ export class Menu {
     @PrimaryGeneratedColumn()
     menu_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     restaurant_id!: number;
 
     @Column({ type: 'varchar', length: 300, nullable: false })

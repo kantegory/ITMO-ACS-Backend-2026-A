@@ -12,37 +12,32 @@ export function useSwagger(
     app: Express,
     options: RoutingControllersOptions,
 ): Express {
-    try {
-        const schemas = validationMetadatasToSchemas({
-            classTransformerMetadataStorage: defaultMetadataStorage,
-            refPointerPrefix: '#/definitions/',
-        });
+    const schemas = validationMetadatasToSchemas({
+        classTransformerMetadataStorage: defaultMetadataStorage,
+        refPointerPrefix: '#/definitions/',
+    });
 
-        const storage = getMetadataArgsStorage();
+    const storage = getMetadataArgsStorage();
 
-        const spec = routingControllersToSpec(storage, options, {
-            components: {
-                schemas,
-                securitySchemes: {
-                    bearerAuth: {
-                        type: 'http',
-                        scheme: 'bearer',
-                        bearerFormat: 'JWT',
-                    },
+    const spec = routingControllersToSpec(storage, options, {
+        components: {
+            schemas,
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT',
                 },
             },
-            info: {
-                title: 'Boilerplate API documentation',
-                description: 'API documentation for boilerplate',
-                version: '1.0.0',
-            },
-        });
+        },
+        info: {
+            title: 'Restaurant Booking API',
+            description: 'REST API for restaurant table reservations',
+            version: '1.0.0',
+        },
+    });
 
-        app.use('/docs', swaggerUi.serve, swaggerUi.setup(spec));
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(spec));
 
-        return app;
-    } catch (error) {
-        console.error('Ошибка настройки Swagger:', error);
-        return app;
-    }
+    return app;
 }

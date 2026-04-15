@@ -6,10 +6,10 @@ import {
     Param,
     Patch,
     Post,
-    QueryParam,
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { Request } from 'express';
 import { OpenAPI } from 'routing-controllers-openapi';
 import { IsOptional, IsString, IsNumber, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -225,11 +225,10 @@ class RestaurantController extends BaseController {
 
     @Get('')
     @OpenAPI({ summary: 'Get all verified restaurants with optional filters' })
-    async getAll(
-        @QueryParam('city') city?: string,
-        @QueryParam('cuisine_id') cuisine_id?: number,
-        @QueryParam('price') price?: string,
-    ) {
+    async getAll(@Req() req: Request) {
+        const { city, cuisine_id, price } = req.query as Record<string, string>;
+        const cuisineId = cuisine_id ? parseInt(cuisine_id) : undefined;
+
         const qb = this.repository
             .createQueryBuilder('restaurant')
             .where('restaurant.status = :status', { status: RestaurantStatus.Verified });
@@ -240,12 +239,12 @@ class RestaurantController extends BaseController {
         if (price) {
             qb.andWhere('restaurant.price = :price', { price });
         }
-        if (cuisine_id) {
+        if (cuisineId) {
             qb.innerJoin(
                 'restaurant_cuisines',
                 'rc',
-                'rc.restaurant_id = restaurant.restaurant_id AND rc.cuisine_id = :cuisine_id',
-                { cuisine_id },
+                'rc.restaurant_id = restaurant.restaurant_id AND rc.cuisine_id = :cuisineId',
+                { cuisineId },
             );
         }
 

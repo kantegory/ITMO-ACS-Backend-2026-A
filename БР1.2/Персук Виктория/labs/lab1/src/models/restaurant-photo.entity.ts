@@ -12,7 +12,7 @@ export class RestaurantPhoto {
     @PrimaryGeneratedColumn()
     photo_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     restaurant_id!: number;
 
     @Column({ type: 'text' })

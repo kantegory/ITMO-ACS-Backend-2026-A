@@ -15,7 +15,7 @@ export class User {
     @PrimaryGeneratedColumn()
     user_id!: number;
 
-    @Column({ nullable: true })
+    @Column({ type: 'int', nullable: true })
     role_id!: number;
 
     @ManyToOne(() => Role, { eager: false, nullable: true })

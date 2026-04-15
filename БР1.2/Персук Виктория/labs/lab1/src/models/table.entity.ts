@@ -12,7 +12,7 @@ export class Table {
     @PrimaryGeneratedColumn()
     table_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     restaurant_id!: number;
 
     @Column({ type: 'integer' })

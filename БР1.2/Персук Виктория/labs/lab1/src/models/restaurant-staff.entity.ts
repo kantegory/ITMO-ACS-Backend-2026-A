@@ -13,10 +13,10 @@ export class RestaurantStaff {
     @PrimaryGeneratedColumn()
     id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     user_id!: number;
 
-    @Column()
+    @Column({ type: 'int' })
     restaurant_id!: number;
 
     @ManyToOne(() => User)
