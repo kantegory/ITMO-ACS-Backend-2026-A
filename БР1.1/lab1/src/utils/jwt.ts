@@ -58,12 +58,15 @@ export class JWTService {
   static refreshTokens(refreshToken: string): Tokens {
     const payload = this.verifyRefreshToken(refreshToken);
     
-    // Create new tokens with the same payload
-    const accessToken = jwt.sign(payload, this.ACCESS_TOKEN_SECRET as jwt.Secret, {
+    // Remove exp and iat claims from payload before signing new tokens
+    const { exp, iat, ...cleanPayload } = payload as any;
+    
+    // Create new tokens with the clean payload
+    const accessToken = jwt.sign(cleanPayload, this.ACCESS_TOKEN_SECRET as jwt.Secret, {
       expiresIn: this.ACCESS_TOKEN_EXPIRES_IN,
     } as SignOptions);
 
-    const newRefreshToken = jwt.sign(payload, this.REFRESH_TOKEN_SECRET as jwt.Secret, {
+    const newRefreshToken = jwt.sign(cleanPayload, this.REFRESH_TOKEN_SECRET as jwt.Secret, {
       expiresIn: this.REFRESH_TOKEN_EXPIRES_IN,
     } as SignOptions);
 

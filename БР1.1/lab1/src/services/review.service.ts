@@ -43,7 +43,7 @@ export class ReviewService {
       query.skip(skip).take(pagination.limit);
     }
 
-    query.orderBy('review.created_at', 'DESC');
+    query.orderBy('review.createdAt', 'DESC');
 
     const reviews = await query.getMany();
     return reviews.map(review => review.toResponse());

@@ -47,7 +47,7 @@ export class BookingService {
       query.skip(skip).take(pagination.limit);
     }
 
-    query.orderBy('booking.booking_date', 'DESC').addOrderBy('booking.start_time', 'ASC');
+    query.orderBy('booking.bookingDate', 'DESC').addOrderBy('booking.startTime', 'ASC');
 
     const bookings = await query.getMany();
     return bookings.map(booking => booking.toResponse());
