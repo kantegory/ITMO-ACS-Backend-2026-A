@@ -8,6 +8,7 @@ import {
     UpdateDateColumn,
     OneToMany,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { Role } from './role.entity';
 
 @Entity('users')
@@ -37,6 +38,7 @@ export class User {
     @Column({ type: 'varchar', length: 150, nullable: true })
     phone!: string;
 
+    @Exclude()
     @Column({ type: 'varchar', length: 300, nullable: false })
     password_hash!: string;
 
