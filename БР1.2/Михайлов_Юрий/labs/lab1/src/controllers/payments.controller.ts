@@ -6,6 +6,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsInt, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -15,16 +18,29 @@ import dataSource from '../config/data-source';
 import { Payment } from '../models/payment.entity';
 import { Booking } from '../models/booking.entity';
 
+class CreatePaymentDto {
+    @IsInt()
+    @Type(() => Number)
+    booking_id: number;
+
+    @IsNumber()
+    @Type(() => Number)
+    amount: number;
+}
+
 @EntityController({
     baseRoute: '/payments',
     entity: Payment,
 })
 class PaymentsController extends BaseController {
+
+    public repository = dataSource.getRepository(Payment);
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body() body: { booking_id: number; amount: number },
+        @Body({ type: CreatePaymentDto }) body: CreatePaymentDto,
     ): Promise<{ id: number }> {
         const { user } = request;
 
@@ -44,6 +60,7 @@ class PaymentsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Get('/my')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async my(@Req() request: RequestWithUser): Promise<Payment[]> {
         const { user } = request;
 

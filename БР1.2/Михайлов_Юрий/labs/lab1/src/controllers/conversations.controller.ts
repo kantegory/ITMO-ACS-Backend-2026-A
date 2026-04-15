@@ -8,6 +8,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsInt } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -17,13 +20,30 @@ import dataSource from '../config/data-source';
 import { Conversation } from '../models/conversation.entity';
 import { Message } from '../models/message.entity';
 
+class CreateConversationDto {
+    @IsInt()
+    @Type(() => Number)
+    user1_id: number;
+
+    @IsInt()
+    @Type(() => Number)
+    user2_id: number;
+
+    @IsInt()
+    @Type(() => Number)
+    property_id: number;
+}
+
 @EntityController({
     baseRoute: '/conversations',
     entity: Conversation,
 })
 class ConversationsController extends BaseController {
+
+    public repository = dataSource.getRepository(Conversation);
     @UseBefore(authMiddleware)
     @Get('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async list(@Req() request: RequestWithUser): Promise<Conversation[]> {
         const { user } = request;
         return await this.repository
@@ -34,10 +54,10 @@ class ConversationsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body()
-        body: { user1_id: number; user2_id: number; property_id: number },
+        @Body({ type: CreateConversationDto }) body: CreateConversationDto,
     ): Promise<{ id: number }> {
         const { user } = request;
         if (body.user1_id !== user.id && body.user2_id !== user.id) {
@@ -54,6 +74,7 @@ class ConversationsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Get('/:id/messages')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async messages(
         @Req() request: RequestWithUser,
         @Param('id') id: number,

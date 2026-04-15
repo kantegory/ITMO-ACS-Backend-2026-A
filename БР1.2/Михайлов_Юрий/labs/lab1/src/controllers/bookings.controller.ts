@@ -9,6 +9,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsInt, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -18,23 +21,41 @@ import dataSource from '../config/data-source';
 import { Booking } from '../models/booking.entity';
 import { Property } from '../models/property.entity';
 
+class CreateBookingDto {
+    @IsInt()
+    @Type(() => Number)
+    property_id: number;
+
+    @IsInt()
+    @Type(() => Number)
+    tenant_id: number;
+
+    @IsString()
+    @Type(() => String)
+    start_date: string;
+
+    @IsString()
+    @Type(() => String)
+    end_date: string;
+
+    @IsString()
+    @Type(() => String)
+    details: string;
+}
+
 @EntityController({
     baseRoute: '/bookings',
     entity: Booking,
 })
 class BookingsController extends BaseController {
+
+    public repository = dataSource.getRepository(Booking);
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body()
-        body: {
-            property_id: number;
-            tenant_id: number;
-            start_date: string;
-            end_date: string;
-            details: string;
-        },
+        @Body({ type: CreateBookingDto }) body: CreateBookingDto,
     ): Promise<{ id: number }> {
         const { user } = request;
         if (body.tenant_id !== user.id) {
@@ -58,6 +79,7 @@ class BookingsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Get('/my')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async my(@Req() request: RequestWithUser): Promise<Booking[]> {
         const { user } = request;
         return await this.repository.findBy({ tenant_id: user.id });
@@ -65,6 +87,7 @@ class BookingsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Get('/:id')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async get(
         @Req() request: RequestWithUser,
         @Param('id') id: number,

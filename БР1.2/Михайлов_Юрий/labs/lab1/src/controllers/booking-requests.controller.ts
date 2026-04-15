@@ -7,6 +7,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsInt, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -16,16 +19,29 @@ import dataSource from '../config/data-source';
 import { BookingRequest } from '../models/booking-request.entity';
 import { Property } from '../models/property.entity';
 
+class CreateBookingRequestDto {
+    @IsInt()
+    @Type(() => Number)
+    property_id: number;
+
+    @IsString()
+    @Type(() => String)
+    comments: string;
+}
+
 @EntityController({
     baseRoute: '/booking-requests',
     entity: BookingRequest,
 })
 class BookingRequestsController extends BaseController {
+
+    public repository = dataSource.getRepository(BookingRequest);
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body() body: { property_id: number; comments: string },
+        @Body({ type: CreateBookingRequestDto }) body: CreateBookingRequestDto,
     ): Promise<{ id: number }> {
         const { user } = request;
 
@@ -44,6 +60,7 @@ class BookingRequestsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Get('/my')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async my(@Req() request: RequestWithUser): Promise<BookingRequest[]> {
         const { user } = request;
         return await this.repository.findBy({ tenant_id: user.id });
@@ -51,6 +68,7 @@ class BookingRequestsController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Get('/property/:id')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async byProperty(
         @Req() request: RequestWithUser,
         @Param('id') id: number,

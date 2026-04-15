@@ -5,6 +5,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsInt, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -14,6 +17,20 @@ import dataSource from '../config/data-source';
 import { Review } from '../models/review.entity';
 import { Property } from '../models/property.entity';
 
+class CreateReviewDto {
+    @IsInt()
+    @Type(() => Number)
+    property_id: number;
+
+    @IsInt()
+    @Type(() => Number)
+    rating: number;
+
+    @IsString()
+    @Type(() => String)
+    comment: string;
+}
+
 @EntityController({
     baseRoute: '/reviews',
     entity: Review,
@@ -21,9 +38,10 @@ import { Property } from '../models/property.entity';
 class ReviewsController extends BaseController {
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body() body: { property_id: number; rating: number; comment: string },
+        @Body({ type: CreateReviewDto }) body: CreateReviewDto,
     ): Promise<{ id: number }> {
         const { user } = request;
 

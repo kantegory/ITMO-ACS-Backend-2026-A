@@ -32,13 +32,65 @@ export function useSwagger(
                 },
             },
             info: {
-                title: 'Boilerplate API documentation',
-                description: 'API documentation for boilerplate',
+                title: 'MKYrii-ACS-Backend API documentation',
+                description: 'API documentation for house rental laboratory project',
                 version: '1.0.0',
             },
         });
 
-        app.use('/docs', swaggerUi.serve, swaggerUi.setup(spec));
+        app.use(
+            '/docs',
+            swaggerUi.serve,
+            swaggerUi.setup(spec, {
+                swaggerOptions: {
+                    persistAuthorization: true,
+                    requestInterceptor: (req: any) => {
+                        try {
+                            const token =
+                                window?.localStorage?.getItem(
+                                    'swagger_access_token',
+                                ) || null;
+
+                            if (token && !req.headers?.Authorization) {
+                                req.headers = req.headers || {};
+                                req.headers.Authorization = `Bearer ${token}`;
+                            }
+                        } catch (e) {
+                            // ignore
+                        }
+
+                        return req;
+                    },
+                    responseInterceptor: (res: any) => {
+                        try {
+                            const url: string = res?.url || '';
+                            if (
+                                url.includes('/api/auth/login') &&
+                                res?.status === 200 &&
+                                typeof res?.body === 'string'
+                            ) {
+                                const parsed = JSON.parse(res.body);
+                                const token = parsed?.token;
+                                if (typeof token === 'string' && token.length) {
+                                    window?.localStorage?.setItem(
+                                        'swagger_access_token',
+                                        token,
+                                    );
+                                    // If Swagger UI is available, preauthorize automatically
+                                    (window as any)?.ui?.preauthorizeApiKey?.(
+                                        'bearerAuth',
+                                        token,
+                                    );
+                                }
+                            }
+                        } catch (e) {
+                            // ignore
+                        }
+                        return res;
+                    },
+                },
+            }),
+        );
 
         return app;
     } catch (error) {

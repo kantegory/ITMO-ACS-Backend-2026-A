@@ -8,6 +8,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsBoolean, IsInt, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -17,6 +20,36 @@ import dataSource from '../config/data-source';
 import { Property } from '../models/property.entity';
 import { PropertyAttributes } from '../models/property-attributes.entity';
 
+class CreateAttributesDto {
+    @IsInt()
+    @Type(() => Number)
+    property_id: number;
+
+    @IsInt()
+    @Type(() => Number)
+    floor: number;
+
+    @IsString()
+    @Type(() => String)
+    building_type: string;
+
+    @IsInt()
+    @Type(() => Number)
+    bathrooms_count: number;
+
+    @IsBoolean()
+    @Type(() => Boolean)
+    has_washing_machine: boolean;
+
+    @IsString()
+    @Type(() => String)
+    view_type: string;
+
+    @IsBoolean()
+    @Type(() => Boolean)
+    has_kitchen: boolean;
+}
+
 @EntityController({
     baseRoute: '/attributes',
     entity: PropertyAttributes,
@@ -24,18 +57,10 @@ import { PropertyAttributes } from '../models/property-attributes.entity';
 class AttributesController extends BaseController {
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body()
-        body: {
-            property_id: number;
-            floor: number;
-            building_type: string;
-            bathrooms_count: number;
-            has_washing_machine: boolean;
-            view_type: string;
-            has_kitchen: boolean;
-        },
+        @Body({ type: CreateAttributesDto }) body: CreateAttributesDto,
     ): Promise<{ id: number }> {
         const { user } = request;
 
@@ -60,7 +85,7 @@ class AttributesController extends BaseController {
     async get(@Param('id') id: number): Promise<PropertyAttributes> {
         const attrs = await this.repository.findOneBy({ id });
         if (!attrs) throw new NotFoundError('Attributes not found');
-        return attrs;
+        return attrs as PropertyAttributes;
     }
 }
 

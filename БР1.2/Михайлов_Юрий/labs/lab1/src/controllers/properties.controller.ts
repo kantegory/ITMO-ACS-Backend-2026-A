@@ -12,6 +12,14 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import {
+    IsNumber,
+    IsOptional,
+    IsString,
+    ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -25,14 +33,80 @@ import { Review } from '../models/review.entity';
 import { Conversation } from '../models/conversation.entity';
 import { PropertyAttributes } from '../models/property-attributes.entity';
 
-type LocationDto = {
+class LocationDto {
+    @IsString()
+    @Type(() => String)
     address: string;
+
+    @IsString()
+    @Type(() => String)
     city: string;
+
+    @IsString()
+    @Type(() => String)
     country: string;
+
+    @IsOptional()
+    @IsString()
+    @Type(() => String)
     metro_station?: string;
+
+    @IsNumber()
+    @Type(() => Number)
     latitude: number;
+
+    @IsNumber()
+    @Type(() => Number)
     longitude: number;
-};
+}
+
+class CreatePropertyDto {
+    @IsString()
+    @Type(() => String)
+    title: string;
+
+    @IsString()
+    @Type(() => String)
+    description: string;
+
+    @IsNumber()
+    @Type(() => Number)
+    price_per_month: number;
+
+    @IsNumber()
+    @Type(() => Number)
+    square: number;
+
+    @IsString()
+    @Type(() => String)
+    type: string;
+
+    @ValidateNested()
+    @Type(() => LocationDto)
+    location: LocationDto;
+}
+
+class UpdatePropertyDto {
+    @IsString()
+    @Type(() => String)
+    title: string;
+
+    @IsString()
+    @Type(() => String)
+    description: string;
+
+    @IsNumber()
+    @Type(() => Number)
+    price_per_month: number;
+
+    @IsNumber()
+    @Type(() => Number)
+    square: number;
+
+    @IsString()
+    @Type(() => String)
+    type: string;
+}
 
 @EntityController({
     baseRoute: '/properties',
@@ -127,17 +201,10 @@ class PropertiesController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async create(
         @Req() request: RequestWithUser,
-        @Body()
-        body: {
-            title: string;
-            description: string;
-            price_per_month: number;
-            square: number;
-            type: string;
-            location: LocationDto;
-        },
+        @Body({ type: CreatePropertyDto }) body: CreatePropertyDto,
     ): Promise<{ id: number }> {
         if (!body?.location) {
             throw new BadRequestError('location is required');
@@ -169,17 +236,11 @@ class PropertiesController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Put('/:id')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async update(
         @Req() request: RequestWithUser,
         @Param('id') id: number,
-        @Body()
-        body: {
-            title: string;
-            description: string;
-            price_per_month: number;
-            square: number;
-            type: string;
-        },
+        @Body({ type: UpdatePropertyDto }) body: UpdatePropertyDto,
     ): Promise<{ success: boolean }> {
         const { user } = request;
         const property = await this.repository.findOneBy({ id });
@@ -193,6 +254,7 @@ class PropertiesController extends BaseController {
 
     @UseBefore(authMiddleware)
     @Delete('/:id')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async delete(
         @Req() request: RequestWithUser,
         @Param('id') id: number,

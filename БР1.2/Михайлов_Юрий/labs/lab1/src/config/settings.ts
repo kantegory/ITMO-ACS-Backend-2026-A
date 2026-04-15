@@ -2,7 +2,7 @@ import { env } from 'process';
 
 class Settings {
     // application base settings
-    APP_HOST: string = env.APP_HOST || 'localhost';
+    APP_HOST: string = env.APP_HOST || '127.0.0.1';
     APP_PORT: number = parseInt(env.APP_PORT) || 8000;
     APP_PROTOCOL: string = env.APP_PROTOCOL || 'http';
     APP_CONTROLLERS_PATH: string =

@@ -5,6 +5,9 @@ import {
     Req,
     UseBefore,
 } from 'routing-controllers';
+import { OpenAPI } from 'routing-controllers-openapi';
+import { IsInt, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -14,6 +17,16 @@ import dataSource from '../config/data-source';
 import { Message } from '../models/message.entity';
 import { Conversation } from '../models/conversation.entity';
 
+class SendMessageDto {
+    @IsInt()
+    @Type(() => Number)
+    conversation_id: number;
+
+    @IsString()
+    @Type(() => String)
+    content: string;
+}
+
 @EntityController({
     baseRoute: '/messages',
     entity: Message,
@@ -21,9 +34,10 @@ import { Conversation } from '../models/conversation.entity';
 class MessagesController extends BaseController {
     @UseBefore(authMiddleware)
     @Post('')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
     async send(
         @Req() request: RequestWithUser,
-        @Body() body: { conversation_id: number; content: string },
+        @Body({ type: SendMessageDto }) body: SendMessageDto,
     ): Promise<{ id: number }> {
         const { user } = request;
 
