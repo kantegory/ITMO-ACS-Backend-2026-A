@@ -7,7 +7,7 @@ class Settings {
     APP_PROTOCOL: string = env.APP_PROTOCOL || 'http';
     APP_CONTROLLERS_PATH: string =
         env.APP_CONTROLLERS_PATH || '/controllers/*.controller.js';
-    APP_API_PREFIX: string = env.APP_API_PREFIX || '/api';
+    APP_API_PREFIX: string = env.APP_API_PREFIX || '';
 
     // db connection settings
     DB_HOST = env.DB_HOST || 'localhost';
