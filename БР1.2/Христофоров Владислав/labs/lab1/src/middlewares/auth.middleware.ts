@@ -1,6 +1,5 @@
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
-
 import SETTINGS from '../config/settings';
 
 interface JwtPayloadWithUser extends JwtPayload {
@@ -20,6 +19,12 @@ const authMiddleware = (
     const { authorization } = headers;
 
     try {
+        if (!authorization) {
+            return response
+                .status(401)
+                .send({ message: 'Unauthorized: no token provided' });
+        }
+
         const [, accessToken] = authorization.split(' ');
 
         if (!accessToken) {
@@ -38,7 +43,6 @@ const authMiddleware = (
         next();
     } catch (error) {
         console.error(error);
-
         return response
             .status(403)
             .send({ message: 'Forbidden: token is invalid or expired' });
