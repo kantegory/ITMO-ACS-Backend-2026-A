@@ -5,6 +5,7 @@ import {
     Post,
     Delete,
     Param,
+    QueryParam,
     Body,
     HttpError,
     Req,
@@ -48,10 +49,16 @@ export class UserController {
 
     @Get('/me/saved-recipes')
     @UseBefore(authMiddleware)
-    async getSavedRecipes(@Req() req: Request) {
+    async getSavedRecipes(
+        @Req() req: Request,
+        @QueryParam('limit') limit: number = 20,
+        @QueryParam('offset') offset: number = 0,
+    ) {
         const saved = await this.savedRepo.find({
             where: { user: { id: (req as any).user.id } },
             relations: ['recipe'],
+            take: limit,
+            skip: offset,
         });
         return saved.map((s) => s.recipe);
     }
@@ -79,14 +86,15 @@ export class UserController {
             follower: { id: followerId },
             following: { id },
         });
-        if (!existing) {
-            await this.subRepo.save(
-                this.subRepo.create({
-                    follower: { id: followerId },
-                    following: { id },
-                }),
-            );
-        }
+        if (existing)
+            throw new HttpError(400, 'Вы уже подписаны на этого пользователя');
+
+        await this.subRepo.save(
+            this.subRepo.create({
+                follower: { id: followerId },
+                following: { id },
+            }),
+        );
         return { message: 'Подписка оформлена' };
     }
 
@@ -102,19 +110,31 @@ export class UserController {
     }
 
     @Get('/:id/subscribers')
-    async getSubscribers(@Param('id') id: string) {
+    async getSubscribers(
+        @Param('id') id: string,
+        @QueryParam('limit') limit: number = 20,
+        @QueryParam('offset') offset: number = 0,
+    ) {
         const subscriptions = await this.subRepo.find({
             where: { following: { id } },
             relations: ['follower'],
+            take: limit,
+            skip: offset,
         });
         return subscriptions.map((sub) => sub.follower);
     }
 
     @Get('/:id/subscriptions')
-    async getSubscriptions(@Param('id') id: string) {
+    async getSubscriptions(
+        @Param('id') id: string,
+        @QueryParam('limit') limit: number = 20,
+        @QueryParam('offset') offset: number = 0,
+    ) {
         const subscriptions = await this.subRepo.find({
             where: { follower: { id } },
             relations: ['following'],
+            take: limit,
+            skip: offset,
         });
         return subscriptions.map((sub) => sub.following);
     }

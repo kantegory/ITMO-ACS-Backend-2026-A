@@ -128,10 +128,17 @@ export class BlogPostController {
     }
 
     @Get('/:id/comments')
-    async getComments(@Param('id') id: string) {
+    async getComments(
+        @Param('id') id: string,
+        @QueryParam('limit') limit: number = 20,
+        @QueryParam('offset') offset: number = 0,
+    ) {
         return await this.commentRepo.find({
             where: { blog_post: { id } },
             relations: ['author'],
+            order: { created_at: 'DESC' },
+            take: limit,
+            skip: offset,
         });
     }
 

@@ -1,10 +1,8 @@
 import 'reflect-metadata';
-
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
 import { useExpressServer } from 'routing-controllers';
-
 import SETTINGS from './config/settings';
 import dataSource from './config/data-source';
 import { useSwagger } from './swagger';
@@ -19,34 +17,18 @@ import { AdminController } from './controllers/admin.controller';
 import { MediaController } from './controllers/media.controller';
 
 class App {
-    public port: number;
-    public host: string;
-    public protocol: string;
-    public controllersPath: string;
+    private expressApp: express.Express;
 
-    private app: express.Express;
-
-    constructor(
-        port = SETTINGS.APP_PORT,
-        host = SETTINGS.APP_HOST,
-        protocol = SETTINGS.APP_PROTOCOL,
-        controllersPath = SETTINGS.APP_CONTROLLERS_PATH,
-    ) {
-        this.port = port;
-        this.host = host;
-        this.protocol = protocol;
-        this.controllersPath = controllersPath;
-
-        this.app = express();
+    constructor() {
+        this.expressApp = express();
         this.configureApp();
     }
 
-    private configureApp(): void {
-        this.app.use(cors());
-        this.app.use(express.json());
-        this.app.use(express.urlencoded({ extended: true }));
-
-        this.app.use(
+    private configureApp() {
+        this.expressApp.use(cors());
+        this.expressApp.use(express.json());
+        this.expressApp.use(express.urlencoded({ extended: true }));
+        this.expressApp.use(
             '/uploads',
             express.static(path.join(process.cwd(), 'uploads')),
         );
@@ -63,34 +45,33 @@ class App {
                 AdminController,
                 MediaController,
             ],
-            validation: true,
+            validation: {
+                whitelist: true,
+                forbidNonWhitelisted: true,
+            },
             classTransformer: true,
             defaultErrorHandler: true,
         };
 
-        useExpressServer(this.app, options);
-        useSwagger(this.app, options);
+        useExpressServer(this.expressApp, options);
+        useSwagger(this.expressApp, options);
     }
 
-    public start(): void {
-        dataSource
-            .initialize()
-            .then(() => {
-                console.log('Data Source has been initialized!');
-            })
-            .catch((err) => {
-                console.error('Error during Data Source initialization:', err);
+    public async start() {
+        try {
+            await dataSource.initialize();
+            console.log('Data Source has been initialized!');
+            this.expressApp.listen(SETTINGS.APP_PORT, SETTINGS.APP_HOST, () => {
+                console.log(
+                    `Server running on http://${SETTINGS.APP_HOST}:${SETTINGS.APP_PORT}`,
+                );
             });
-
-        this.app.listen(this.port, this.host, () => {
-            console.log(
-                `Running server on ${this.protocol}://${this.host}:${this.port}`,
-            );
-        });
+        } catch (err) {
+            console.error('Error during initialization:', err);
+        }
     }
 }
 
 const appInstance = new App();
 appInstance.start();
-
 export default appInstance;

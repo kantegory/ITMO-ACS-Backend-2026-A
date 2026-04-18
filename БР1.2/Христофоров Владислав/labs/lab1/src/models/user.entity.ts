@@ -7,6 +7,7 @@ import {
     DeleteDateColumn,
     OneToMany,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { Recipe } from './recipe.entity';
 import { BlogPost } from './blog-post.entity';
 import { Comment } from './comment.entity';
@@ -25,6 +26,7 @@ export class User {
     @Column({ unique: true })
     email: string;
 
+    @Exclude()
     @Column()
     password_hash: string;
 
@@ -40,15 +42,6 @@ export class User {
         default: 'user',
     })
     role: string;
-
-    @CreateDateColumn()
-    created_at: Date;
-
-    @UpdateDateColumn()
-    updated_at: Date;
-
-    @DeleteDateColumn()
-    deleted_at: Date;
 
     @OneToMany(() => Recipe, (recipe: Recipe) => recipe.author)
     recipes: Recipe[];
@@ -79,4 +72,13 @@ export class User {
         (subscription: Subscription) => subscription.follower,
     )
     subscriptions: Subscription[];
+
+    @CreateDateColumn()
+    created_at: Date;
+
+    @UpdateDateColumn()
+    updated_at: Date;
+
+    @DeleteDateColumn()
+    deleted_at: Date;
 }
