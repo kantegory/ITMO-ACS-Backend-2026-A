@@ -9,11 +9,6 @@ import { Review } from './Review.entity';
 import { Booking } from './Booking.entity';
 
 export enum RestaurantStatus {
-  ACTIVE = 'active',
-  ARCHIVED = 'archived',
-}
-
-export enum OperationalStatus {
   OPEN = 'open',
   CLOSED = 'closed',
   UNDER_RENOVATION = 'under_renovation',
@@ -72,19 +67,10 @@ export class Restaurant {
   @Column({
     type: 'enum',
     enum: RestaurantStatus,
-    default: RestaurantStatus.ACTIVE,
+    default: RestaurantStatus.OPEN,
   })
   @IsEnum(RestaurantStatus)
   status: RestaurantStatus;
-
-  @Column({
-    name: 'operational_status',
-    type: 'enum',
-    enum: OperationalStatus,
-    default: OperationalStatus.OPEN,
-  })
-  @IsEnum(OperationalStatus)
-  operationalStatus: OperationalStatus;
 
   @Column({ type: 'jsonb', nullable: true })
   @IsOptional()
@@ -146,8 +132,7 @@ export class Restaurant {
       address: this.address,
       latitude: this.latitude || null,
       longitude: this.longitude || null,
-      status: this.status,
-      operational_status: this.operationalStatus,
+      restaurant_status: this.status,
       working_hours: this.workingHours || [],
       images: this.images?.map((img) => img.toResponse()) || [],
       menu: this.menuItems?.map((item) => item.toResponse()) || [],
@@ -189,8 +174,7 @@ export interface RestaurantDetailResponse extends RestaurantListItemResponse {
   address: string;
   latitude: number | null;
   longitude: number | null;
-  status: RestaurantStatus;
-  operational_status: OperationalStatus;
+  restaurant_status: RestaurantStatus;
   working_hours: WorkingHours[];
   images: any[];
   menu: any[];

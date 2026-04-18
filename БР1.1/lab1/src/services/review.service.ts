@@ -19,7 +19,7 @@ export class ReviewService {
       maxRating?: number;
     },
     pagination?: { page: number; limit: number }
-  ): Promise<any[]> {
+  ): Promise<{ total: number; items: any[] }> {
     const query = this.reviewRepository.createQueryBuilder('review')
       .leftJoinAndSelect('review.restaurant', 'restaurant')
       .leftJoinAndSelect('review.user', 'user')
@@ -38,6 +38,9 @@ export class ReviewService {
       query.andWhere('review.rating <= :maxRating', { maxRating: filters.maxRating });
     }
 
+    // Get total count before pagination
+    const total = await query.getCount();
+
     if (pagination) {
       const skip = (pagination.page - 1) * pagination.limit;
       query.skip(skip).take(pagination.limit);
@@ -46,7 +49,10 @@ export class ReviewService {
     query.orderBy('review.createdAt', 'DESC');
 
     const reviews = await query.getMany();
-    return reviews.map(review => review.toResponse());
+    return {
+      total,
+      items: reviews.map(review => review.toResponse())
+    };
   }
 
   async getReviewById(id: number): Promise<any> {

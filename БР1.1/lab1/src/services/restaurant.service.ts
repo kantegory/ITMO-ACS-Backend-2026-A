@@ -1,5 +1,5 @@
 import { AppDataSource } from '../config/data-source';
-import { Restaurant, RestaurantStatus, OperationalStatus } from '../entities/Restaurant.entity';
+import { Restaurant, RestaurantStatus } from '../entities/Restaurant.entity';
 import { Cuisine } from '../entities/Cuisine.entity';
 import { AppError } from '../middleware/error-handler';
 import { WorkingHours } from '../entities/Restaurant.entity';
@@ -15,15 +15,14 @@ export class RestaurantService {
       minPrice?: number;
       maxPrice?: number;
       status?: RestaurantStatus;
-      operationalStatus?: OperationalStatus;
     },
     pagination?: { page: number; limit: number }
-  ): Promise<any[]> {
+  ): Promise<{ total: number; items: any[] }> {
     const query = this.restaurantRepository.createQueryBuilder('restaurant')
       .leftJoinAndSelect('restaurant.cuisine', 'cuisine')
       .leftJoinAndSelect('restaurant.images', 'images')
       .leftJoinAndSelect('restaurant.reviews', 'reviews')
-      .where('restaurant.status = :status', { status: RestaurantStatus.ACTIVE });
+      .where('restaurant.status = :status', { status: RestaurantStatus.OPEN });
 
     if (filters?.cuisineId) {
       query.andWhere('restaurant.cuisine_id = :cuisineId', { cuisineId: filters.cuisineId });
@@ -37,9 +36,9 @@ export class RestaurantService {
     if (filters?.maxPrice !== undefined) {
       query.andWhere('restaurant.avg_price_per_person <= :maxPrice', { maxPrice: filters.maxPrice });
     }
-    if (filters?.operationalStatus) {
-      query.andWhere('restaurant.operational_status = :operationalStatus', { operationalStatus: filters.operationalStatus });
-    }
+
+    // Get total count before pagination
+    const total = await query.getCount();
 
     if (pagination) {
       const skip = (pagination.page - 1) * pagination.limit;
@@ -49,7 +48,10 @@ export class RestaurantService {
     query.orderBy('restaurant.name', 'ASC');
 
     const restaurants = await query.getMany();
-    return restaurants.map(restaurant => restaurant.toListItemResponse());
+    return {
+      total,
+      items: restaurants.map(restaurant => restaurant.toListItemResponse())
+    };
   }
 
   async getRestaurantById(id: number): Promise<any> {
@@ -92,8 +94,7 @@ export class RestaurantService {
       latitude: data.latitude,
       longitude: data.longitude,
       workingHours: data.workingHours,
-      status: RestaurantStatus.ACTIVE,
-      operationalStatus: OperationalStatus.OPEN,
+      status: RestaurantStatus.OPEN,
     });
 
     await this.restaurantRepository.save(restaurant);
@@ -110,8 +111,7 @@ export class RestaurantService {
     latitude: number;
     longitude: number;
     workingHours: WorkingHours[];
-    status: RestaurantStatus;
-    operationalStatus: OperationalStatus;
+    restaurant_status: RestaurantStatus;
   }>): Promise<any> {
     const restaurant = await this.restaurantRepository.findOne({ where: { id } });
     if (!restaurant) {
@@ -131,6 +131,19 @@ export class RestaurantService {
     return restaurant.toDetailResponse();
   }
 
+  async getRestaurantTables(id: number): Promise<any[]> {
+    const restaurant = await this.restaurantRepository.findOne({
+      where: { id },
+      relations: ['tables'],
+    });
+
+    if (!restaurant) {
+      throw new AppError('RESTAURANT_NOT_FOUND', 'Restaurant not found', 404);
+    }
+
+    return restaurant.tables.map(table => table.toResponse());
+  }
+
   async deleteRestaurant(id: number): Promise<void> {
     const restaurant = await this.restaurantRepository.findOne({
       where: { id },
@@ -141,8 +154,8 @@ export class RestaurantService {
       throw new AppError('RESTAURANT_NOT_FOUND', 'Restaurant not found', 404);
     }
 
-    // Soft delete: set status to archived
-    restaurant.status = RestaurantStatus.ARCHIVED;
+    // Soft delete: set status to closed
+    restaurant.status = RestaurantStatus.CLOSED;
     await this.restaurantRepository.save(restaurant);
   }
 }

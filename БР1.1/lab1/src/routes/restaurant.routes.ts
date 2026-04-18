@@ -10,6 +10,12 @@ router.get('/', RestaurantController.getAllRestaurants);
 // GET /restaurants/:id - Get restaurant by ID (public)
 router.get('/:id', RestaurantController.getRestaurantById);
 
+// GET /restaurants/:id/tables - Get restaurant tables (public)
+router.get('/:id/tables', RestaurantController.getRestaurantTables);
+
+// POST /restaurants/:id/reviews - Create a review for a restaurant (authenticated users)
+router.post('/:id/reviews', requireAuth, RestaurantController.createRestaurantReview);
+
 // POST /restaurants - Create a new restaurant (admin only)
 router.post('/', requireAuth, requireAdmin, RestaurantController.createRestaurant);
 

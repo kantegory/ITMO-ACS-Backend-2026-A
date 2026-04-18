@@ -48,17 +48,15 @@ export class ReviewController {
       if (!req.user) {
         throw new AppError('UNAUTHORIZED', 'Authentication required', 401);
       }
-      const {
-        restaurantId,
-        bookingId,
-        rating,
-        comment,
-      } = req.body;
+      // Accept both snake_case and camelCase for restaurantId and bookingId
+      const restaurantId = req.body.restaurant_id !== undefined ? req.body.restaurant_id : req.body.restaurantId;
+      const bookingId = req.body.booking_id !== undefined ? req.body.booking_id : req.body.bookingId;
+      const { rating, comment } = req.body;
 
-      if (!restaurantId || typeof restaurantId !== 'number') {
+      if (restaurantId === undefined || typeof restaurantId !== 'number') {
         throw new AppError('MISSING_FIELDS', 'Restaurant ID is required', 400);
       }
-      if (!bookingId || typeof bookingId !== 'number') {
+      if (bookingId === undefined || typeof bookingId !== 'number') {
         throw new AppError('MISSING_FIELDS', 'Booking ID is required', 400);
       }
       if (!rating || typeof rating !== 'number' || rating < 1 || rating > 5) {

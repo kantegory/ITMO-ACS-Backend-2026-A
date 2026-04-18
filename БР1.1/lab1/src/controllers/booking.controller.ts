@@ -64,41 +64,55 @@ export class BookingController {
       }
       const {
         restaurantId,
+        restaurant_id,
         tableId,
+        table_id,
         bookingDate,
+        booking_date,
         startTime,
+        start_time,
         endTime,
+        end_time,
         guestsCount,
+        guests_count,
         comment,
       } = req.body;
 
-      if (!restaurantId || typeof restaurantId !== 'number') {
+      // Support both camelCase and snake_case
+      const restaurantIdFinal = restaurantId ?? restaurant_id;
+      const tableIdFinal = tableId ?? table_id;
+      const bookingDateFinal = bookingDate ?? booking_date;
+      const startTimeFinal = startTime ?? start_time;
+      const endTimeFinal = endTime ?? end_time;
+      const guestsCountFinal = guestsCount ?? guests_count;
+
+      if (!restaurantIdFinal || typeof restaurantIdFinal !== 'number') {
         throw new AppError('MISSING_FIELDS', 'Restaurant ID is required', 400);
       }
-      if (!tableId || typeof tableId !== 'number') {
+      if (!tableIdFinal || typeof tableIdFinal !== 'number') {
         throw new AppError('MISSING_FIELDS', 'Table ID is required', 400);
       }
-      if (!bookingDate || typeof bookingDate !== 'string') {
+      if (!bookingDateFinal || typeof bookingDateFinal !== 'string') {
         throw new AppError('MISSING_FIELDS', 'Booking date is required', 400);
       }
-      if (!startTime || typeof startTime !== 'string') {
+      if (!startTimeFinal || typeof startTimeFinal !== 'string') {
         throw new AppError('MISSING_FIELDS', 'Start time is required', 400);
       }
-      if (!endTime || typeof endTime !== 'string') {
+      if (!endTimeFinal || typeof endTimeFinal !== 'string') {
         throw new AppError('MISSING_FIELDS', 'End time is required', 400);
       }
-      if (!guestsCount || typeof guestsCount !== 'number' || guestsCount < 1) {
+      if (!guestsCountFinal || typeof guestsCountFinal !== 'number' || guestsCountFinal < 1) {
         throw new AppError('MISSING_FIELDS', 'Valid guests count is required', 400);
       }
 
       const booking = await bookingService.createBooking({
-        restaurantId,
-        tableId,
+        restaurantId: restaurantIdFinal,
+        tableId: tableIdFinal,
         userId: req.user.userId,
-        bookingDate,
-        startTime,
-        endTime,
-        guestsCount,
+        bookingDate: bookingDateFinal,
+        startTime: startTimeFinal,
+        endTime: endTimeFinal,
+        guestsCount: guestsCountFinal,
         comment,
       });
       res.status(201).json(booking);

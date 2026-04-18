@@ -20,7 +20,7 @@ export class BookingService {
       toDate?: string;
     },
     pagination?: { page: number; limit: number }
-  ): Promise<any[]> {
+  ): Promise<{ total: number; items: any[] }> {
     const query = this.bookingRepository.createQueryBuilder('booking')
       .leftJoinAndSelect('booking.restaurant', 'restaurant')
       .leftJoinAndSelect('booking.table', 'table')
@@ -42,6 +42,9 @@ export class BookingService {
       query.andWhere('booking.booking_date <= :toDate', { toDate: filters.toDate });
     }
 
+    // Get total count before pagination
+    const total = await query.getCount();
+
     if (pagination) {
       const skip = (pagination.page - 1) * pagination.limit;
       query.skip(skip).take(pagination.limit);
@@ -50,7 +53,10 @@ export class BookingService {
     query.orderBy('booking.bookingDate', 'DESC').addOrderBy('booking.startTime', 'ASC');
 
     const bookings = await query.getMany();
-    return bookings.map(booking => booking.toResponse());
+    return {
+      total,
+      items: bookings.map(booking => booking.toResponse())
+    };
   }
 
   async getBookingById(id: number): Promise<any> {

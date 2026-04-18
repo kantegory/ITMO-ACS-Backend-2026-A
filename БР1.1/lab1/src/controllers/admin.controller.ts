@@ -26,18 +26,18 @@ export class AdminController {
       const bookings = await bookingService.getAllBookings({}, { page: 1, limit: 1000 });
       const reviews = await reviewService.getAllReviews({}, { page: 1, limit: 1000 });
 
-      const activeRestaurants = restaurants.filter(r => r.status === RestaurantStatus.ACTIVE);
-      const pendingBookings = bookings.filter(b => b.status === BookingStatus.PENDING);
-      const recentReviews = reviews.slice(0, 10);
+      const activeRestaurants = restaurants.items.filter(r => r.restaurant_status === RestaurantStatus.OPEN);
+      const pendingBookings = bookings.items.filter(b => b.status === BookingStatus.PENDING);
+      const recentReviews = reviews.items.slice(0, 10);
 
       res.status(200).json({
         stats: {
           total_users: users.length,
-          total_restaurants: restaurants.length,
+          total_restaurants: restaurants.total,
           active_restaurants: activeRestaurants.length,
-          total_bookings: bookings.length,
+          total_bookings: bookings.total,
           pending_bookings: pendingBookings.length,
-          total_reviews: reviews.length,
+          total_reviews: reviews.total,
         },
         recent_reviews: recentReviews,
       });
@@ -76,12 +76,12 @@ export class AdminController {
       if (isNaN(restaurantId)) {
         throw new AppError('INVALID_ID', 'Invalid restaurant ID', 400);
       }
-      const { status } = req.body;
-      if (!status || !Object.values(RestaurantStatus).includes(status)) {
+      const { restaurant_status } = req.body;
+      if (!restaurant_status || !Object.values(RestaurantStatus).includes(restaurant_status)) {
         throw new AppError('INVALID_STATUS', 'Invalid restaurant status', 400);
       }
 
-      const restaurant = await restaurantService.updateRestaurant(restaurantId, { status });
+      const restaurant = await restaurantService.updateRestaurant(restaurantId, { restaurant_status });
       res.status(200).json(restaurant);
     } catch (error) {
       next(error);
