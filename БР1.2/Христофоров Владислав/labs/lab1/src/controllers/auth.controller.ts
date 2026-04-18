@@ -1,76 +1,71 @@
-import { Body, Post, Res } from 'routing-controllers';
-import { OpenAPI, ResponseSchema } from 'routing-controllers-openapi';
-import { IsString, IsEmail } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+    JsonController,
+    Post,
+    Body,
+    HttpError,
+    HttpCode,
+} from 'routing-controllers';
+import dataSource from '../config/data-source';
+import { User } from '../models/user.entity';
+import { RegisterDto } from '../dto/register.dto';
+import { LoginDto } from '../dto/login.dto';
+import checkPassword from '../utils/check-password';
 import jwt from 'jsonwebtoken';
-
 import SETTINGS from '../config/settings';
 
-import EntityController from '../common/entity-controller';
-import BaseController from '../common/base-controller';
+@JsonController('/auth')
+export default class AuthController {
+    private userRepository = dataSource.getRepository(User);
 
-import { User } from '../models/user.entity';
+    @Post('/register')
+    @HttpCode(201)
+    async register(@Body() body: RegisterDto) {
+        const existingUser = await this.userRepository.findOne({
+            where: [{ email: body.email }, { username: body.username }],
+        });
 
-import checkPassword from '../utils/check-password';
-
-class LoginDto {
-    @IsEmail()
-    @Type(() => String)
-    email: string;
-
-    @IsString()
-    @Type(() => String)
-    password: string;
-}
-
-class LoginResponseDto {
-    @IsString()
-    @Type(() => String)
-    accessToken: string;
-}
-
-class ErrorResponseDto {
-    @IsString()
-    @Type(() => String)
-    message: string;
-}
-
-@EntityController({
-    baseRoute: '/auth',
-    entity: User,
-})
-class AuthController extends BaseController {
-    @Post('/login')
-    @OpenAPI({ summary: 'Login' })
-    @ResponseSchema(LoginResponseDto, { statusCode: 200 })
-    @ResponseSchema(ErrorResponseDto, { statusCode: 400 })
-    async login(
-        @Body({ type: LoginDto }) loginData: LoginDto,
-    ): Promise<LoginResponseDto | ErrorResponseDto> {
-        const { email, password } = loginData;
-        const user = await this.repository.findOneBy({ email });
-
-        if (!user) {
-            return { message: 'User is not found' };
+        if (existingUser) {
+            throw new HttpError(
+                400,
+                'Пользователь с таким email или username уже существует',
+            );
         }
 
-        const userPassword = user.password_hash;
-        const isPasswordCorrect = checkPassword(userPassword, password);
+        const user = this.userRepository.create({
+            username: body.username,
+            email: body.email,
+            password_hash: body.password,
+        });
+
+        await this.userRepository.save(user);
+
+        const { password_hash, ...userData } = user;
+        return userData;
+    }
+
+    @Post('/login')
+    async login(@Body() body: LoginDto) {
+        const user = await this.userRepository.findOneBy({ email: body.email });
+
+        if (!user) {
+            throw new HttpError(401, 'Неверный email или пароль');
+        }
+
+        const isPasswordCorrect = checkPassword(
+            user.password_hash,
+            body.password,
+        );
 
         if (!isPasswordCorrect) {
-            return { message: 'Password or email is incorrect' };
+            throw new HttpError(401, 'Неверный email или пароль');
         }
 
         const accessToken = jwt.sign(
             { user: { id: user.id, role: user.role } },
             SETTINGS.JWT_SECRET_KEY,
-            {
-                expiresIn: SETTINGS.JWT_ACCESS_TOKEN_LIFETIME,
-            },
+            { expiresIn: SETTINGS.JWT_ACCESS_TOKEN_LIFETIME },
         );
 
-        return { accessToken };
+        return { access_token: accessToken };
     }
 }
-
-export default AuthController;

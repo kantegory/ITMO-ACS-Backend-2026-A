@@ -1,12 +1,14 @@
 import 'reflect-metadata';
 
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import { useExpressServer } from 'routing-controllers';
 
 import SETTINGS from './config/settings';
 import dataSource from './config/data-source';
 import { useSwagger } from './swagger';
+
 import AuthController from './controllers/auth.controller';
 import { UserController } from './controllers/user.controller';
 import { RecipeController } from './controllers/recipe.controller';
@@ -22,7 +24,7 @@ class App {
     public protocol: string;
     public controllersPath: string;
 
-    private app: express.Application;
+    private app: express.Express;
 
     constructor(
         port = SETTINGS.APP_PORT,
@@ -33,18 +35,21 @@ class App {
         this.port = port;
         this.host = host;
         this.protocol = protocol;
-
         this.controllersPath = controllersPath;
 
-        this.app = this.configureApp();
+        this.app = express();
+        this.configureApp();
     }
 
-    private configureApp(): express.Application {
-        let app = express();
+    private configureApp(): void {
+        this.app.use(cors());
+        this.app.use(express.json());
+        this.app.use(express.urlencoded({ extended: true }));
 
-        // middlewares section
-        app.use(cors());
-        app.use(express.json());
+        this.app.use(
+            '/uploads',
+            express.static(path.join(process.cwd(), 'uploads')),
+        );
 
         const options = {
             routePrefix: SETTINGS.APP_API_PREFIX,
@@ -63,14 +68,11 @@ class App {
             defaultErrorHandler: true,
         };
 
-        app = useExpressServer(app, options);
-        app = useSwagger(app, options);
-
-        return app;
+        useExpressServer(this.app, options);
+        useSwagger(this.app, options);
     }
 
     public start(): void {
-        // establish database connection
         dataSource
             .initialize()
             .then(() => {
@@ -88,7 +90,7 @@ class App {
     }
 }
 
-const app = new App();
-app.start();
+const appInstance = new App();
+appInstance.start();
 
-export default app;
+export default appInstance;
