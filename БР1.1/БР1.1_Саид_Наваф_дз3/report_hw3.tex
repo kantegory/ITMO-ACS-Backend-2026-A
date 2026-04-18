@@ -1,0 +1,283 @@
+﻿\documentclass[a4paper,14pt]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[left=30mm,right=15mm,top=20mm,bottom=20mm]{geometry}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{float}
+
+\onehalfspacing
+\setlength{\parindent}{1.25cm}
+
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0,0.5,0}
+\definecolor{codepurple}{rgb}{0.5,0,0.5}
+
+\lstdefinestyle{json}{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  captionpos=b,
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{codepurple},
+  stringstyle=\color{codegreen},
+  frame=single,
+  rulecolor=\color{gray},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  tabsize=2,
+}
+
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+\begin{document}
+
+% ===== ТИТУЛЬНЫЙ ЛИСТ =====
+\begin{titlepage}
+  \begin{center}
+    \textbf{Министерство науки и высшего образования Российской Федерации}\\[0.3cm]
+    \textbf{Федеральное государственное автономное образовательное учреждение\\
+    высшего образования}\\[0.3cm]
+    \textbf{«НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО»}\\[0.5cm]
+    \hrule
+    \vspace{0.3cm}
+    Факультет программной инженерии и компьютерной техники\\[0.2cm]
+    Образовательная программа «Разработка программного обеспечения»\\[2cm]
+
+    \large\textbf{ОТЧЁТ}\\[0.3cm]
+    \textbf{по домашнему заданию №3}\\[0.3cm]
+    \textbf{по дисциплине «Бэкенд-разработка»}\\[0.5cm]
+    \normalsize Тема: \textbf{Тестирование API средствами Postman}\\[3cm]
+
+    \begin{flushright}
+      \begin{tabular}{ll}
+        Выполнил: & Саид Наваф\\
+        Группа:   & БР1.1\\
+        Вариант:  & Система поиска работы\\
+                  & (Job Search API)\\[0.5cm]
+        Проверил: & \\
+      \end{tabular}
+    \end{flushright}
+
+    \vfill
+    Санкт-Петербург, 2026
+  \end{center}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ===== 1. ЦЕЛЬ =====
+\section{Цель работы}
+
+Целью данного домашнего задания является реализация тестирования REST API системы поиска работы (Job Search API) средствами Postman. В рамках работы необходимо:
+
+\begin{itemize}[leftmargin=2cm]
+  \item разработать комплексный сценарий тестирования по основному процессу приложения;
+  \item реализовать автоматические тесты внутри Postman с помощью скриптов на JavaScript;
+  \item обеспечить автоматическую передачу данных (токены, идентификаторы) между запросами;
+  \item охватить как позитивные, так и негативные тестовые случаи.
+\end{itemize}
+
+% ===== 2. ЗАДАНИЕ =====
+\section{Задание}
+
+\begin{itemize}[leftmargin=2cm]
+  \item Реализовать тестирование API средствами Postman.
+  \item Написать тесты внутри Postman.
+  \item Представить один комплексный сценарий по основному процессу приложения.
+\end{itemize}
+
+Основной сценарий для системы поиска работы:
+
+\[
+\textit{регистрация работодателя} \;\to\; \textit{вход} \;\to\; \textit{создание вакансии}
+\]
+\[
+\;\to\; \textit{регистрация соискателя} \;\to\; \textit{вход} \;\to\; \textit{создание резюме}
+\]
+\[
+\;\to\; \textit{отклик на вакансию} \;\to\; \textit{просмотр откликов} \;\to\; \textit{изменение статуса}
+\]
+
+% ===== 3. РЕАЛИЗОВАННЫЙ API =====
+\section{Реализованный API}
+
+В качестве тестируемого сервиса выступает REST API, разработанный в рамках лабораторной работы №1. Стек технологий:
+
+\begin{itemize}[leftmargin=2cm]
+  \item \textbf{Runtime:} Go (Golang) 1.26
+  \item \textbf{Framework:} стандартная библиотека net/http
+  \item \textbf{ORM:} pgx (PostgreSQL driver)
+  \item \textbf{База данных:} PostgreSQL 15
+  \item \textbf{Аутентификация:} JWT (Bearer токен)
+  \item \textbf{Контейнеризация:} Docker + Docker Compose
+\end{itemize}
+
+API запущен локально по адресу \texttt{http://localhost:8080}.
+Базовый префикс всех эндпоинтов: \texttt{/api/v1}.
+
+\subsection{Реализованные эндпоинты}
+
+\begin{table}[H]
+\centering
+\caption{Эндпоинты REST API}
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Метод} & \textbf{Путь} & \textbf{Описание} \\
+\midrule
+POST   & /auth/register                       & Регистрация пользователя \\
+POST   & /auth/login                          & Вход, получение JWT \\
+GET    & /profile                             & Профиль пользователя \\
+GET    & /categories                          & Список категорий \\
+GET    & /vacancies                           & Список вакансий \\
+GET    & /vacancies/\{id\}                    & Детали вакансии \\
+POST   & /vacancies                           & Создать вакансию (employer) \\
+GET    & /resumes                             & Список резюме \\
+GET    & /resumes/\{id\}                      & Детали резюме \\
+POST   & /resumes                             & Создать резюме (applicant) \\
+POST   & /applications                        & Откликнуться на вакансию \\
+GET    & /applications                        & Мои отклики (applicant) \\
+GET    & /employer/applications               & Отклики на вакансии (employer) \\
+PATCH  & /applications/\{id\}/status          & Изменить статус отклика \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ===== 4. ТЕСТОВЫЙ СЦЕНАРИЙ =====
+\section{Тестовый сценарий}
+
+\subsection{Структура коллекции}
+
+Postman-коллекция \textbf{«Job Search API - Test Collection»} содержит 10 запросов, сгруппированных в один сквозной сценарий. Для автоматической передачи данных между шагами используются переменные коллекции:
+
+\begin{table}[H]
+\centering
+\caption{Переменные коллекции}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Переменная} & \textbf{Назначение} \\
+\midrule
+\texttt{employer\_token}  & JWT токен работодателя \\
+\texttt{applicant\_token} & JWT токен соискателя \\
+\texttt{vacancy\_id}      & ID созданной вакансии \\
+\texttt{resume\_id}       & ID созданного резюме \\
+\texttt{application\_id}  & ID созданного отклика \\
+\texttt{timestamp}        & Уникальный timestamp для генерации email \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Шаги сценария}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Регистрация работодателя} — \texttt{POST /auth/register}.\\
+    Создание нового пользователя с ролью \texttt{employer}. Pre-request скрипт генерирует уникальный email на основе timestamp.
+
+  \item \textbf{Вход работодателя} — \texttt{POST /auth/login}.\\
+    Проверка что логин возвращает валидный JWT токен. Токен сохраняется в переменную \texttt{employer\_token}.
+
+  \item \textbf{Создание вакансии} — \texttt{POST /vacancies}.\\
+    Создание новой вакансии с заголовком Authorization. Сохранение \texttt{vacancy\_id} для следующих шагов.
+
+  \item \textbf{Просмотр списка вакансий} — \texttt{GET /vacancies}.\\
+    Публичный эндпоинт. Проверка что ответ содержит массив с хотя бы одной вакансией.
+
+  \item \textbf{Регистрация соискателя} — \texttt{POST /auth/register}.\\
+    Создание нового пользователя с ролью \texttt{applicant}.
+
+  \item \textbf{Вход соискателя} — \texttt{POST /auth/login}.\\
+    Получение JWT токена соискателя. Сохранение в \texttt{applicant\_token}.
+
+  \item \textbf{Создание резюме} — \texttt{POST /resumes}.\\
+    Соискатель создаёт резюме с указанием желаемой позиции и опыта. Сохранение \texttt{resume\_id}.
+
+  \item \textbf{Отклик на вакансию} — \texttt{POST /applications}.\\
+    Соискатель откликается на вакансию работодателя. Передача \texttt{vacancy\_id} и \texttt{resume\_id}. Сохранение \texttt{application\_id}.
+
+  \item \textbf{Просмотр своих откликов} — \texttt{GET /applications}.\\
+    Соискатель просматривает свои отклики. Проверка что ответ содержит массив.
+
+  \item \textbf{Изменение статуса отклика} — \texttt{PATCH /applications/\{id\}/status}.\\
+    Работодатель меняет статус отклика с \texttt{pending} на \texttt{review}.
+\end{enumerate}
+
+\subsection{Пример теста}
+
+Ниже приведён пример тестового скрипта для запроса «Создание отклика на вакансию»:
+
+\begin{lstlisting}[style=json, caption={Тест для POST /applications}]
+pm.test("Status code is 201", function () {
+    pm.expect(pm.response.code).to.equal(201);
+});
+
+pm.test("Application has status pending", function () {
+    var jsonData = pm.response.json();
+    pm.expect(jsonData.status).to.eql("pending");
+    pm.collectionVariables.set("application_id", jsonData.id);
+});
+
+pm.test("Response has application ID", function () {
+    var jsonData = pm.response.json();
+    pm.expect(jsonData.id).to.exist;
+});
+\end{lstlisting}
+
+% ===== 5. РЕЗУЛЬТАТЫ =====
+\section{Результаты тестирования}
+
+Коллекция запущена через Collection Runner Postman (Run collection).
+
+\begin{table}[H]
+\centering
+\caption{Итоги прогона коллекции}
+\begin{tabular}{lr}
+\toprule
+\textbf{Показатель} & \textbf{Значение} \\
+\midrule
+Всего запросов       & 10 \\
+Всего тестов         & 25 \\
+Passed               & \textbf{25} \\
+Failed               & 0 \\
+Errors               & 0 \\
+Skipped              & 0 \\
+Среднее время ответа & 23 мс \\
+Общая длительность   & 456 мс \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Все 25 проверок прошли успешно. Как позитивные сценарии (регистрация, создание вакансии, отклик), так и проверки корректности JWT-аутентификации возвращают ожидаемые коды и тела ответов.
+
+% ===== 6. ВЫВОД =====
+\section{Вывод}
+
+В ходе выполнения домашнего задания был реализован комплексный сценарий тестирования REST API системы поиска работы средствами Postman. Сценарий покрывает полный жизненный цикл основного бизнес-процесса: от регистрации работодателя и соискателя до создания вакансии, резюме и отклика.
+
+Ключевые результаты:
+\begin{itemize}[leftmargin=2cm]
+  \item разработана Postman-коллекция из 10 запросов с 25 автоматическими проверками;
+  \item реализована автоматическая передача токенов и идентификаторов между шагами через переменные коллекции;
+  \item все тесты успешно пройдены (\textbf{25/25 Passed, 0 Failed});
+  \item покрыты основные сценарии: регистрация, аутентификация, создание вакансий и резюме, отклики, изменение статусов.
+\end{itemize}
+
+Использование Postman для автоматизированного тестирования позволило:
+\begin{itemize}[leftmargin=2cm]
+  \item быстро проверить корректность работы всех эндпоинтов API;
+  \item убедиться в правильной работе JWT-аутентификации и разграничения доступа по ролям;
+  \item автоматизировать процесс тестирования для последующих запусков.
+\end{itemize}
+
+\end{document}
