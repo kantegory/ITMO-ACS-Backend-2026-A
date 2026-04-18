@@ -22,24 +22,28 @@ export class UserSubscriber implements EntitySubscriberInterface<User> {
             );
 
             const isPasswordChanged = !checkPassword(
-                event.databaseEntity.password,
-                event.entity.password,
+                event.databaseEntity.password_hash,
+                event.entity.password_hash,
             );
 
-            if (changedColumns.includes('password') && isPasswordChanged) {
-                event.entity.password = hashPassword(event.entity.password);
+            if (changedColumns.includes('password_hash') && isPasswordChanged) {
+                event.entity.password_hash = hashPassword(
+                    event.entity.password_hash,
+                );
             } else {
-                event.entity.password = event.databaseEntity.password;
+                event.entity.password_hash = event.databaseEntity.password_hash;
             }
         }
     }
 
     async beforeInsert(event: InsertEvent<User>) {
         if (
-            event.entity.password &&
-            !event.entity.password.startsWith('$2b$')
+            event.entity.password_hash &&
+            !event.entity.password_hash.startsWith('$2b$')
         ) {
-            event.entity.password = hashPassword(event.entity.password);
+            event.entity.password_hash = hashPassword(
+                event.entity.password_hash,
+            );
         }
     }
 }
