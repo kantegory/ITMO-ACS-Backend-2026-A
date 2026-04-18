@@ -70,17 +70,23 @@ export class UserController {
         const followerId = (req as any).user.id;
         if (followerId === id)
             throw new HttpError(400, 'Нельзя подписаться на себя');
+
+        const targetUser = await this.userRepo.findOneBy({ id });
+        if (!targetUser)
+            throw new HttpError(404, 'Пользователь для подписки не найден');
+
         const existing = await this.subRepo.findOneBy({
             follower: { id: followerId },
             following: { id },
         });
-        if (!existing)
+        if (!existing) {
             await this.subRepo.save(
                 this.subRepo.create({
                     follower: { id: followerId },
                     following: { id },
                 }),
             );
+        }
         return { message: 'Подписка оформлена' };
     }
 
@@ -93,5 +99,23 @@ export class UserController {
             following: { id },
         });
         return null;
+    }
+
+    @Get('/:id/subscribers')
+    async getSubscribers(@Param('id') id: string) {
+        const subscriptions = await this.subRepo.find({
+            where: { following: { id } },
+            relations: ['follower'],
+        });
+        return subscriptions.map((sub) => sub.follower);
+    }
+
+    @Get('/:id/subscriptions')
+    async getSubscriptions(@Param('id') id: string) {
+        const subscriptions = await this.subRepo.find({
+            where: { follower: { id } },
+            relations: ['following'],
+        });
+        return subscriptions.map((sub) => sub.following);
     }
 }

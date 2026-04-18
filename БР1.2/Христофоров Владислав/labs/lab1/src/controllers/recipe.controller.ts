@@ -36,25 +36,36 @@ export class RecipeController {
     @Get('/')
     async getAllRecipes(
         @QueryParam('difficulty') difficulty: string,
+        @QueryParam('search') search: string,
+        @QueryParam('dish_type_id') dishTypeId: string,
+        @QueryParam('author_id') authorId: string,
         @QueryParam('limit') limit: number = 20,
         @QueryParam('offset') offset: number = 0,
     ) {
-        const whereConditions: any = {};
-        if (difficulty) whereConditions.difficulty = difficulty;
+        const qb = this.recipeRepo
+            .createQueryBuilder('recipe')
+            .leftJoinAndSelect('recipe.author', 'author')
+            .leftJoinAndSelect('recipe.dish_types', 'recipe_dish_types')
+            .leftJoinAndSelect('recipe_dish_types.dish_type', 'dish_type')
+            .leftJoinAndSelect('recipe.ingredients', 'recipe_ingredients')
+            .leftJoinAndSelect('recipe_ingredients.ingredient', 'ingredient')
+            .leftJoinAndSelect('recipe.steps', 'steps')
+            .take(limit)
+            .skip(offset);
 
-        return await this.recipeRepo.find({
-            where: whereConditions,
-            take: limit,
-            skip: offset,
-            relations: [
-                'author',
-                'dish_types',
-                'dish_types.dish_type',
-                'ingredients',
-                'ingredients.ingredient',
-                'steps',
-            ],
-        });
+        if (difficulty)
+            qb.andWhere('recipe.difficulty = :difficulty', { difficulty });
+        if (authorId) qb.andWhere('author.id = :authorId', { authorId });
+        if (dishTypeId)
+            qb.andWhere('dish_type.id = :dishTypeId', { dishTypeId });
+        if (search) {
+            qb.andWhere(
+                '(recipe.title ILIKE :search OR recipe.description ILIKE :search)',
+                { search: `%${search}%` },
+            );
+        }
+
+        return await qb.getMany();
     }
 
     @Post('/')
@@ -175,7 +186,6 @@ export class RecipeController {
         return null;
     }
 
-    // Лайки
     @Post('/:id/like')
     @HttpCode(201)
     @UseBefore(authMiddleware)
@@ -203,7 +213,6 @@ export class RecipeController {
         return null;
     }
 
-    // Закладки
     @Post('/:id/save')
     @HttpCode(201)
     @UseBefore(authMiddleware)
@@ -231,7 +240,6 @@ export class RecipeController {
         return null;
     }
 
-    // Комментарии
     @Get('/:id/comments')
     async getComments(@Param('id') id: string) {
         return await this.commentRepo.find({
