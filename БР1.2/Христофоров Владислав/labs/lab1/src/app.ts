@@ -8,6 +8,13 @@ import SETTINGS from './config/settings';
 import dataSource from './config/data-source';
 import { useSwagger } from './swagger';
 import AuthController from './controllers/auth.controller';
+import { UserController } from './controllers/user.controller';
+import { RecipeController } from './controllers/recipe.controller';
+import { BlogPostController } from './controllers/blog-post.controller';
+import { CommentController } from './controllers/comment.controller';
+import { DictionaryController } from './controllers/dictionary.controller';
+import { AdminController } from './controllers/admin.controller';
+import { MediaController } from './controllers/media.controller';
 
 class App {
     public port: number;
@@ -41,8 +48,16 @@ class App {
 
         const options = {
             routePrefix: SETTINGS.APP_API_PREFIX,
-            // controllers: [__dirname + this.controllersPath],
-            controllers: [AuthController],
+            controllers: [
+                AuthController,
+                UserController,
+                RecipeController,
+                BlogPostController,
+                CommentController,
+                DictionaryController,
+                AdminController,
+                MediaController,
+            ],
             validation: true,
             classTransformer: true,
             defaultErrorHandler: true,

@@ -54,7 +54,7 @@ class AuthController extends BaseController {
             return { message: 'User is not found' };
         }
 
-        const userPassword = user.password;
+        const userPassword = user.password_hash;
         const isPasswordCorrect = checkPassword(userPassword, password);
 
         if (!isPasswordCorrect) {
@@ -62,7 +62,7 @@ class AuthController extends BaseController {
         }
 
         const accessToken = jwt.sign(
-            { user: { id: user.id } },
+            { user: { id: user.id, role: user.role } },
             SETTINGS.JWT_SECRET_KEY,
             {
                 expiresIn: SETTINGS.JWT_ACCESS_TOKEN_LIFETIME,

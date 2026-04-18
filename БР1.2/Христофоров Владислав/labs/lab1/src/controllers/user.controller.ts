@@ -1,72 +1,97 @@
 import {
+    JsonController,
+    Get,
+    Patch,
+    Post,
+    Delete,
     Param,
     Body,
-    Get,
-    Post,
-    Patch,
-    UseBefore,
+    HttpError,
     Req,
-    Res,
+    UseBefore,
+    HttpCode,
 } from 'routing-controllers';
-import { ObjectLiteral } from 'typeorm';
-
-import EntityController from '../common/entity-controller';
-import BaseController from '../common/base-controller';
-
+import dataSource from '../config/data-source';
+import authMiddleware from '../middlewares/auth.middleware';
 import { User } from '../models/user.entity';
+import { Subscription } from '../models/subscription.entity';
+import { SavedRecipe } from '../models/saved-recipe.entity';
+import { UpdateUserDto } from '../dto/update-user.dto';
+import { Request } from 'express';
 
-import authMiddleware, {
-    RequestWithUser,
-} from '../middlewares/auth.middleware';
-
-@EntityController({
-    baseRoute: '/users',
-    entity: User,
-})
-class UserController extends BaseController {
-    @Get('')
-    async getAll() {
-        return await this.repository.find();
-    }
-
-    @Post('')
-    async create(@Body() user: User) {
-        const createdUser = this.repository.create(user);
-        const results = await this.repository.save(createdUser);
-
-        return results;
-    }
+@JsonController('/users')
+export class UserController {
+    private userRepo = dataSource.getRepository(User);
+    private subRepo = dataSource.getRepository(Subscription);
+    private savedRepo = dataSource.getRepository(SavedRecipe);
 
     @Get('/me')
     @UseBefore(authMiddleware)
-    async me(@Req() request: RequestWithUser) {
-        const { user } = request;
-        const results = await this.repository.findOneBy({ id: user.id });
+    async me(@Req() req: Request) {
+        const user = await this.userRepo.findOneBy({
+            id: (req as any).user.id,
+        });
+        if (!user) throw new HttpError(404, 'Пользователь не найден');
+        return user;
+    }
 
-        return results;
+    @Patch('/me')
+    @UseBefore(authMiddleware)
+    async updateMe(@Body() body: UpdateUserDto, @Req() req: Request) {
+        const user = await this.userRepo.findOneBy({
+            id: (req as any).user.id,
+        });
+        if (!user) throw new HttpError(404, 'Пользователь не найден');
+        Object.assign(user, body);
+        return await this.userRepo.save(user);
+    }
+
+    @Get('/me/saved-recipes')
+    @UseBefore(authMiddleware)
+    async getSavedRecipes(@Req() req: Request) {
+        const saved = await this.savedRepo.find({
+            where: { user: { id: (req as any).user.id } },
+            relations: ['recipe'],
+        });
+        return saved.map((s) => s.recipe);
     }
 
     @Get('/:id')
-    @UseBefore(authMiddleware)
-    async getById(@Param('id') id: number): Promise<ObjectLiteral> {
-        const results = await this.repository.findOneBy({ id });
-
-        return results;
+    async getById(@Param('id') id: string) {
+        const user = await this.userRepo.findOneBy({ id });
+        if (!user) throw new HttpError(404, 'Пользователь не найден');
+        return user;
     }
 
-    @Patch('/:id')
+    @Post('/:id/subscribe')
+    @HttpCode(201)
     @UseBefore(authMiddleware)
-    async update(
-        @Param('id') id: number,
-        @Body() user: Partial<User>,
-    ): Promise<ObjectLiteral> {
-        const userForUpdate = await this.repository.findOneBy({ id });
-        Object.assign(userForUpdate, user);
+    async subscribe(@Param('id') id: string, @Req() req: Request) {
+        const followerId = (req as any).user.id;
+        if (followerId === id)
+            throw new HttpError(400, 'Нельзя подписаться на себя');
+        const existing = await this.subRepo.findOneBy({
+            follower: { id: followerId },
+            following: { id },
+        });
+        if (!existing)
+            await this.subRepo.save(
+                this.subRepo.create({
+                    follower: { id: followerId },
+                    following: { id },
+                }),
+            );
+        return { message: 'Подписка оформлена' };
+    }
 
-        const results = await this.repository.save(userForUpdate);
-
-        return results;
+    @Delete('/:id/subscribe')
+    @HttpCode(204)
+    @UseBefore(authMiddleware)
+    async unsubscribe(@Param('id') id: string, @Req() req: Request) {
+        await this.subRepo.delete({
+            follower: { id: (req as any).user.id },
+            following: { id },
+        });
+        return null;
     }
 }
-
-export default UserController;
