@@ -1,0 +1,1960 @@
+{
+  "info": {
+    "_postman_id": "09ed549f-087a-465d-9e81-e556714de763",
+    "name": "FitnessAPI Test",
+    "description": "Run the folder in Postman Collection Runner. The scenario covers registration, login, profile update, progress check, random training selection, training session execution, and final progress verification.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "29491211"
+  },
+  "item": [
+    {
+      "name": "User Profile  Test",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const suffix = Date.now().toString();",
+                  "pm.collectionVariables.set('username', `postman_${suffix}`);",
+                  "pm.collectionVariables.set('email', `postman_${suffix}@example.com`);",
+                  "pm.collectionVariables.set('password', 'Postman123!');",
+                  "pm.collectionVariables.set('confirmPassword', 'Postman123!');"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Register returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "let json;",
+                  "pm.test('Response body is valid JSON', function () {",
+                  "    json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('object');",
+                  "});",
+                  "",
+                  "pm.test('Register returns auth payload', function () {",
+                  "    pm.expect(json).to.have.property('accessToken').that.is.a('string').and.not.empty;",
+                  "    pm.expect(json).to.have.property('refreshToken').that.is.a('string').and.not.empty;",
+                  "    pm.expect(json).to.have.nested.property('user.userId');",
+                  "    pm.expect(json).to.have.nested.property('user.username', pm.collectionVariables.get('username'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('userId', String(json.user.userId));",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.refreshToken);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"confirmPassword\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update profile",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const existingFirstName = pm.collectionVariables.get('firstName');",
+                  "const existingLastName = pm.collectionVariables.get('lastName');",
+                  "const suffix = (pm.collectionVariables.get('username') || Date.now().toString()).replace(/[^a-zA-Z0-9]/g, '').slice(-6);",
+                  "",
+                  "if (!existingFirstName) {",
+                  "    pm.collectionVariables.set('firstName', 'Postman');",
+                  "}",
+                  "",
+                  "if (!existingLastName) {",
+                  "    pm.collectionVariables.set('lastName', `Runner${suffix}`);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Profile update returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Profile contains provided first and last name', function () {",
+                  "    pm.expect(json.firstName).to.eql(pm.collectionVariables.get('firstName'));",
+                  "    pm.expect(json.lastName).to.eql(pm.collectionVariables.get('lastName'));",
+                  "    pm.expect(json.user.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('profileId', String(json.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"{{firstName}}\",\n  \"lastName\": \"{{lastName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profiles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get own profile",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const existingFirstName = pm.collectionVariables.get('firstName');",
+                  "const existingLastName = pm.collectionVariables.get('lastName');",
+                  "const suffix = (pm.collectionVariables.get('username') || Date.now().toString()).replace(/[^a-zA-Z0-9]/g, '').slice(-6);",
+                  "",
+                  "if (!existingFirstName) {",
+                  "    pm.collectionVariables.set('firstName', 'Postman');",
+                  "}",
+                  "",
+                  "if (!existingLastName) {",
+                  "    pm.collectionVariables.set('lastName', `Runner${suffix}`);",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Profile update returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Profile contains provided first and last name', function () {",
+                  "    pm.expect(json.firstName).to.eql(pm.collectionVariables.get('firstName'));",
+                  "    pm.expect(json.lastName).to.eql(pm.collectionVariables.get('lastName'));",
+                  "    pm.expect(json.user.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('profileId', String(json.id));"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"{{firstName}}\",\n  \"lastName\": \"{{lastName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profiles/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profiles",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Create Article Test",
+      "item": [
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const username = (pm.collectionVariables.get('username') || '').trim();",
+                  "const password = (pm.collectionVariables.get('password') || '').trim();",
+                  "",
+                  "if (!username) {",
+                  "    throw new Error(\"Set collection variable 'username' to an existing TRAINER or ADMIN account username.\");",
+                  "}",
+                  "",
+                  "if (!password) {",
+                  "    throw new Error(\"Set collection variable 'password' to the account password.\");",
+                  "}",
+                  "",
+                  "const runId = Date.now().toString();",
+                  "pm.collectionVariables.set('runId', runId);",
+                  "pm.collectionVariables.set('videoTitle', `Postman video ${runId}`);",
+                  "pm.collectionVariables.set('videoUrl', `https://example.com/videos/postman-${runId}`);",
+                  "pm.collectionVariables.set('articleTitle', `Postman article ${runId}`);",
+                  "pm.collectionVariables.set('articleDescription', `Article created from Postman flow ${runId}`);",
+                  "pm.collectionVariables.set('accessToken', '');",
+                  "pm.collectionVariables.set('refreshToken', '');",
+                  "pm.collectionVariables.set('userId', '');",
+                  "pm.collectionVariables.set('userRole', '');",
+                  "pm.collectionVariables.set('videoId', '');",
+                  "pm.collectionVariables.set('articleId', '');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const allowedRoles = ['TRAINER', 'ADMIN'];",
+                  "",
+                  "pm.test('Login returns access and refresh tokens', function () {",
+                  "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.refreshToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.user.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});",
+                  "",
+                  "pm.test('Account role can create videos and articles', function () {",
+                  "    pm.expect(allowedRoles).to.include(json.user.role);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "pm.collectionVariables.set('userId', String(json.user.userId));",
+                  "pm.collectionVariables.set('userRole', json.user.role);",
+                  "",
+                  "pm.execution.setNextRequest('Create Video');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Video",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Video creation returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Video payload matches generated data', function () {",
+                  "    pm.expect(String(json.id)).to.not.be.empty;",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('videoTitle'));",
+                  "    pm.expect(json.url).to.eql(pm.collectionVariables.get('videoUrl'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('videoId', String(json.id));",
+                  "",
+                  "pm.execution.setNextRequest('Create Article');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{videoTitle}}\",\n  \"url\": \"{{videoUrl}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/videos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "videos"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Article",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Article creation returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const videos = Array.isArray(json.videos) ? json.videos : [];",
+                  "",
+                  "pm.test('Article payload matches generated data', function () {",
+                  "    pm.expect(String(json.id)).to.not.be.empty;",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('articleTitle'));",
+                  "    pm.expect(json.description).to.eql(pm.collectionVariables.get('articleDescription'));",
+                  "    pm.expect(json.author.username).to.eql(pm.collectionVariables.get('username'));",
+                  "    pm.expect(videos.length).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('articleId', String(json.id));",
+                  "",
+                  "pm.execution.setNextRequest('Add Video To Article');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{articleTitle}}\",\n  \"description\": \"{{articleDescription}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/articles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "articles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Video To Article",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Adding video to article returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const videos = Array.isArray(json.videos) ? json.videos : [];",
+                  "const videoId = pm.collectionVariables.get('videoId');",
+                  "",
+                  "pm.test('Article contains the created video', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('articleId'));",
+                  "    pm.expect(videos.some(video => String(video.id) === videoId)).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest('Verify Article With Video');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/articles/{{articleId}}/videos/{{videoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "articles",
+                "{{articleId}}",
+                "videos",
+                "{{videoId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Article With Video",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Article lookup returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const videos = Array.isArray(json.videos) ? json.videos : [];",
+                  "const videoId = pm.collectionVariables.get('videoId');",
+                  "",
+                  "pm.test('Fetched article keeps the created video', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('articleId'));",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('articleTitle'));",
+                  "    pm.expect(videos.some(video => String(video.id) === videoId && video.url === pm.collectionVariables.get('videoUrl'))).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest(null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/articles/{{articleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "articles",
+                "{{articleId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Create Training Test",
+      "item": [
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const username = (pm.collectionVariables.get('username') || '').trim();",
+                  "const password = (pm.collectionVariables.get('password') || '').trim();",
+                  "",
+                  "if (!username) {",
+                  "    throw new Error(\"Set collection variable 'username' to an existing TRAINER or ADMIN account username.\");",
+                  "}",
+                  "",
+                  "if (!password) {",
+                  "    throw new Error(\"Set collection variable 'password' to the account password.\");",
+                  "}",
+                  "",
+                  "const runId = Date.now().toString();",
+                  "const exerciseMuscleGroup = (pm.collectionVariables.get('exerciseMuscleGroup') || 'FULL_BODY').trim();",
+                  "const exerciseLevel = (pm.collectionVariables.get('exerciseLevel') || 'BEGINNER').trim();",
+                  "const trainingLevel = (pm.collectionVariables.get('trainingLevel') || 'BEGINNER').trim();",
+                  "",
+                  "pm.collectionVariables.set('runId', runId);",
+                  "pm.collectionVariables.set('exerciseMuscleGroup', exerciseMuscleGroup);",
+                  "pm.collectionVariables.set('exerciseLevel', exerciseLevel);",
+                  "pm.collectionVariables.set('trainingLevel', trainingLevel);",
+                  "pm.collectionVariables.set('videoTitle', `Postman video ${runId}`);",
+                  "pm.collectionVariables.set('videoUrl', `https://example.com/videos/postman-${runId}`);",
+                  "pm.collectionVariables.set('exerciseTitle', `Postman exercise ${runId}`);",
+                  "pm.collectionVariables.set('exerciseDescription', `Exercise created from Postman flow ${runId}`);",
+                  "pm.collectionVariables.set('trainingTitle', `Postman training ${runId}`);",
+                  "pm.collectionVariables.set('trainingDescription', `Training created from Postman flow ${runId}`);",
+                  "pm.collectionVariables.set('accessToken', '');",
+                  "pm.collectionVariables.set('refreshToken', '');",
+                  "pm.collectionVariables.set('userId', '');",
+                  "pm.collectionVariables.set('userRole', '');",
+                  "pm.collectionVariables.set('videoId', '');",
+                  "pm.collectionVariables.set('exerciseId', '');",
+                  "pm.collectionVariables.set('trainingId', '');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const allowedRoles = ['TRAINER', 'ADMIN'];",
+                  "",
+                  "pm.test('Login returns access and refresh tokens', function () {",
+                  "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.refreshToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.user.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});",
+                  "",
+                  "pm.test('Account role can create videos, exercises, and trainings', function () {",
+                  "    pm.expect(allowedRoles).to.include(json.user.role);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "pm.collectionVariables.set('userId', String(json.user.userId));",
+                  "pm.collectionVariables.set('userRole', json.user.role);",
+                  "",
+                  "pm.execution.setNextRequest('Create Video');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Video",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Video creation returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Video payload matches generated data', function () {",
+                  "    pm.expect(String(json.id)).to.not.be.empty;",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('videoTitle'));",
+                  "    pm.expect(json.url).to.eql(pm.collectionVariables.get('videoUrl'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('videoId', String(json.id));",
+                  "",
+                  "pm.execution.setNextRequest('Create Exercise');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{videoTitle}}\",\n  \"url\": \"{{videoUrl}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/videos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "videos"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Exercise",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exercise creation returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const videos = Array.isArray(json.videos) ? json.videos : [];",
+                  "",
+                  "pm.test('Exercise payload matches generated data', function () {",
+                  "    pm.expect(String(json.id)).to.not.be.empty;",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('exerciseTitle'));",
+                  "    pm.expect(json.description).to.eql(pm.collectionVariables.get('exerciseDescription'));",
+                  "    pm.expect(json.muscleGroup).to.eql(pm.collectionVariables.get('exerciseMuscleGroup'));",
+                  "    pm.expect(json.trainingLevel).to.eql(pm.collectionVariables.get('exerciseLevel'));",
+                  "    pm.expect(json.author.username).to.eql(pm.collectionVariables.get('username'));",
+                  "    pm.expect(videos.length).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('exerciseId', String(json.id));",
+                  "",
+                  "pm.execution.setNextRequest('Add Video To Exercise');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{exerciseTitle}}\",\n  \"description\": \"{{exerciseDescription}}\",\n  \"muscleGroup\": \"{{exerciseMuscleGroup}}\",\n  \"trainingLevel\": \"{{exerciseLevel}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/exercises",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exercises"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Video To Exercise",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Adding video to exercise returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const videos = Array.isArray(json.videos) ? json.videos : [];",
+                  "const videoId = pm.collectionVariables.get('videoId');",
+                  "",
+                  "pm.test('Exercise contains the created video', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('exerciseId'));",
+                  "    pm.expect(videos.some(video => String(video.id) === videoId)).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest('Verify Exercise With Video');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/exercises/{{exerciseId}}/videos/{{videoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exercises",
+                "{{exerciseId}}",
+                "videos",
+                "{{videoId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Exercise With Video",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exercise lookup returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const videos = Array.isArray(json.videos) ? json.videos : [];",
+                  "const videoId = pm.collectionVariables.get('videoId');",
+                  "",
+                  "pm.test('Fetched exercise keeps the created video', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('exerciseId'));",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('exerciseTitle'));",
+                  "    pm.expect(videos.some(video => String(video.id) === videoId && video.url === pm.collectionVariables.get('videoUrl'))).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest('Create Training');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/exercises/{{exerciseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exercises",
+                "{{exerciseId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Training",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Training creation returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const exercises = Array.isArray(json.exercises) ? json.exercises : [];",
+                  "",
+                  "pm.test('Training payload matches generated data', function () {",
+                  "    pm.expect(String(json.id)).to.not.be.empty;",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('trainingTitle'));",
+                  "    pm.expect(json.description).to.eql(pm.collectionVariables.get('trainingDescription'));",
+                  "    pm.expect(json.trainingLevel).to.eql(pm.collectionVariables.get('trainingLevel'));",
+                  "    pm.expect(json.author.username).to.eql(pm.collectionVariables.get('username'));",
+                  "    pm.expect(exercises.length).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('trainingId', String(json.id));",
+                  "",
+                  "pm.execution.setNextRequest('Add Exercise To Training');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{trainingTitle}}\",\n  \"description\": \"{{trainingDescription}}\",\n  \"trainingLevel\": \"{{trainingLevel}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trainings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Exercise To Training",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Adding exercise to training returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const exercises = Array.isArray(json.exercises) ? json.exercises : [];",
+                  "const exerciseId = pm.collectionVariables.get('exerciseId');",
+                  "",
+                  "pm.test('Training contains the created exercise', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('trainingId'));",
+                  "    pm.expect(exercises.some(item => String(item.exercise.id) === exerciseId)).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest('Verify Training With Exercise');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/trainings/{{trainingId}}/exercises/{{exerciseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainings",
+                "{{trainingId}}",
+                "exercises",
+                "{{exerciseId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Training With Exercise",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Training lookup returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const exercises = Array.isArray(json.exercises) ? json.exercises : [];",
+                  "const exerciseId = pm.collectionVariables.get('exerciseId');",
+                  "",
+                  "pm.test('Fetched training keeps the created exercise', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('trainingId'));",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('trainingTitle'));",
+                  "    pm.expect(exercises.some(item => String(item.exercise.id) === exerciseId && item.exercise.title === pm.collectionVariables.get('exerciseTitle'))).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest(null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/trainings/{{trainingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainings",
+                "{{trainingId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User Training Test",
+      "item": [
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const username = (pm.collectionVariables.get('username') || '').trim();",
+                  "const password = (pm.collectionVariables.get('password') || '').trim();",
+                  "",
+                  "if (!username) {",
+                  "    throw new Error(\"Set collection variable 'username' to an existing account username.\");",
+                  "}",
+                  "",
+                  "if (!password) {",
+                  "    throw new Error(\"Set collection variable 'password' to the account password.\");",
+                  "}",
+                  "",
+                  "const requestedTrainingId = (pm.collectionVariables.get('requestedTrainingId') || '').trim();",
+                  "",
+                  "pm.collectionVariables.set('requestedTrainingId', requestedTrainingId);",
+                  "pm.collectionVariables.set('accessToken', '');",
+                  "pm.collectionVariables.set('refreshToken', '');",
+                  "pm.collectionVariables.set('userId', '');",
+                  "pm.collectionVariables.set('trainingId', '');",
+                  "pm.collectionVariables.set('trainingTitle', '');",
+                  "pm.collectionVariables.set('plannedExerciseCount', '0');",
+                  "pm.collectionVariables.set('sessionId', '');",
+                  "pm.collectionVariables.set('sessionExerciseIds', '[]');",
+                  "pm.collectionVariables.set('sessionExerciseTitles', '[]');",
+                  "pm.collectionVariables.set('sessionExerciseCount', '0');",
+                  "pm.collectionVariables.set('currentExerciseIndex', '0');",
+                  "pm.collectionVariables.set('currentSessionExerciseId', '');",
+                  "pm.collectionVariables.set('currentExerciseTitle', '');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Login returns access and refresh tokens', function () {",
+                  "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.refreshToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.user.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "pm.collectionVariables.set('userId', String(json.user.userId));",
+                  "",
+                  "pm.execution.setNextRequest('Get Progress Before');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Progress Before",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Progress before returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.collectionVariables.set('beforeTotalSessions', String(json.totalSessions));",
+                  "pm.collectionVariables.set('beforeActiveSessions', String(json.activeSessions));",
+                  "pm.collectionVariables.set('beforeCompletedSessions', String(json.completedSessions));",
+                  "pm.collectionVariables.set('beforeAbandonedSessions', String(json.abandonedSessions));",
+                  "pm.collectionVariables.set('beforeTotalExercises', String(json.totalExercises));",
+                  "pm.collectionVariables.set('beforeNotStartedExercises', String(json.notStartedExercises));",
+                  "pm.collectionVariables.set('beforeInProgressExercises', String(json.inProgressExercises));",
+                  "pm.collectionVariables.set('beforeCompletedExercises', String(json.completedExercises));",
+                  "pm.collectionVariables.set('beforeSkippedExercises', String(json.skippedExercises));",
+                  "",
+                  "pm.execution.setNextRequest('List Trainings');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/profiles/me/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profiles",
+                "me",
+                "progress"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Trainings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Training list returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const trainings = Array.isArray(json.content) ? json.content : [];",
+                  "const trainingsWithExercises = trainings.filter(training => Array.isArray(training.exercises) && training.exercises.length > 0);",
+                  "const requestedTrainingId = (pm.collectionVariables.get('requestedTrainingId') || '').trim();",
+                  "",
+                  "pm.test('There is at least one training with exercises', function () {",
+                  "    pm.expect(trainingsWithExercises.length).to.be.above(0);",
+                  "});",
+                  "",
+                  "let selectedTraining;",
+                  "",
+                  "if (requestedTrainingId) {",
+                  "    selectedTraining = trainingsWithExercises.find(training => String(training.id) === requestedTrainingId);",
+                  "",
+                  "    pm.test('Requested training is present in the fetched page and has exercises', function () {",
+                  "        pm.expect(selectedTraining, `Training ${requestedTrainingId} not found in page 0 with size ${pm.collectionVariables.get('trainingsPageSize') || '100'} or it has no exercises.`).to.exist;",
+                  "    });",
+                  "} else {",
+                  "    const randomIndex = Math.floor(Math.random() * trainingsWithExercises.length);",
+                  "    selectedTraining = trainingsWithExercises[randomIndex];",
+                  "}",
+                  "",
+                  "pm.collectionVariables.set('trainingId', String(selectedTraining.id));",
+                  "pm.collectionVariables.set('trainingTitle', selectedTraining.title);",
+                  "pm.collectionVariables.set('plannedExerciseCount', String(selectedTraining.exercises.length));",
+                  "",
+                  "pm.execution.setNextRequest('Get Selected Training');"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "packages": {},
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/trainings?page=0&size=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainings"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Selected Training",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Selected training returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const exercises = Array.isArray(json.exercises) ? json.exercises : [];",
+                  "",
+                  "pm.test('Selected training matches chosen training id and has exercises', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('trainingId'));",
+                  "    pm.expect(json.title).to.eql(pm.collectionVariables.get('trainingTitle'));",
+                  "    pm.expect(exercises.length).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('plannedExerciseCount', String(exercises.length));",
+                  "",
+                  "pm.execution.setNextRequest('Create Training Session');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/trainings/{{trainingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainings",
+                "{{trainingId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Training Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Training session creation returns 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Training session is in progress for selected training', function () {",
+                  "    pm.expect(String(json.training.id)).to.eql(pm.collectionVariables.get('trainingId'));",
+                  "    pm.expect(json.trainingStatus).to.eql('IN_PROGRESS');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('sessionId', String(json.id));",
+                  "",
+                  "pm.execution.setNextRequest('Get Session Exercises');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/trainings/{{trainingId}}/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainings",
+                "{{trainingId}}",
+                "sessions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Exercises",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Session exercises returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const content = Array.isArray(json.content) ? json.content.slice() : [];",
+                  "content.sort((left, right) => left.trainingExercise.orderIndex - right.trainingExercise.orderIndex);",
+                  "const plannedExerciseCount = Number(pm.collectionVariables.get('plannedExerciseCount') || '0');",
+                  "",
+                  "pm.test('Session contains exercises to execute', function () {",
+                  "    pm.expect(content.length).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Session exercise count matches selected training', function () {",
+                  "    pm.expect(content.length).to.eql(plannedExerciseCount);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('sessionExerciseIds', JSON.stringify(content.map(item => item.id)));",
+                  "pm.collectionVariables.set('sessionExerciseTitles', JSON.stringify(content.map(item => item.trainingExercise.exercise.title)));",
+                  "pm.collectionVariables.set('sessionExerciseCount', String(content.length));",
+                  "pm.collectionVariables.set('currentExerciseIndex', '0');",
+                  "",
+                  "pm.execution.setNextRequest('Start Current Session Exercise');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/training-sessions/{{sessionId}}/exercises?page=0&size=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "training-sessions",
+                "{{sessionId}}",
+                "exercises"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Start Current Session Exercise",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ids = JSON.parse(pm.collectionVariables.get('sessionExerciseIds') || '[]');",
+                  "const titles = JSON.parse(pm.collectionVariables.get('sessionExerciseTitles') || '[]');",
+                  "const index = Number(pm.collectionVariables.get('currentExerciseIndex') || '0');",
+                  "",
+                  "if (!ids.length) {",
+                  "    throw new Error('sessionExerciseIds is empty. Run Get Session Exercises first.');",
+                  "}",
+                  "",
+                  "if (index >= ids.length) {",
+                  "    throw new Error('currentExerciseIndex is out of bounds.');",
+                  "}",
+                  "",
+                  "pm.collectionVariables.set('currentSessionExerciseId', String(ids[index]));",
+                  "pm.collectionVariables.set('currentExerciseTitle', titles[index] || 'Unknown exercise');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Start exercise returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Started exercise is in progress', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('currentSessionExerciseId'));",
+                  "    pm.expect(json.exerciseStatus).to.eql('IN_PROGRESS');",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest('Complete Current Session Exercise');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/training-session-exercises/{{currentSessionExerciseId}}/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "training-session-exercises",
+                "{{currentSessionExerciseId}}",
+                "start"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Current Session Exercise",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ids = JSON.parse(pm.collectionVariables.get('sessionExerciseIds') || '[]');",
+                  "const index = Number(pm.collectionVariables.get('currentExerciseIndex') || '0');",
+                  "",
+                  "if (!ids.length) {",
+                  "    throw new Error('sessionExerciseIds is empty. Run Get Session Exercises first.');",
+                  "}",
+                  "",
+                  "if (index >= ids.length) {",
+                  "    throw new Error('currentExerciseIndex is out of bounds.');",
+                  "}",
+                  "",
+                  "pm.collectionVariables.set('currentSessionExerciseId', String(ids[index]));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Complete exercise returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Completed exercise is marked as completed', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('currentSessionExerciseId'));",
+                  "    pm.expect(json.exerciseStatus).to.eql('COMPLETED');",
+                  "});",
+                  "",
+                  "const ids = JSON.parse(pm.collectionVariables.get('sessionExerciseIds') || '[]');",
+                  "let index = Number(pm.collectionVariables.get('currentExerciseIndex') || '0');",
+                  "index += 1;",
+                  "pm.collectionVariables.set('currentExerciseIndex', String(index));",
+                  "",
+                  "if (index < ids.length) {",
+                  "    pm.execution.setNextRequest('Start Current Session Exercise');",
+                  "} else {",
+                  "    pm.execution.setNextRequest('Complete Training Session');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/training-session-exercises/{{currentSessionExerciseId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "training-session-exercises",
+                "{{currentSessionExerciseId}}",
+                "complete"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Training Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Complete training session returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Training session is completed', function () {",
+                  "    pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('sessionId'));",
+                  "    pm.expect(json.trainingStatus).to.eql('COMPLETED');",
+                  "    pm.expect(json.completedAt).to.not.eql(null);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest('Get Progress After');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/training-sessions/{{sessionId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "training-sessions",
+                "{{sessionId}}",
+                "complete"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Progress After",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Progress after returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const beforeTotalSessions = Number(pm.collectionVariables.get('beforeTotalSessions') || '0');",
+                  "const beforeActiveSessions = Number(pm.collectionVariables.get('beforeActiveSessions') || '0');",
+                  "const beforeCompletedSessions = Number(pm.collectionVariables.get('beforeCompletedSessions') || '0');",
+                  "const beforeAbandonedSessions = Number(pm.collectionVariables.get('beforeAbandonedSessions') || '0');",
+                  "const beforeTotalExercises = Number(pm.collectionVariables.get('beforeTotalExercises') || '0');",
+                  "const beforeNotStartedExercises = Number(pm.collectionVariables.get('beforeNotStartedExercises') || '0');",
+                  "const beforeInProgressExercises = Number(pm.collectionVariables.get('beforeInProgressExercises') || '0');",
+                  "const beforeCompletedExercises = Number(pm.collectionVariables.get('beforeCompletedExercises') || '0');",
+                  "const beforeSkippedExercises = Number(pm.collectionVariables.get('beforeSkippedExercises') || '0');",
+                  "const sessionExerciseCount = Number(pm.collectionVariables.get('sessionExerciseCount') || '0');",
+                  "",
+                  "pm.test('Completed sessions increased by one and total sessions increased by one', function () {",
+                  "    pm.expect(json.totalSessions).to.eql(beforeTotalSessions + 1);",
+                  "    pm.expect(json.completedSessions).to.eql(beforeCompletedSessions + 1);",
+                  "});",
+                  "",
+                  "pm.test('Active and abandoned session counters return to baseline', function () {",
+                  "    pm.expect(json.activeSessions).to.eql(beforeActiveSessions);",
+                  "    pm.expect(json.abandonedSessions).to.eql(beforeAbandonedSessions);",
+                  "});",
+                  "",
+                  "pm.test('Completed exercises increased by the executed session exercise count', function () {",
+                  "    pm.expect(json.totalExercises).to.eql(beforeTotalExercises + sessionExerciseCount);",
+                  "    pm.expect(json.completedExercises).to.eql(beforeCompletedExercises + sessionExerciseCount);",
+                  "});",
+                  "",
+                  "pm.test('Not started, in progress, and skipped exercise counters return to baseline', function () {",
+                  "    pm.expect(json.notStartedExercises).to.eql(beforeNotStartedExercises);",
+                  "    pm.expect(json.inProgressExercises).to.eql(beforeInProgressExercises);",
+                  "    pm.expect(json.skippedExercises).to.eql(beforeSkippedExercises);",
+                  "});",
+                  "",
+                  "pm.execution.setNextRequest(null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/profiles/me/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profiles",
+                "me",
+                "progress"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "firstName",
+      "value": ""
+    },
+    {
+      "key": "lastName",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "trainingId",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "sessionExerciseIds",
+      "value": "[]"
+    },
+    {
+      "key": "sessionExerciseTitles",
+      "value": "[]"
+    },
+    {
+      "key": "currentExerciseIndex",
+      "value": "0"
+    },
+    {
+      "key": "currentSessionExerciseId",
+      "value": ""
+    },
+    {
+      "key": "confirmPassword",
+      "value": ""
+    },
+    {
+      "key": "registeredUserId",
+      "value": ""
+    },
+    {
+      "key": "registeredAccessToken",
+      "value": ""
+    },
+    {
+      "key": "registeredRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "profileId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "trainingTitle",
+      "value": ""
+    },
+    {
+      "key": "plannedExerciseCount",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "videoTitle",
+      "value": ""
+    },
+    {
+      "key": "videoUrl",
+      "value": ""
+    },
+    {
+      "key": "articleTitle",
+      "value": ""
+    },
+    {
+      "key": "articleDescription",
+      "value": ""
+    },
+    {
+      "key": "userRole",
+      "value": ""
+    },
+    {
+      "key": "videoId",
+      "value": ""
+    },
+    {
+      "key": "articleId",
+      "value": ""
+    },
+    {
+      "key": "requestedTrainingId",
+      "value": ""
+    },
+    {
+      "key": "sessionExerciseCount",
+      "value": ""
+    },
+    {
+      "key": "currentExerciseTitle",
+      "value": ""
+    },
+    {
+      "key": "beforeTotalSessions",
+      "value": ""
+    },
+    {
+      "key": "beforeActiveSessions",
+      "value": ""
+    },
+    {
+      "key": "beforeCompletedSessions",
+      "value": ""
+    },
+    {
+      "key": "beforeAbandonedSessions",
+      "value": ""
+    },
+    {
+      "key": "beforeTotalExercises",
+      "value": ""
+    },
+    {
+      "key": "beforeNotStartedExercises",
+      "value": ""
+    },
+    {
+      "key": "beforeInProgressExercises",
+      "value": ""
+    },
+    {
+      "key": "beforeCompletedExercises",
+      "value": ""
+    },
+    {
+      "key": "beforeSkippedExercises",
+      "value": ""
+    },
+    {
+      "key": "trainingSessionId",
+      "value": ""
+    },
+    {
+      "key": "currentTrainingId",
+      "value": ""
+    },
+    {
+      "key": "currentTrainingTitle",
+      "value": ""
+    },
+    {
+      "key": "sessionExerciseStatuses",
+      "value": ""
+    },
+    {
+      "key": "currentSessionExerciseTitle",
+      "value": ""
+    },
+    {
+      "key": "exerciseMuscleGroup",
+      "value": ""
+    },
+    {
+      "key": "exerciseLevel",
+      "value": ""
+    },
+    {
+      "key": "trainingLevel",
+      "value": ""
+    },
+    {
+      "key": "exerciseTitle",
+      "value": ""
+    },
+    {
+      "key": "exerciseDescription",
+      "value": ""
+    },
+    {
+      "key": "trainingDescription",
+      "value": ""
+    },
+    {
+      "key": "exerciseId",
+      "value": ""
+    }
+  ]
+}
