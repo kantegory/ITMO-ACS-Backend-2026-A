@@ -1,0 +1,461 @@
+{
+  "info": {
+    "name": "Restaurant Booking API - Main Flow",
+    "description": "Комплексный сценарий по основному процессу приложения бронирования столиков: регистрация -> вход -> профиль -> список ресторанов -> фильтрация -> просмотр ресторана -> меню -> отзывы -> столики -> проверка доступности -> бронирование -> список бронирований -> просмотр бронирования -> отмена -> проверка отмены.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080/api" },
+    { "key": "email", "value": "" },
+    { "key": "password", "value": "Password123!" },
+    { "key": "full_name", "value": "Artemiy Preobrazhenskiy" },
+    { "key": "phone", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "restaurant_id", "value": "" },
+    { "key": "restaurant_city", "value": "" },
+    { "key": "restaurant_cuisine_type", "value": "" },
+    { "key": "table_id", "value": "" },
+    { "key": "booking_id", "value": "" },
+    { "key": "booking_date", "value": "" },
+    { "key": "start_time", "value": "18:00:00" },
+    { "key": "end_time", "value": "20:00:00" },
+    { "key": "guests_count", "value": "2" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('email')) {",
+          "  const ts = Date.now();",
+          "  pm.collectionVariables.set('email', `postman_${ts}@example.com`);",
+          "  pm.collectionVariables.set('phone', `+7${ts.toString().slice(-10)}`);",
+          "}",
+          "if (!pm.collectionVariables.get('booking_date')) {",
+          "  const d = new Date();",
+          "  d.setDate(d.getDate() + 14);",
+          "  const iso = d.toISOString().slice(0, 10);",
+          "  pm.collectionVariables.set('booking_date', iso);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"{{full_name}}\",\n  \"phone\": \"{{phone}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('token присутствует', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+              "pm.test('user.email совпадает', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email')));",
+              "pm.test('user.id — uuid', () => pm.expect(body.user.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+              "pm.collectionVariables.set('token', body.token);",
+              "pm.collectionVariables.set('user_id', body.user.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('token присутствует', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+              "pm.test('email совпадает', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email')));",
+              "pm.collectionVariables.set('token', body.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Profile",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('User.id совпадает', () => pm.expect(body.User.id).to.eql(pm.collectionVariables.get('user_id')));",
+              "pm.test('email совпадает', () => pm.expect(body.User.email).to.eql(pm.collectionVariables.get('email')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. List restaurants",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/restaurants", "host": ["{{base_url}}"], "path": ["restaurants"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('restaurants — массив', () => pm.expect(body.restaurants).to.be.an('array'));",
+              "pm.test('список не пустой (нужны сид-данные)', () => pm.expect(body.restaurants.length).to.be.greaterThan(0));",
+              "const idx = Math.floor(Math.random() * body.restaurants.length);",
+              "const r = body.restaurants[idx];",
+              "pm.collectionVariables.set('restaurant_id', r.id);",
+              "pm.collectionVariables.set('restaurant_city', r.city);",
+              "pm.collectionVariables.set('restaurant_cuisine_type', r.cuisine_type);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Filter restaurants by city and cuisine",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants?city={{restaurant_city}}&cuisine_type={{restaurant_cuisine_type}}",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants"],
+          "query": [
+            { "key": "city", "value": "{{restaurant_city}}" },
+            { "key": "cuisine_type", "value": "{{restaurant_cuisine_type}}" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('restaurants — массив', () => pm.expect(body.restaurants).to.be.an('array'));",
+              "const city = pm.collectionVariables.get('restaurant_city');",
+              "const cuisine = pm.collectionVariables.get('restaurant_cuisine_type');",
+              "pm.test('фильтр по city работает', () => body.restaurants.forEach(r => pm.expect(r.city).to.eql(city)));",
+              "pm.test('фильтр по cuisine_type работает', () => body.restaurants.forEach(r => pm.expect(r.cuisine_type).to.eql(cuisine)));",
+              "pm.test('выбранный ресторан присутствует в результатах', () => {",
+              "  const id = pm.collectionVariables.get('restaurant_id');",
+              "  pm.expect(body.restaurants.map(r => r.id)).to.include(id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Get restaurant details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('id совпадает', () => pm.expect(body.restaurant.id).to.eql(pm.collectionVariables.get('restaurant_id')));",
+              "pm.test('описание присутствует', () => pm.expect(body.restaurant.description).to.be.a('string'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Menu",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/menu",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "menu"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Items — массив', () => pm.expect(body.Items).to.be.an('array'));",
+              "pm.test('меню не пустое', () => pm.expect(body.Items.length).to.be.greaterThan(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Reviews",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "reviews"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Items — массив', () => pm.expect(body.Items).to.be.an('array'));",
+              "pm.test('отзывы не пустые', () => pm.expect(body.Items.length).to.be.greaterThan(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Tables",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/tables",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "tables"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Items — массив', () => pm.expect(body.Items).to.be.an('array'));",
+              "pm.test('есть хотя бы один столик', () => pm.expect(body.Items.length).to.be.greaterThan(0));",
+              "const guests = parseInt(pm.collectionVariables.get('guests_count'), 10);",
+              "const fit = body.Items.filter(t => t.seats_count >= guests);",
+              "pm.test('есть столики достаточной вместимости', () => pm.expect(fit.length).to.be.greaterThan(0));",
+              "const t = fit[Math.floor(Math.random() * fit.length)];",
+              "pm.collectionVariables.set('table_id', t.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Availability",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/tables/{{table_id}}/availability?booking_date={{booking_date}}&start_time={{start_time}}&end_time={{end_time}}",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "tables", "{{table_id}}", "availability"],
+          "query": [
+            { "key": "booking_date", "value": "{{booking_date}}" },
+            { "key": "start_time", "value": "{{start_time}}" },
+            { "key": "end_time", "value": "{{end_time}}" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Available — boolean', () => pm.expect(body.Available).to.be.a('boolean'));",
+              "pm.test('столик свободен', () => pm.expect(body.Available).to.be.true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Create booking",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurant_id\": \"{{restaurant_id}}\",\n  \"table_id\": \"{{table_id}}\",\n  \"booking_date\": \"{{booking_date}}\",\n  \"start_time\": \"{{start_time}}\",\n  \"end_time\": \"{{end_time}}\",\n  \"guests_count\": {{guests_count}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Booking.id — uuid', () => pm.expect(body.Booking.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+              "pm.test('статус confirmed', () => pm.expect(body.Booking.status).to.eql('confirmed'));",
+              "pm.test('restaurant_id совпадает', () => pm.expect(body.Booking.restaurant_id).to.eql(pm.collectionVariables.get('restaurant_id')));",
+              "pm.test('table_id совпадает', () => pm.expect(body.Booking.table_id).to.eql(pm.collectionVariables.get('table_id')));",
+              "pm.collectionVariables.set('booking_id', body.Booking.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. My bookings list",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{base_url}}/me/bookings", "host": ["{{base_url}}"], "path": ["me", "bookings"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Bookings — массив', () => pm.expect(body.Bookings).to.be.an('array'));",
+              "const id = pm.collectionVariables.get('booking_id');",
+              "pm.test('созданное бронирование присутствует', () => pm.expect(body.Bookings.map(b => b.id)).to.include(id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Booking detail",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": {
+          "raw": "{{base_url}}/me/bookings/{{booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["me", "bookings", "{{booking_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('id совпадает', () => pm.expect(body.Booking.id).to.eql(pm.collectionVariables.get('booking_id')));",
+              "pm.test('статус confirmed', () => pm.expect(body.Booking.status).to.eql('confirmed'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Cancel booking",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": {
+          "raw": "{{base_url}}/me/bookings/{{booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["me", "bookings", "{{booking_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('OK = true', () => pm.expect(body.OK).to.be.true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Verify cancellation",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": {
+          "raw": "{{base_url}}/me/bookings/{{booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["me", "bookings", "{{booking_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('статус cancelled', () => pm.expect(body.Booking.status).to.eql('cancelled'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
