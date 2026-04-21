@@ -43,6 +43,9 @@ export class User {
     })
     role: string;
 
+    @Column({ default: false })
+    is_banned: boolean;
+
     @OneToMany(() => Recipe, (recipe: Recipe) => recipe.author)
     recipes: Recipe[];
 

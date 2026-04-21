@@ -1,20 +1,14 @@
-import {
-    JsonController,
-    Post,
-    Body,
-    HttpError,
-    HttpCode,
-} from 'routing-controllers';
+import { Body, Post, JsonController, HttpCode, HttpError } from 'routing-controllers';
+import jwt from 'jsonwebtoken';
 import dataSource from '../config/data-source';
+import SETTINGS from '../config/settings';
 import { User } from '../models/user.entity';
+import checkPassword from '../utils/check-password';
 import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
-import checkPassword from '../utils/check-password';
-import jwt from 'jsonwebtoken';
-import SETTINGS from '../config/settings';
 
 @JsonController('/auth')
-export default class AuthController {
+export class AuthController {
     private userRepository = dataSource.getRepository(User);
 
     @Post('/register')
@@ -22,12 +16,13 @@ export default class AuthController {
     async register(@Body() body: RegisterDto) {
         const existingUser = await this.userRepository.findOne({
             where: [{ email: body.email }, { username: body.username }],
+            withDeleted: true,
         });
 
         if (existingUser) {
             throw new HttpError(
                 400,
-                'Пользователь с таким email или username уже существует',
+                'Пользователь с таким email или username уже существует (возможно, аккаунт был удален)',
             );
         }
 
@@ -37,15 +32,18 @@ export default class AuthController {
             password_hash: body.password,
         });
 
-        await this.userRepository.save(user);
+        const savedUser = await this.userRepository.save(user);
+        const { password_hash, ...userWithoutPassword } = savedUser;
 
-        const { password_hash, ...userData } = user;
-        return userData;
+        return userWithoutPassword;
     }
 
     @Post('/login')
     async login(@Body() body: LoginDto) {
-        const user = await this.userRepository.findOneBy({ email: body.email });
+        const user = await this.userRepository.findOne({
+            where: { email: body.email },
+            withDeleted: true,
+        });
 
         if (!user) {
             throw new HttpError(401, 'Неверный email или пароль');
@@ -60,12 +58,28 @@ export default class AuthController {
             throw new HttpError(401, 'Неверный email или пароль');
         }
 
+        if (user.is_banned) {
+            throw new HttpError(
+                403,
+                'Этот аккаунт заблокирован администратором за нарушения',
+            );
+        }
+
+        let message = 'Успешный вход';
+        if (user.deleted_at !== null) {
+            await this.userRepository.restore(user.id);
+            message = 'С возвращением! Ваш аккаунт был успешно восстановлен.';
+        }
+
         const accessToken = jwt.sign(
-            { user: { id: user.id, role: user.role } },
+            { id: user.id, role: user.role },
             SETTINGS.JWT_SECRET_KEY,
             { expiresIn: SETTINGS.JWT_ACCESS_TOKEN_LIFETIME },
         );
 
-        return { access_token: accessToken };
+        return {
+            message,
+            accessToken,
+        };
     }
 }

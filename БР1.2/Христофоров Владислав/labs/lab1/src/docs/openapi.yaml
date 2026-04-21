@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
     title: Recipe & Culinary Blog API
-    description: API сервиса для обмена рецептами и ведения кулинарных блогов согласно спроектированной БД (Обновлено для Лабы 1).
+    description: API сервиса для обмена рецептами и ведения кулинарных блогов
     version: 1.1.0
 servers:
     - url: /api/v1
@@ -46,7 +46,7 @@ paths:
     /auth/login:
         post:
             tags: [Auth]
-            summary: Аутентификация (получение JWT)
+            summary: Аутентификация и восстановление аккаунта (получение JWT)
             requestBody:
                 required: true
                 content:
@@ -62,6 +62,8 @@ paths:
                                 $ref: '#/components/schemas/TokenResponse'
                 '401':
                     $ref: '#/components/responses/Unauthorized'
+                '403':
+                    $ref: '#/components/responses/Forbidden'
 
     # ================= USERS =================
     /users/me:
@@ -94,6 +96,16 @@ paths:
                     description: Профиль обновлен
                 '400':
                     $ref: '#/components/responses/BadRequest'
+                '401':
+                    $ref: '#/components/responses/Unauthorized'
+
+        delete:
+            tags: [Users]
+            summary: Удаление своего профиля (Soft Delete)
+            security: [{ bearerAuth: [] }]
+            responses:
+                '204':
+                    description: Профиль успешно удален
                 '401':
                     $ref: '#/components/responses/Unauthorized'
 
@@ -410,7 +422,7 @@ paths:
                 - $ref: '#/components/parameters/QueryOffset'
                 - name: author_id
                   in: query
-                  description: Фильтр по автору (для получения постов конкретного кулинара)
+                  description: Фильтр по автору
                   schema:
                       type: string
                       format: uuid
@@ -636,6 +648,21 @@ paths:
                 '403':
                     $ref: '#/components/responses/Forbidden'
 
+    /admin/blogs/{id}:
+        delete:
+            tags: [Admin]
+            summary: (Модерация) Удалить любой пост блога
+            security: [{ bearerAuth: [] }]
+            parameters:
+                - $ref: '#/components/parameters/PathId'
+            responses:
+                '204':
+                    description: Пост удален модератором
+                '401':
+                    $ref: '#/components/responses/Unauthorized'
+                '403':
+                    $ref: '#/components/responses/Forbidden'
+
     /admin/comments/{id}:
         delete:
             tags: [Admin]
@@ -646,6 +673,49 @@ paths:
             responses:
                 '204':
                     description: Комментарий удален модератором
+                '401':
+                    $ref: '#/components/responses/Unauthorized'
+                '403':
+                    $ref: '#/components/responses/Forbidden'
+
+    /admin/users/{id}/ban:
+        delete:
+            tags: [Admin]
+            summary: (Администрирование) Заблокировать (забанить) пользователя
+            security: [{ bearerAuth: [] }]
+            parameters:
+                - $ref: '#/components/parameters/PathId'
+            responses:
+                '204':
+                    description: Пользователь заблокирован
+                '401':
+                    $ref: '#/components/responses/Unauthorized'
+                '403':
+                    $ref: '#/components/responses/Forbidden'
+
+    /admin/users/{id}/role:
+        patch:
+            tags: [Admin]
+            summary: (Администрирование) Изменить роль пользователя
+            security: [{ bearerAuth: [] }]
+            parameters:
+                - $ref: '#/components/parameters/PathId'
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required: [role]
+                            properties:
+                                role:
+                                    type: string
+                                    enum: [user, moderator, admin]
+            responses:
+                '200':
+                    description: Роль успешно изменена
+                '400':
+                    $ref: '#/components/responses/BadRequest'
                 '401':
                     $ref: '#/components/responses/Unauthorized'
                 '403':
@@ -665,6 +735,25 @@ paths:
                                 type: array
                                 items:
                                     $ref: '#/components/schemas/DictionaryItem'
+        post:
+            tags: [Dictionaries]
+            summary: Добавить новую категорию блюд (только Admin/Moderator)
+            security: [{ bearerAuth: [] }]
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DictionaryCreate'
+            responses:
+                '201':
+                    description: Категория создана
+                '400':
+                    $ref: '#/components/responses/BadRequest'
+                '401':
+                    $ref: '#/components/responses/Unauthorized'
+                '403':
+                    $ref: '#/components/responses/Forbidden'
 
     /ingredients:
         get:
@@ -679,6 +768,25 @@ paths:
                                 type: array
                                 items:
                                     $ref: '#/components/schemas/DictionaryItem'
+        post:
+            tags: [Dictionaries]
+            summary: Добавить новый ингредиент (только Admin/Moderator)
+            security: [{ bearerAuth: [] }]
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DictionaryCreate'
+            responses:
+                '201':
+                    description: Ингредиент создан
+                '400':
+                    $ref: '#/components/responses/BadRequest'
+                '401':
+                    $ref: '#/components/responses/Unauthorized'
+                '403':
+                    $ref: '#/components/responses/Forbidden'
 
 components:
     securitySchemes:
@@ -773,7 +881,10 @@ components:
         TokenResponse:
             type: object
             properties:
-                access_token:
+                message:
+                    type: string
+                    example: 'Успешный вход'
+                accessToken:
                     type: string
 
         User:
@@ -791,7 +902,9 @@ components:
                 role:
                     type: string
                     enum: [user, moderator, admin]
-                    description: Ролевая модель пользователя
+                is_banned:
+                    type: boolean
+                    description: Заблокирован ли пользователь администратором
 
         UserUpdate:
             type: object
@@ -884,7 +997,7 @@ components:
                         format: uuid
                 steps:
                     type: array
-                    description: Массив пошаговых инструкций (сохраняется в транзакции)
+                    description: Массив пошаговых инструкций
                     items:
                         type: object
                         properties:
@@ -896,7 +1009,7 @@ components:
                                 type: string
                 ingredients:
                     type: array
-                    description: Массив ингредиентов рецепта (сохраняется в транзакции)
+                    description: Массив ингредиентов рецепта
                     items:
                         type: object
                         properties:
@@ -922,6 +1035,8 @@ components:
                     type: string
                 content:
                     type: string
+                image_url:
+                    type: string
 
         BlogCreate:
             type: object
@@ -930,6 +1045,8 @@ components:
                 title:
                     type: string
                 content:
+                    type: string
+                image_url:
                     type: string
 
         Comment:
@@ -962,3 +1079,11 @@ components:
                     format: uuid
                 name:
                     type: string
+
+        DictionaryCreate:
+            type: object
+            required: [name]
+            properties:
+                name:
+                    type: string
+                    description: Название элемента справочника

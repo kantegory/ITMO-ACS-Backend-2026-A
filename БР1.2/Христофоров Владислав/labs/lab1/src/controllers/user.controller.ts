@@ -70,6 +70,18 @@ export class UserController {
         return user;
     }
 
+    @Delete('/me')
+    @HttpCode(204)
+    @UseBefore(authMiddleware)
+    async deleteMe(@Req() req: Request) {
+        const userId = (req as any).user.id;
+        const user = await this.userRepo.findOneBy({ id: userId });
+        if (!user) throw new HttpError(404, 'Пользователь не найден');
+
+        await this.userRepo.softDelete(userId);
+        return null;
+    }
+
     @Post('/:id/subscribe')
     @HttpCode(201)
     @UseBefore(authMiddleware)

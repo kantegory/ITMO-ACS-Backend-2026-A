@@ -7,7 +7,7 @@ import SETTINGS from './config/settings';
 import dataSource from './config/data-source';
 import { useSwagger } from './swagger';
 
-import AuthController from './controllers/auth.controller';
+import { AuthController } from './controllers/auth.controller';
 import { UserController } from './controllers/user.controller';
 import { RecipeController } from './controllers/recipe.controller';
 import { BlogPostController } from './controllers/blog-post.controller';

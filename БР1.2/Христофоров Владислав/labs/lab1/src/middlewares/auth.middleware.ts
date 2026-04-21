@@ -2,10 +2,6 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import SETTINGS from '../config/settings';
 
-interface JwtPayloadWithUser extends JwtPayload {
-    user: any;
-}
-
 interface RequestWithUser extends Request {
     user: any;
 }
@@ -33,12 +29,12 @@ const authMiddleware = (
                 .send({ message: 'Unauthorized: no token provided' });
         }
 
-        const { user }: JwtPayloadWithUser = jwt.verify(
+        const decodedPayload = jwt.verify(
             accessToken,
             SETTINGS.JWT_SECRET_KEY,
-        ) as JwtPayloadWithUser;
+        ) as any;
 
-        request.user = user;
+        request.user = decodedPayload;
 
         next();
     } catch (error) {
@@ -49,6 +45,5 @@ const authMiddleware = (
     }
 };
 
-export { JwtPayloadWithUser, RequestWithUser };
-
+export { RequestWithUser };
 export default authMiddleware;
