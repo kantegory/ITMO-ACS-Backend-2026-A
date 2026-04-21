@@ -30,10 +30,13 @@ export class BlogPostController {
 
     @Get('/')
     async getAll(
+        @QueryParam('author_id') authorId: string,
         @QueryParam('limit') limit: number = 20,
         @QueryParam('offset') offset: number = 0,
     ) {
+        const whereCondition = authorId ? { author: { id: authorId } } : {};
         return await this.blogRepo.find({
+            where: whereCondition,
             take: limit,
             skip: offset,
             relations: ['author'],
@@ -74,7 +77,10 @@ export class BlogPostController {
             relations: ['author'],
         });
         if (!post) throw new HttpError(404, 'Пост не найден');
-        if (post.author.id !== (req as any).user.id)
+        if (
+            post.author.id !== (req as any).user.id &&
+            (req as any).user.role !== 'admin'
+        )
             throw new HttpError(403, 'Нет прав');
 
         Object.assign(post, body);
@@ -90,13 +96,15 @@ export class BlogPostController {
             relations: ['author'],
         });
         if (!post) throw new HttpError(404, 'Пост не найден');
-        if (post.author.id !== (req as any).user.id)
+        if (
+            post.author.id !== (req as any).user.id &&
+            (req as any).user.role !== 'admin'
+        )
             throw new HttpError(403, 'Нет прав');
         await this.blogRepo.softDelete(id);
         return null;
     }
 
-    // Лайки и комменты
     @Post('/:id/like')
     @HttpCode(201)
     @UseBefore(authMiddleware)

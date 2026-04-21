@@ -39,6 +39,7 @@ export class RecipeController {
         @QueryParam('search') search: string,
         @QueryParam('dish_type_id') dishTypeId: string,
         @QueryParam('author_id') authorId: string,
+        @QueryParam('ingredients', { isArray: true }) ingredients: string[],
         @QueryParam('limit') limit: number = 20,
         @QueryParam('offset') offset: number = 0,
     ) {
@@ -56,13 +57,39 @@ export class RecipeController {
         if (difficulty)
             qb.andWhere('recipe.difficulty = :difficulty', { difficulty });
         if (authorId) qb.andWhere('author.id = :authorId', { authorId });
-        if (dishTypeId)
-            qb.andWhere('dish_type.id = :dishTypeId', { dishTypeId });
+
+        if (dishTypeId) {
+            qb.andWhere((subQb) => {
+                const sq = subQb
+                    .subQuery()
+                    .select('rdt.recipe_id')
+                    .from(RecipeDishType, 'rdt')
+                    .where('rdt.dish_type_id = :dishTypeId')
+                    .getQuery();
+                return `recipe.id IN ${sq}`;
+            }).setParameter('dishTypeId', dishTypeId);
+        }
+
         if (search) {
             qb.andWhere(
                 '(recipe.title ILIKE :search OR recipe.description ILIKE :search)',
                 { search: `%${search}%` },
             );
+        }
+
+        if (ingredients && ingredients.length > 0) {
+            const ingArray = Array.isArray(ingredients)
+                ? ingredients
+                : [ingredients];
+            qb.andWhere((subQb) => {
+                const sq = subQb
+                    .subQuery()
+                    .select('ri.recipe_id')
+                    .from(RecipeIngredient, 'ri')
+                    .where('ri.ingredient_id IN (:...ingArray)')
+                    .getQuery();
+                return `recipe.id IN ${sq}`;
+            }).setParameter('ingArray', ingArray);
         }
 
         return await qb.getMany();
@@ -164,11 +191,64 @@ export class RecipeController {
             relations: ['author'],
         });
         if (!recipe) throw new HttpError(404, 'Рецепт не найден');
-        if (recipe.author.id !== (req as any).user.id)
-            throw new HttpError(403, 'Вы не автор этого рецепта');
 
-        Object.assign(recipe, body);
-        return await this.recipeRepo.save(recipe);
+        if (
+            recipe.author.id !== (req as any).user.id &&
+            (req as any).user.role !== 'admin'
+        ) {
+            throw new HttpError(403, 'Вы не автор этого рецепта');
+        }
+
+        const queryRunner = dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            if (body.title) recipe.title = body.title;
+            if (body.description !== undefined)
+                recipe.description = body.description;
+            if (body.difficulty) recipe.difficulty = body.difficulty;
+            if (body.cooking_time_minutes)
+                recipe.cooking_time_minutes = body.cooking_time_minutes;
+            if (body.image_url !== undefined) recipe.image_url = body.image_url;
+            if (body.video_url !== undefined) recipe.video_url = body.video_url;
+
+            await queryRunner.manager.save(recipe);
+
+            if (body.dish_type_ids !== undefined) {
+                await queryRunner.manager.delete(RecipeDishType, {
+                    recipe: { id },
+                });
+
+                if (body.dish_type_ids.length > 0) {
+                    const newDishTypes = body.dish_type_ids.map((dishId) =>
+                        queryRunner.manager.create(RecipeDishType, {
+                            dish_type: { id: dishId },
+                            recipe: { id },
+                        }),
+                    );
+                    await queryRunner.manager.save(newDishTypes);
+                }
+            }
+
+            await queryRunner.commitTransaction();
+
+            return await this.recipeRepo.findOne({
+                where: { id },
+                relations: [
+                    'author',
+                    'dish_types',
+                    'dish_types.dish_type',
+                    'steps',
+                    'ingredients',
+                ],
+            });
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw new HttpError(400, 'Ошибка при обновлении рецепта');
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     @Delete('/:id')
@@ -180,7 +260,10 @@ export class RecipeController {
             relations: ['author'],
         });
         if (!recipe) throw new HttpError(404, 'Рецепт не найден');
-        if (recipe.author.id !== (req as any).user.id)
+        if (
+            recipe.author.id !== (req as any).user.id &&
+            (req as any).user.role !== 'admin'
+        )
             throw new HttpError(403, 'Вы не автор этого рецепта');
         await this.recipeRepo.softDelete(id);
         return null;
