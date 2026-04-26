@@ -42,6 +42,7 @@ namespace JobSearchAPI.Vacancies {
     @query salary_from?: int32,
     @query experience?: ExperienceLevel,
     @query employment_type?: EmploymentType,
+    @query skill_ids?: int32[],
     @query page?: int32,
     @query per_page?: int32,
   ):
