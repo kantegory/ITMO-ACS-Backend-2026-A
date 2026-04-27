@@ -1,0 +1,474 @@
+{
+    "info": {
+        "_postman_id": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
+        "name": "Recipe & Culinary Blog API - Основной сценарий",
+        "description": "Комплексный User Journey: Регистрация -> Вход -> Заполнение профиля -> Создание рецепта -> Поиск -> Просмотр -> Сохранение в закладки -> Комментарий -> Лайк -> Публикация поста в блоге.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Регистрация нового повара",
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "exec": [
+                            "const randomNum = Math.floor(Math.random() * 1000000);",
+                            "pm.collectionVariables.set(\"testUsername\", \"chef_\" + randomNum);",
+                            "pm.collectionVariables.set(\"testEmail\", \"chef_\" + randomNum + \"@test.com\");",
+                            "pm.collectionVariables.set(\"testPassword\", \"securePassword123\");"
+                        ],
+                        "type": "text/javascript"
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 201 Created\", function () {",
+                            "    pm.response.to.have.status(201);",
+                            "});",
+                            "pm.test(\"Время ответа меньше 2000ms\", function () {",
+                            "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                            "});",
+                            "pm.test('Schema is valid (tv4)', function () {",
+                            "    var schema = {",
+                            "        \"type\": \"object\",",
+                            "        \"properties\": {",
+                            "            \"id\": { \"type\": \"string\" },",
+                            "            \"username\": { \"type\": \"string\" },",
+                            "            \"email\": { \"type\": \"string\" }",
+                            "        },",
+                            "        \"required\": [\"id\", \"username\", \"email\"]",
+                            "    };",
+                            "    pm.expect(tv4.validate(pm.response.json(), schema)).to.be.true;",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"username\": \"{{testUsername}}\",\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/auth/register",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["auth", "register"]
+                }
+            }
+        },
+        {
+            "name": "2. Вход (Получение токена)",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 200 OK\", function () {",
+                            "    pm.response.to.have.status(200);",
+                            "});",
+                            "pm.test('Schema is valid (tv4)', function () {",
+                            "    var schema = {",
+                            "        \"type\": \"object\",",
+                            "        \"properties\": {",
+                            "            \"accessToken\": { \"type\": \"string\" }",
+                            "        },",
+                            "        \"required\": [\"accessToken\"]",
+                            "    };",
+                            "    var jsonData = pm.response.json();",
+                            "    pm.expect(tv4.validate(jsonData, schema)).to.be.true;",
+                            "    pm.collectionVariables.set(\"accessToken\", jsonData.accessToken);",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/auth/login",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["auth", "login"]
+                }
+            }
+        },
+        {
+            "name": "3. Заполнение профиля (Обновление био)",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 200 OK\", function () {",
+                            "    pm.response.to.have.status(200);",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "PATCH",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "auth": {
+                    "type": "bearer",
+                    "bearer": [
+                        {
+                            "key": "token",
+                            "value": "{{accessToken}}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"bio\": \"Я новый шеф-повар, специализируюсь на мясных блюдах!\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/users/me",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["users", "me"]
+                }
+            }
+        },
+        {
+            "name": "4. Публикация первого рецепта",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 201 Created\", function () {",
+                            "    pm.response.to.have.status(201);",
+                            "});",
+                            "pm.test('Recipe Schema is valid (tv4)', function () {",
+                            "    var schema = {",
+                            "        \"type\": \"object\",",
+                            "        \"properties\": {",
+                            "            \"id\": { \"type\": \"string\" },",
+                            "            \"title\": { \"type\": \"string\" },",
+                            "            \"difficulty\": { \"type\": \"string\" },",
+                            "            \"cooking_time_minutes\": { \"type\": \"number\" }",
+                            "        },",
+                            "        \"required\": [\"id\", \"title\", \"difficulty\"]",
+                            "    };",
+                            "    var jsonData = pm.response.json();",
+                            "    pm.expect(tv4.validate(jsonData, schema)).to.be.true;",
+                            "    pm.collectionVariables.set(\"recipeId\", jsonData.id);",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "auth": {
+                    "type": "bearer",
+                    "bearer": [
+                        {
+                            "key": "token",
+                            "value": "{{accessToken}}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"title\": \"Стейк Рибай с розмарином\",\n    \"description\": \"Идеальный стейк прожарки Medium Rare.\",\n    \"difficulty\": \"medium\",\n    \"cooking_time_minutes\": 20\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/recipes",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["recipes"]
+                }
+            }
+        },
+        {
+            "name": "5. Просмотр ленты рецептов (Фильтрация)",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 200 OK\", function () {",
+                            "    pm.response.to.have.status(200);",
+                            "});",
+                            "pm.test(\"В массиве есть хотя бы один рецепт\", function () {",
+                            "    const jsonData = pm.response.json();",
+                            "    pm.expect(jsonData.length).to.be.above(0);",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/recipes?difficulty=medium",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["recipes"],
+                    "query": [{ "key": "difficulty", "value": "medium" }]
+                }
+            }
+        },
+        {
+            "name": "6. Открытие карточки рецепта",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 200 OK\", function () {",
+                            "    pm.response.to.have.status(200);",
+                            "});",
+                            "pm.test(\"ID совпадает с сохраненным\", function () {",
+                            "    const jsonData = pm.response.json();",
+                            "    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get(\"recipeId\"));",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/recipes/{{recipeId}}",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["recipes", "{{recipeId}}"]
+                }
+            }
+        },
+        {
+            "name": "7. Сохранение рецепта в закладки",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 201 Created\", function () {",
+                            "    pm.response.to.have.status(201);",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [],
+                "auth": {
+                    "type": "bearer",
+                    "bearer": [
+                        {
+                            "key": "token",
+                            "value": "{{accessToken}}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/recipes/{{recipeId}}/save",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["recipes", "{{recipeId}}", "save"]
+                }
+            }
+        },
+        {
+            "name": "8. Написание комментария",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 201 Created\", function () {",
+                            "    pm.response.to.have.status(201);",
+                            "});",
+                            "pm.test('Comment Schema is valid (tv4)', function () {",
+                            "    var schema = {",
+                            "        \"type\": \"object\",",
+                            "        \"properties\": {",
+                            "            \"id\": { \"type\": \"string\" },",
+                            "            \"content\": { \"type\": \"string\" }",
+                            "        },",
+                            "        \"required\": [\"id\", \"content\"]",
+                            "    };",
+                            "    pm.expect(tv4.validate(pm.response.json(), schema)).to.be.true;",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "auth": {
+                    "type": "bearer",
+                    "bearer": [
+                        {
+                            "key": "token",
+                            "value": "{{accessToken}}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"content\": \"Отличный рецепт! Получилось очень сочно.\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/recipes/{{recipeId}}/comments",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["recipes", "{{recipeId}}", "comments"]
+                }
+            }
+        },
+        {
+            "name": "9. Оценка рецепта (Лайк)",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 201 Created\", function () {",
+                            "    pm.response.to.have.status(201);",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [],
+                "auth": {
+                    "type": "bearer",
+                    "bearer": [
+                        {
+                            "key": "token",
+                            "value": "{{accessToken}}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/recipes/{{recipeId}}/like",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["recipes", "{{recipeId}}", "like"]
+                }
+            }
+        },
+        {
+            "name": "10. Публикация поста в кулинарный блог",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Статус код 201 Created\", function () {",
+                            "    pm.response.to.have.status(201);",
+                            "});",
+                            "pm.test('Blog Post Schema is valid (tv4)', function () {",
+                            "    var schema = {",
+                            "        \"type\": \"object\",",
+                            "        \"properties\": {",
+                            "            \"id\": { \"type\": \"string\" },",
+                            "            \"title\": { \"type\": \"string\" },",
+                            "            \"content\": { \"type\": \"string\" }",
+                            "        },",
+                            "        \"required\": [\"id\", \"title\", \"content\"]",
+                            "    };",
+                            "    pm.expect(tv4.validate(pm.response.json(), schema)).to.be.true;",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "auth": {
+                    "type": "bearer",
+                    "bearer": [
+                        {
+                            "key": "token",
+                            "value": "{{accessToken}}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"title\": \"Мой первый день на платформе\",\n    \"content\": \"Сегодня я опубликовал рецепт идеального стейка. Рад присоединиться к сообществу!\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/blogs",
+                    "host": ["{{baseUrl}}"],
+                    "path": ["blogs"]
+                }
+            }
+        }
+    ],
+    "variable": [
+        { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+        { "key": "accessToken", "value": "" },
+        { "key": "recipeId", "value": "" },
+        { "key": "testEmail", "value": "" },
+        { "key": "testUsername", "value": "" },
+        { "key": "testPassword", "value": "" }
+    ]
+}
