@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { SignJWT, jwtVerify } from "jose";
 import { db } from "../db/client";
 
 export type UserWithRole = Prisma.UserGetPayload<{ include: { role: true } }>;
@@ -8,31 +9,76 @@ export const userWithoutPassword = (user: UserWithRole) => {
   return rest;
 };
 
-const parseUserId = (authorization?: string, xUserId?: string) => {
-  if (xUserId) {
-    const fromHeader = Number(xUserId);
-    if (Number.isInteger(fromHeader) && fromHeader > 0) return fromHeader;
+const JWT_ISSUER = "lab1-job-search";
+const ALG = "HS256" as const;
+
+const getSecretKey = () => {
+  const raw = process.env.JWT_SECRET;
+  if (!raw || raw.length < 32) {
+    throw new Error(
+      "JWT_SECRET не задан или короче 32 символов. Укажите надёжный секрет в .env (см. .env.example)."
+    );
   }
-
-  if (!authorization?.startsWith("Bearer ")) return null;
-  const token = authorization.slice(7);
-  const match = /^access-(\d+)-/.exec(token);
-  if (!match) return null;
-  return Number(match[1]);
+  return new TextEncoder().encode(raw);
 };
 
-export const getAuthUser = async (headers: Record<string, string | undefined>) => {
-  const userId = parseUserId(headers.authorization, headers["x-user-id"]) ?? 1;
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    include: { role: true },
-  });
+const accessTtlSeconds = () => Number(process.env.JWT_EXPIRES_IN ?? 3600);
 
-  return user;
-};
+export async function createAccessToken(userId: number): Promise<string> {
+  const key = getSecretKey();
+  const ttl = accessTtlSeconds();
+  return new SignJWT({ token_use: "access" })
+    .setProtectedHeader({ alg: ALG })
+    .setSubject(String(userId))
+    .setIssuer(JWT_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(new Date(Date.now() + ttl * 1000))
+    .sign(key);
+}
 
-export const createAccessToken = (userId: number) =>
-  `access-${userId}-${Math.random().toString(36).slice(2)}`;
+export async function createRefreshToken(userId: number): Promise<string> {
+  const key = getSecretKey();
+  return new SignJWT({ token_use: "refresh" })
+    .setProtectedHeader({ alg: ALG })
+    .setSubject(String(userId))
+    .setIssuer(JWT_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+    .sign(key);
+}
 
-export const createRefreshToken = (userId: number) =>
-  `refresh-${userId}-${Math.random().toString(36).slice(2)}`;
+export async function verifyRefreshTokenJwt(token: string): Promise<number | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey(), {
+      issuer: JWT_ISSUER,
+      algorithms: [ALG],
+    });
+    if (payload.token_use !== "refresh" || typeof payload.sub !== "string") return null;
+    const id = Number(payload.sub);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAuthUser(headers: Record<string, string | undefined>) {
+  const auth = headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return null;
+
+  try {
+    const { payload } = await jwtVerify(auth.slice(7), getSecretKey(), {
+      issuer: JWT_ISSUER,
+      algorithms: [ALG],
+    });
+    if (payload.token_use !== "access" || typeof payload.sub !== "string") return null;
+    const userId = Number(payload.sub);
+    if (!Number.isInteger(userId) || userId <= 0) return null;
+
+    return db.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+  } catch {
+    return null;
+  }
+}

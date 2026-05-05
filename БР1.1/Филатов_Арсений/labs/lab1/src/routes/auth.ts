@@ -2,7 +2,12 @@ import { Elysia, t } from "elysia";
 import { ApiError, TokenPair, UserPublic } from "../schemas";
 import { compareSync, hashSync } from "bcryptjs";
 import { db } from "../db/client";
-import { createAccessToken, createRefreshToken, userWithoutPassword } from "../lib/auth";
+import {
+  createAccessToken,
+  createRefreshToken,
+  userWithoutPassword,
+  verifyRefreshTokenJwt,
+} from "../lib/auth";
 import { apiError } from "../lib/errors";
 
 export const authRoutes = new Elysia({ name: "auth" }).group("/auth", (app) =>
@@ -32,8 +37,8 @@ export const authRoutes = new Elysia({ name: "auth" }).group("/auth", (app) =>
           include: { role: true },
         });
 
-        const accessToken = createAccessToken(user.id);
-        const refreshToken = createRefreshToken(user.id);
+        const accessToken = await createAccessToken(user.id);
+        const refreshToken = await createRefreshToken(user.id);
         await db.refreshToken.create({
           data: {
             userId: user.id,
@@ -88,8 +93,8 @@ export const authRoutes = new Elysia({ name: "auth" }).group("/auth", (app) =>
           return apiError("UNAUTHORIZED", "Неверный email или пароль");
         }
 
-        const accessToken = createAccessToken(user.id);
-        const refreshToken = createRefreshToken(user.id);
+        const accessToken = await createAccessToken(user.id);
+        const refreshToken = await createRefreshToken(user.id);
         await db.refreshToken.create({
           data: {
             userId: user.id,
@@ -132,17 +137,23 @@ export const authRoutes = new Elysia({ name: "auth" }).group("/auth", (app) =>
     .post(
       "/refresh",
       async ({ body, set }) => {
+        const subFromJwt = await verifyRefreshTokenJwt(body.refreshToken);
         const existing = await db.refreshToken.findUnique({
           where: { token: body.refreshToken },
         });
 
-        if (!existing || existing.expiresAt < new Date()) {
+        if (
+          subFromJwt === null ||
+          !existing ||
+          existing.expiresAt < new Date() ||
+          existing.userId !== subFromJwt
+        ) {
           set.status = 401;
           return apiError("UNAUTHORIZED", "Refresh token недействителен");
         }
 
-        const accessToken = createAccessToken(existing.userId);
-        const refreshToken = createRefreshToken(existing.userId);
+        const accessToken = await createAccessToken(existing.userId);
+        const refreshToken = await createRefreshToken(existing.userId);
         await db.refreshToken.delete({ where: { token: body.refreshToken } });
         await db.refreshToken.create({
           data: {
