@@ -19,26 +19,26 @@ func NewPostgres(pool *postgres.Pool) *postgresRepository {
 	return &postgresRepository{pool: pool}
 }
 
-func (r *postgresRepository) GetByRestaurantAndID(ctx context.Context, restaurantID uuid.UUID, reviewID uuid.UUID) (Item, error) {
-	var out Item
+func (r *postgresRepository) GetByRestaurantAndID(ctx context.Context, restaurantID uuid.UUID, reviewID uuid.UUID) (domain.Review, error) {
+	var result domain.Review
 	err := r.pool.Pgx().QueryRow(ctx, `
 		SELECT
-			rev.id,
-			rev.rating,
-			rev.text,
-			rev.created_at,
-			rev.updated_at,
-			u.full_name
-		FROM reviews rev
-		JOIN users u ON u.id = rev.user_id
-		WHERE rev.restaurant_id = $1 AND rev.id = $2
+			id,
+			user_id,
+			restaurant_id,
+			rating,
+			text,
+			created_at,
+			updated_at
+		FROM reviews
+		WHERE restaurant_id = $1 AND id = $2
 		LIMIT 1
-	`, restaurantID, reviewID).Scan(&out.ID, &out.Rating, &out.Text, &out.CreatedAt, &out.UpdatedAt, &out.AuthorName)
+	`, restaurantID, reviewID).Scan(&result.ID, &result.UserID, &result.RestaurantID, &result.Rating, &result.Text, &result.CreatedAt, &result.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Item{}, domain.ErrNotFound
+			return domain.Review{}, domain.ErrNotFound
 		}
-		return Item{}, err
+		return domain.Review{}, err
 	}
-	return out, nil
+	return result, nil
 }

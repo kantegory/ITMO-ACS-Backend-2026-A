@@ -7,9 +7,9 @@ import (
 )
 
 type Input struct {
-	UserID       uuid.UUID
-	RestaurantID uuid.UUID `json:"restaurant_id"`
-	TableID      uuid.UUID `json:"table_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	RestaurantID string    `json:"restaurant_id"`
+	TableID      string    `json:"table_id"`
 	BookingDate  string    `json:"booking_date"`
 	StartTime    string    `json:"start_time"`
 	EndTime      string    `json:"end_time"`
@@ -17,5 +17,5 @@ type Input struct {
 }
 
 type Output struct {
-	Booking domain.Booking
+	Booking domain.Booking `json:"booking"`
 }

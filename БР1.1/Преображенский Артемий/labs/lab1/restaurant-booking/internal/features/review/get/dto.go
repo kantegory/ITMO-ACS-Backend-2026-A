@@ -1,25 +1,14 @@
 package get
 
 import (
-	"time"
-
-	"github.com/google/uuid"
+	"restaurant-booking/internal/domain"
 )
 
 type Input struct {
-	RestaurantID string
-	ReviewID     string
-}
-
-type Item struct {
-	ID         uuid.UUID `json:"id"`
-	Rating     int       `json:"rating"`
-	Text       string    `json:"text"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	AuthorName string    `json:"author_name"`
+	RestaurantID string `json:"restaurant_id"`
+	ReviewID     string `json:"review_id"`
 }
 
 type Output struct {
-	Item Item
+	Review domain.Review `json:"review"`
 }

@@ -9,7 +9,7 @@ import (
 )
 
 type Repository interface {
-	GetByRestaurantAndID(ctx context.Context, restaurantID uuid.UUID, reviewID uuid.UUID) (Item, error)
+	GetByRestaurantAndID(ctx context.Context, restaurantID uuid.UUID, reviewID uuid.UUID) (domain.Review, error)
 }
 
 type Usecase struct {
@@ -29,9 +29,9 @@ func (u *Usecase) Get(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	it, err := u.repo.GetByRestaurantAndID(ctx, rid, reviewID)
+	review, err := u.repo.GetByRestaurantAndID(ctx, rid, reviewID)
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Item: it}, nil
+	return Output{Review: review}, nil
 }

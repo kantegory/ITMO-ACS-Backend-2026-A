@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"restaurant-booking/internal/adapter/postgres"
+	"restaurant-booking/internal/domain"
 )
 
 type postgresRepository struct {
@@ -16,31 +17,32 @@ func NewPostgres(pool *postgres.Pool) *postgresRepository {
 	return &postgresRepository{pool: pool}
 }
 
-func (r *postgresRepository) ListByRestaurant(ctx context.Context, restaurantID uuid.UUID) ([]Item, error) {
+func (r *postgresRepository) ListByRestaurant(ctx context.Context, restaurantID uuid.UUID) ([]domain.Review, error) {
 	rows, err := r.pool.Pgx().Query(ctx, `
 		SELECT
-			rev.id,
-			rev.rating,
-			rev.text,
-			rev.created_at,
-			u.full_name
-		FROM reviews rev
-		JOIN users u ON u.id = rev.user_id
-		WHERE rev.restaurant_id = $1
-		ORDER BY rev.created_at DESC
+			id,
+			user_id,
+			restaurant_id,
+			rating,
+			text,
+			created_at,
+			updated_at
+		FROM reviews
+		WHERE restaurant_id = $1
+		ORDER BY created_at DESC
 	`, restaurantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	out := make([]Item, 0)
+	out := make([]domain.Review, 0)
 	for rows.Next() {
-		var it Item
-		if err := rows.Scan(&it.ID, &it.Rating, &it.Text, &it.CreatedAt, &it.AuthorName); err != nil {
+		var review domain.Review
+		if err := rows.Scan(&review.ID, &review.UserID, &review.RestaurantID, &review.Rating, &review.Text, &review.CreatedAt, &review.UpdatedAt); err != nil {
 			return nil, err
 		}
-		out = append(out, it)
+		out = append(out, review)
 	}
 	return out, rows.Err()
 }

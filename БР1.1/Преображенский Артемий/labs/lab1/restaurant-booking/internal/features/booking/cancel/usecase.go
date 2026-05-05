@@ -28,5 +28,5 @@ func (u *Usecase) Cancel(ctx context.Context, input Input) (Output, error) {
 	if err := u.repo.Cancel(ctx, input.UserID, bid); err != nil {
 		return Output{}, err
 	}
-	return Output{OK: true}, nil
+	return Output{Success: true}, nil
 }

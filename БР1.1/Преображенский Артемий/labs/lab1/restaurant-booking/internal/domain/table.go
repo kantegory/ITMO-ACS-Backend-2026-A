@@ -8,3 +8,13 @@ type Table struct {
 	Number       int       `json:"table_number"`
 	Seats        int       `json:"seats_count"`
 }
+
+func (t Table) Validate() error {
+	if t.RestaurantID == uuid.Nil {
+		return ErrInvalidInput
+	}
+	if t.Number <= 0 || t.Seats <= 0 {
+		return ErrInvalidInput
+	}
+	return nil
+}

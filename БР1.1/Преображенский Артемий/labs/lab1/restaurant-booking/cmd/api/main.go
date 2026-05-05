@@ -24,7 +24,11 @@ import (
 	bookingcreate "restaurant-booking/internal/features/booking/create"
 	bookingget "restaurant-booking/internal/features/booking/get"
 	bookinglist "restaurant-booking/internal/features/booking/list"
+	menucreate "restaurant-booking/internal/features/menu/create"
+	menudelete "restaurant-booking/internal/features/menu/delete"
+	menuget "restaurant-booking/internal/features/menu/get"
 	menulist "restaurant-booking/internal/features/menu/list"
+	restaurantcreate "restaurant-booking/internal/features/restaurant/create"
 	restaurantdelete "restaurant-booking/internal/features/restaurant/delete"
 	restaurantget "restaurant-booking/internal/features/restaurant/get"
 	restaurantlist "restaurant-booking/internal/features/restaurant/list"
@@ -33,6 +37,9 @@ import (
 	reviewget "restaurant-booking/internal/features/review/get"
 	reviewlist "restaurant-booking/internal/features/review/list"
 	reviewupdate "restaurant-booking/internal/features/review/update"
+	tablecreate "restaurant-booking/internal/features/table/create"
+	tabledelete "restaurant-booking/internal/features/table/delete"
+	tableget "restaurant-booking/internal/features/table/get"
 	tablelist "restaurant-booking/internal/features/table/list"
 	"restaurant-booking/pkg/jwt"
 )
@@ -79,11 +86,23 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	restaurantGetRepo := restaurantget.NewPostgres(pgPool)
 	restaurantGetUsecase := restaurantget.NewUsecase(restaurantGetRepo)
 
+	restaurantCreateRepo := restaurantcreate.NewPostgres(pgPool)
+	restaurantCreateUsecase := restaurantcreate.NewUsecase(restaurantCreateRepo)
+
 	restaurantDeleteRepo := restaurantdelete.NewPostgres(pgPool)
 	restaurantDeleteUsecase := restaurantdelete.NewUsecase(restaurantDeleteRepo)
 
 	menuListRepo := menulist.NewPostgres(pgPool)
 	menuListUsecase := menulist.NewUsecase(menuListRepo)
+
+	menuCreateRepo := menucreate.NewPostgres(pgPool)
+	menuCreateUsecase := menucreate.NewUsecase(menuCreateRepo)
+
+	menuGetRepo := menuget.NewPostgres(pgPool)
+	menuGetUsecase := menuget.NewUsecase(menuGetRepo)
+
+	menuDeleteRepo := menudelete.NewPostgres(pgPool)
+	menuDeleteUsecase := menudelete.NewUsecase(menuDeleteRepo)
 
 	reviewListRepo := reviewlist.NewPostgres(pgPool)
 	reviewListUsecase := reviewlist.NewUsecase(reviewListRepo)
@@ -102,6 +121,15 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 
 	tableListRepo := tablelist.NewPostgres(pgPool)
 	tableListUsecase := tablelist.NewUsecase(tableListRepo)
+
+	tableCreateRepo := tablecreate.NewPostgres(pgPool)
+	tableCreateUsecase := tablecreate.NewUsecase(tableCreateRepo)
+
+	tableGetRepo := tableget.NewPostgres(pgPool)
+	tableGetUsecase := tableget.NewUsecase(tableGetRepo)
+
+	tableDeleteRepo := tabledelete.NewPostgres(pgPool)
+	tableDeleteUsecase := tabledelete.NewUsecase(tableDeleteRepo)
 
 	bookingAvailabilityUsecase := bookingavailability.NewUsecase(bookingAvailabilityRepo)
 	bookingCreateUsecase := bookingcreate.NewUsecase(bookingCreateRepo)
@@ -127,15 +155,22 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 		},
 		Restaurants: httpcontroller.RestaurantRoutes{
 			List:         restaurantlist.HTTP(restaurantListUsecase),
+			Create:       restaurantcreate.HTTP(restaurantCreateUsecase),
 			Get:          restaurantget.HTTP(restaurantGetUsecase),
 			Delete:       restaurantdelete.HTTP(restaurantDeleteUsecase),
 			Menu:         menulist.HTTP(menuListUsecase),
+			MenuCreate:   menucreate.HTTP(menuCreateUsecase),
+			MenuGet:      menuget.HTTP(menuGetUsecase),
+			MenuDelete:   menudelete.HTTP(menuDeleteUsecase),
 			ReviewsList:  reviewlist.HTTP(reviewListUsecase),
 			ReviewCreate: reviewcreate.HTTP(reviewCreateUsecase),
 			ReviewGet:    reviewget.HTTP(reviewGetUsecase),
 			ReviewUpdate: reviewupdate.HTTP(reviewUpdateUsecase),
 			ReviewDelete: reviewdelete.HTTP(reviewDeleteUsecase),
 			Tables:       tablelist.HTTP(tableListUsecase),
+			TableCreate:  tablecreate.HTTP(tableCreateUsecase),
+			TableGet:     tableget.HTTP(tableGetUsecase),
+			TableDelete:  tabledelete.HTTP(tableDeleteUsecase),
 			Availability: bookingavailability.HTTP(bookingAvailabilityUsecase),
 		},
 		Bookings: httpcontroller.BookingRoutes{

@@ -207,46 +207,63 @@ components:
     MenuListResponse:
       type: object
       properties:
-        Items:
+        dishes:
           type: array
           items:
             $ref: '#/components/schemas/Dish'
       required:
-        - Items
+        - dishes
 
-    ReviewItem:
+    MenuGetResponse:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        rating:
-          type: integer
-          minimum: 1
-          maximum: 5
-        text:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        author_name:
-          type: string
+        item:
+          $ref: '#/components/schemas/Dish'
       required:
-        - id
-        - rating
-        - text
-        - created_at
-        - author_name
+        - item
+
+    MenuCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: double
+        category:
+          type: string
+        is_available:
+          type: boolean
+        proteins:
+          type: number
+          format: double
+        fats:
+          type: number
+          format: double
+        carbs:
+          type: number
+          format: double
+      required:
+        - name
+        - description
+        - price
+        - category
+        - is_available
+        - proteins
+        - fats
+        - carbs
 
     ReviewListResponse:
       type: object
       properties:
-        Items:
+        reviews:
           type: array
           items:
-            $ref: '#/components/schemas/ReviewItem'
+            $ref: '#/components/schemas/Review'
       required:
-        - Items
+        - reviews
 
     Review:
       type: object
@@ -297,46 +314,18 @@ components:
     ReviewResponse:
       type: object
       properties:
-        Review:
+        review:
           $ref: '#/components/schemas/Review'
       required:
-        - Review
-
-    ReviewGetItem:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        rating:
-          type: integer
-          minimum: 1
-          maximum: 5
-        text:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        author_name:
-          type: string
-      required:
-        - id
-        - rating
-        - text
-        - created_at
-        - updated_at
-        - author_name
+        - review
 
     ReviewGetResponse:
       type: object
       properties:
-        Item:
-          $ref: '#/components/schemas/ReviewGetItem'
+        review:
+          $ref: '#/components/schemas/Review'
       required:
-        - Item
+        - review
 
     Table:
       type: object
@@ -360,20 +349,28 @@ components:
     TableListResponse:
       type: object
       properties:
-        Items:
+        tables:
           type: array
           items:
             $ref: '#/components/schemas/Table'
       required:
-        - Items
+        - tables
+
+    TableGetResponse:
+      type: object
+      properties:
+        table:
+          $ref: '#/components/schemas/Table'
+      required:
+        - table
 
     AvailabilityResponse:
       type: object
       properties:
-        Available:
+        available:
           type: boolean
       required:
-        - Available
+        - available
 
     CreateBookingRequest:
       type: object
@@ -460,28 +457,28 @@ components:
     BookingResponse:
       type: object
       properties:
-        Booking:
+        booking:
           $ref: '#/components/schemas/Booking'
       required:
-        - Booking
+        - booking
 
     BookingListResponse:
       type: object
       properties:
-        Bookings:
+        bookings:
           type: array
           items:
             $ref: '#/components/schemas/Booking'
       required:
-        - Bookings
+        - bookings
 
     CancelBookingResponse:
       type: object
       properties:
-        OK:
+        success:
           type: boolean
       required:
-        - OK
+        - success
 
     RestaurantDeleteResponse:
       type: object
@@ -490,6 +487,34 @@ components:
           $ref: '#/components/schemas/Restaurant'
       required:
         - restaurant
+
+    RestaurantCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        city:
+          type: string
+        address:
+          type: string
+        cuisine_type:
+          type: string
+        price_category:
+          type: string
+        photos:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - description
+        - city
+        - address
+        - cuisine_type
+        - price_category
+        - photos
 
   responses:
     PlainError:
@@ -588,6 +613,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestaurantListResponse'
+    post:
+      tags:
+        - Restaurants
+      summary: Создать ресторан
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestaurantCreateRequest'
+      responses:
+        '201':
+          description: Ресторан создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetailResponse'
+        '400':
+          $ref: '#/components/responses/PlainError'
+        '401':
+          $ref: '#/components/responses/PlainError'
 
   /restaurants/{id}:
     get:
@@ -654,6 +702,92 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MenuListResponse'
+        '404':
+          $ref: '#/components/responses/PlainError'
+    post:
+      tags:
+        - Restaurants
+      summary: Добавить позицию в меню
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuCreateRequest'
+      responses:
+        '201':
+          description: Позиция меню создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuGetResponse'
+        '400':
+          $ref: '#/components/responses/PlainError'
+        '401':
+          $ref: '#/components/responses/PlainError'
+        '404':
+          $ref: '#/components/responses/PlainError'
+
+  /restaurants/{id}/menu/{itemID}:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить позицию меню
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: itemID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Позиция меню
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuGetResponse'
+        '404':
+          $ref: '#/components/responses/PlainError'
+    delete:
+      tags:
+        - Restaurants
+      summary: Удалить позицию меню
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: itemID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Позиция меню удалена
+        '401':
+          $ref: '#/components/responses/PlainError'
         '404':
           $ref: '#/components/responses/PlainError'
 
@@ -828,6 +962,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableListResponse'
+        '404':
+          $ref: '#/components/responses/PlainError'
+    post:
+      tags:
+        - Restaurants
+      summary: Создать столик
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_number:
+                  type: integer
+                seats_count:
+                  type: integer
+              required:
+                - table_number
+                - seats_count
+      responses:
+        '201':
+          description: Столик создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableGetResponse'
+        '400':
+          $ref: '#/components/responses/PlainError'
+        '401':
+          $ref: '#/components/responses/PlainError'
+        '404':
+          $ref: '#/components/responses/PlainError'
+
+  /restaurants/{id}/tables/{tableID}:
+    get:
+      tags:
+        - Restaurants
+      summary: Получить столик
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: tableID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Столик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableGetResponse'
+        '404':
+          $ref: '#/components/responses/PlainError'
+    delete:
+      tags:
+        - Restaurants
+      summary: Удалить столик
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: tableID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Столик удалён
+        '401':
+          $ref: '#/components/responses/PlainError'
         '404':
           $ref: '#/components/responses/PlainError'
 

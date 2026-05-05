@@ -54,13 +54,12 @@ func (r *postgresRepository) HasOverlap(ctx context.Context, tableID uuid.UUID, 
 }
 
 func (r *postgresRepository) Create(ctx context.Context, b domain.Booking) (domain.Booking, error) {
-	const q = `
+	var result domain.Booking
+	err := r.pool.Pgx().QueryRow(ctx, `
 		INSERT INTO bookings (user_id, restaurant_id, table_id, booking_date, start_time, end_time, guests_count, status)
 		VALUES ($1, $2, $3, $4::date, $5::time, $6::time, $7, 'confirmed')
 		RETURNING id, status::text, created_at, updated_at
-	`
-	var out domain.Booking
-	err := r.pool.Pgx().QueryRow(ctx, q,
+	`,
 		b.UserID,
 		b.RestaurantID,
 		b.TableID,
@@ -68,7 +67,7 @@ func (r *postgresRepository) Create(ctx context.Context, b domain.Booking) (doma
 		b.StartTime,
 		b.EndTime,
 		b.GuestsCount,
-	).Scan(&out.ID, &out.Status, &out.CreatedAt, &out.UpdatedAt)
+	).Scan(&result.ID, &result.Status, &result.CreatedAt, &result.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -76,12 +75,12 @@ func (r *postgresRepository) Create(ctx context.Context, b domain.Booking) (doma
 		}
 		return domain.Booking{}, err
 	}
-	out.UserID = b.UserID
-	out.RestaurantID = b.RestaurantID
-	out.TableID = b.TableID
-	out.GuestsCount = b.GuestsCount
-	out.BookingDate = b.BookingDate
-	out.StartTime = b.StartTime
-	out.EndTime = b.EndTime
-	return out, nil
+	result.UserID = b.UserID
+	result.RestaurantID = b.RestaurantID
+	result.TableID = b.TableID
+	result.GuestsCount = b.GuestsCount
+	result.BookingDate = b.BookingDate
+	result.StartTime = b.StartTime
+	result.EndTime = b.EndTime
+	return result, nil
 }

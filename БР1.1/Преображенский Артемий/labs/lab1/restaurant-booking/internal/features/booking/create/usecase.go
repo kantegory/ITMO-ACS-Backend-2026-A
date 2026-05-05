@@ -24,40 +24,43 @@ func NewUsecase(repo Repository) *Usecase {
 }
 
 func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
-	d := strings.TrimSpace(input.BookingDate)
-	st := strings.TrimSpace(input.StartTime)
-	et := strings.TrimSpace(input.EndTime)
-	if d == "" || st == "" || et == "" {
+	restaurantID, err := uuid.Parse(input.RestaurantID)
+	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	if input.GuestsCount <= 0 {
+	tableID, err := uuid.Parse(input.TableID)
+	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	if input.RestaurantID == uuid.Nil || input.TableID == uuid.Nil {
-		return Output{}, domain.ErrInvalidInput
+	bookingDate := strings.TrimSpace(input.BookingDate)
+	startTime := strings.TrimSpace(input.StartTime)
+	endTime := strings.TrimSpace(input.EndTime)
+
+	b := domain.Booking{
+		UserID:       input.UserID,
+		RestaurantID: restaurantID,
+		TableID:      tableID,
+		GuestsCount:  input.GuestsCount,
+		BookingDate:  bookingDate,
+		StartTime:    startTime,
+		EndTime:      endTime,
 	}
-	t, err := u.repo.TableForRestaurant(ctx, input.TableID, input.RestaurantID)
+	t, err := u.repo.TableForRestaurant(ctx, b.TableID, b.RestaurantID)
 	if err != nil {
 		return Output{}, err
 	}
-	if t.Seats < input.GuestsCount {
+	if t.Seats < b.GuestsCount {
 		return Output{}, domain.ErrUnavailable
 	}
-	overlap, err := u.repo.HasOverlap(ctx, input.TableID, d, st, et)
+	overlap, err := u.repo.HasOverlap(ctx, b.TableID, b.BookingDate, b.StartTime, b.EndTime)
 	if err != nil {
 		return Output{}, err
 	}
 	if overlap {
 		return Output{}, domain.ErrUnavailable
 	}
-	b := domain.Booking{
-		UserID:       input.UserID,
-		RestaurantID: input.RestaurantID,
-		TableID:      input.TableID,
-		GuestsCount:  input.GuestsCount,
-		BookingDate:  d,
-		StartTime:    st,
-		EndTime:      et,
+	if err := b.Validate(); err != nil {
+		return Output{}, err
 	}
 	created, err := u.repo.Create(ctx, b)
 	if err != nil {

@@ -3,9 +3,9 @@ package list
 import "restaurant-booking/internal/domain"
 
 type Input struct {
-	RestaurantID string
+	RestaurantID string `json:"restaurant_id"`
 }
 
 type Output struct {
-	Items []domain.Dish
+	Dishes []domain.Dish `json:"dishes"`
 }

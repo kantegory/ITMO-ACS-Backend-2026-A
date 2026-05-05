@@ -148,35 +148,3 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS bookings_user_id_idx ON bookings (user_id, booking_date);
 CREATE INDEX IF NOT EXISTS bookings_restaurant_id_idx ON bookings (restaurant_id, booking_date);
 CREATE INDEX IF NOT EXISTS bookings_table_id_idx ON bookings (table_id, booking_date);
-
-DO $$
-DECLARE
-    rid UUID;
-    uid UUID;
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM restaurants) THEN
-        INSERT INTO restaurants (name, description, city, address, cuisine_type, price_category, photos)
-        VALUES ('Demo Restaurant', 'Demo description', 'Saint Petersburg', 'Demo address', 'italian', 'medium', ARRAY[]::text[])
-        RETURNING id INTO rid;
-
-        INSERT INTO restaurant_tables (restaurant_id, table_number, seats_count)
-        VALUES (rid, 1, 2), (rid, 2, 4), (rid, 3, 6);
-
-        INSERT INTO menu_items (restaurant_id, name, description, price, category, is_available, pfc_proteins, pfc_fats, pfc_carbs)
-        VALUES
-            (rid, 'Margherita', 'Classic pizza', 690.00, 'pizza', true, 12.0, 10.0, 62.0),
-            (rid, 'Tiramisu', 'Classic dessert', 390.00, 'dessert', true, 6.0, 14.0, 42.0);
-
-        IF NOT EXISTS (SELECT 1 FROM users) THEN
-            INSERT INTO users (email, password_hash, full_name, phone)
-            VALUES ('demo@example.com', 'demo', 'Demo User', '+70000000000')
-            RETURNING id INTO uid;
-        ELSE
-            SELECT id INTO uid FROM users ORDER BY created_at ASC LIMIT 1;
-        END IF;
-
-        INSERT INTO reviews (user_id, restaurant_id, rating, text)
-        VALUES (uid, rid, 5, 'Demo review');
-    END IF;
-END
-$$;

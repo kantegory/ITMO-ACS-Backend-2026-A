@@ -25,15 +25,22 @@ type MeRoutes struct {
 
 type RestaurantRoutes struct {
 	List         http.HandlerFunc
+	Create       http.HandlerFunc
 	Get          http.HandlerFunc
 	Delete       http.HandlerFunc
 	Menu         http.HandlerFunc
+	MenuCreate   http.HandlerFunc
+	MenuGet      http.HandlerFunc
+	MenuDelete   http.HandlerFunc
 	ReviewsList  http.HandlerFunc
 	ReviewCreate http.HandlerFunc
 	ReviewGet    http.HandlerFunc
 	ReviewUpdate http.HandlerFunc
 	ReviewDelete http.HandlerFunc
 	Tables       http.HandlerFunc
+	TableCreate  http.HandlerFunc
+	TableGet     http.HandlerFunc
+	TableDelete  http.HandlerFunc
 	Availability http.HandlerFunc
 }
 
@@ -75,16 +82,23 @@ func Router(routes Routes) http.Handler {
 
 		r.Route("/restaurants", func(r chi.Router) {
 			r.Get("/", routes.Restaurants.List)
+			r.With(auth).Post("/", routes.Restaurants.Create)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", routes.Restaurants.Get)
 				r.With(auth).Delete("/", routes.Restaurants.Delete)
 				r.Get("/menu", routes.Restaurants.Menu)
+				r.With(auth).Post("/menu", routes.Restaurants.MenuCreate)
+				r.Get("/menu/{itemID}", routes.Restaurants.MenuGet)
+				r.With(auth).Delete("/menu/{itemID}", routes.Restaurants.MenuDelete)
 				r.Get("/reviews", routes.Restaurants.ReviewsList)
 				r.With(auth).Post("/reviews", routes.Restaurants.ReviewCreate)
 				r.Get("/reviews/{reviewID}", routes.Restaurants.ReviewGet)
 				r.With(auth).Put("/reviews/{reviewID}", routes.Restaurants.ReviewUpdate)
 				r.With(auth).Delete("/reviews/{reviewID}", routes.Restaurants.ReviewDelete)
 				r.Get("/tables", routes.Restaurants.Tables)
+				r.With(auth).Post("/tables", routes.Restaurants.TableCreate)
+				r.Get("/tables/{tableID}", routes.Restaurants.TableGet)
+				r.With(auth).Delete("/tables/{tableID}", routes.Restaurants.TableDelete)
 				r.Get("/tables/{tableID}/availability", routes.Restaurants.Availability)
 			})
 		})

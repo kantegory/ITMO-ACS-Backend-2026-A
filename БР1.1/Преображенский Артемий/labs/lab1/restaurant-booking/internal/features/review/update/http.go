@@ -18,18 +18,15 @@ func HTTP(usecase *Usecase) http.HandlerFunc {
 			render.WriteError(w, http.StatusUnauthorized)
 			return
 		}
-		var body Body
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var input Input
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			render.WriteDomainError(w, domain.ErrInvalidInput)
 			return
 		}
-		out, err := usecase.Update(r.Context(), Input{
-			UserID:       uid,
-			RestaurantID: chi.URLParam(r, "id"),
-			ReviewID:     chi.URLParam(r, "reviewID"),
-			Rating:       body.Rating,
-			Text:         body.Text,
-		})
+		input.UserID = uid
+		input.RestaurantID = chi.URLParam(r, "id")
+		input.ReviewID = chi.URLParam(r, "reviewID")
+		out, err := usecase.Update(r.Context(), input)
 		if err != nil {
 			render.WriteDomainError(w, err)
 			return

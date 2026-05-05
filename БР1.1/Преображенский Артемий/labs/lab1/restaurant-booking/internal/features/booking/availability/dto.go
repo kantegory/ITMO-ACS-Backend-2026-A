@@ -1,13 +1,13 @@
 package availability
 
 type Input struct {
-	RestaurantID string
-	TableID      string
-	BookingDate  string
-	StartTime    string
-	EndTime      string
+	RestaurantID string `json:"restaurant_id"`
+	TableID      string `json:"table_id"`
+	BookingDate  string `json:"booking_date"`
+	StartTime    string `json:"start_time"`
+	EndTime      string `json:"end_time"`
 }
 
 type Output struct {
-	Available bool
+	Available bool `json:"available"`
 }

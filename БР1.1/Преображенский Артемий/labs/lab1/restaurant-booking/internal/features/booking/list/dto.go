@@ -7,9 +7,9 @@ import (
 )
 
 type Input struct {
-	UserID uuid.UUID
+	UserID uuid.UUID `json:"user_id"`
 }
 
 type Output struct {
-	Bookings []domain.Booking
+	Bookings []domain.Booking `json:"bookings"`
 }

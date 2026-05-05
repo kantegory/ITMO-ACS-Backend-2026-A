@@ -6,19 +6,14 @@ import (
 	"restaurant-booking/internal/domain"
 )
 
-type Body struct {
-	Rating int
-	Text   string
-}
-
 type Input struct {
-	UserID       uuid.UUID
-	RestaurantID string
-	ReviewID     string
-	Rating       int
-	Text         string
+	UserID       uuid.UUID `json:"user_id"`
+	RestaurantID string    `json:"restaurant_id"`
+	ReviewID     string    `json:"review_id"`
+	Rating       int       `json:"rating"`
+	Text         string    `json:"text"`
 }
 
 type Output struct {
-	Review domain.Review
+	Review domain.Review `json:"review"`
 }

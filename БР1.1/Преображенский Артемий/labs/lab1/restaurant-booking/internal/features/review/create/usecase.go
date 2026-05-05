@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, userID uuid.UUID, restaurantID uuid.UUID, rating int, text string) (domain.Review, error)
+	Create(ctx context.Context, review domain.Review) (domain.Review, error)
 }
 
 type Usecase struct {
@@ -25,9 +26,18 @@ func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	rev, err := u.repo.Create(ctx, input.UserID, rid, input.Rating, input.Text)
+	review := domain.Review{
+		UserID:       input.UserID,
+		RestaurantID: rid,
+		Rating:       domain.Rating(input.Rating),
+		Text:         strings.TrimSpace(input.Text),
+	}
+	if err := review.Validate(); err != nil {
+		return Output{}, err
+	}
+	created, err := u.repo.Create(ctx, review)
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Review: rev}, nil
+	return Output{Review: created}, nil
 }

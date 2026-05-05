@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type Repository interface {
-	Update(ctx context.Context, userID uuid.UUID, restaurantID uuid.UUID, reviewID uuid.UUID, rating int, text string) (domain.Review, error)
+	Update(ctx context.Context, review domain.Review) (domain.Review, error)
 }
 
 type Usecase struct {
@@ -29,9 +30,19 @@ func (u *Usecase) Update(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	rev, err := u.repo.Update(ctx, input.UserID, rid, reviewID, input.Rating, input.Text)
+	review := domain.Review{
+		ID:           reviewID,
+		UserID:       input.UserID,
+		RestaurantID: rid,
+		Rating:       domain.Rating(input.Rating),
+		Text:         strings.TrimSpace(input.Text),
+	}
+	if err := review.Validate(); err != nil {
+		return Output{}, err
+	}
+	updated, err := u.repo.Update(ctx, review)
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Review: rev}, nil
+	return Output{Review: updated}, nil
 }
