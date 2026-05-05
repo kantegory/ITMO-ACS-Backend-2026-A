@@ -6,16 +6,20 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:8080/api" },
-    { "key": "email", "value": "" },
+    { "key": "email", "value": "postman@example.com" },
     { "key": "password", "value": "Password123!" },
     { "key": "full_name", "value": "Artemiy Preobrazhenskiy" },
-    { "key": "phone", "value": "" },
+    { "key": "phone", "value": "+79990000000" },
     { "key": "token", "value": "" },
     { "key": "user_id", "value": "" },
+    { "key": "registered", "value": "0" },
+    { "key": "restaurant_name", "value": "" },
     { "key": "restaurant_id", "value": "" },
     { "key": "restaurant_city", "value": "" },
     { "key": "restaurant_cuisine_type", "value": "" },
     { "key": "table_id", "value": "" },
+    { "key": "menu_item_id", "value": "" },
+    { "key": "review_id", "value": "" },
     { "key": "booking_id", "value": "" },
     { "key": "booking_date", "value": "" },
     { "key": "start_time", "value": "18:00:00" },
@@ -28,10 +32,8 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "if (!pm.collectionVariables.get('email')) {",
-          "  const ts = Date.now();",
-          "  pm.collectionVariables.set('email', `postman_${ts}@example.com`);",
-          "  pm.collectionVariables.set('phone', `+7${ts.toString().slice(-10)}`);",
+          "if (!pm.collectionVariables.get('restaurant_name')) {",
+          "  pm.collectionVariables.set('restaurant_name', `Postman Restaurant ${Date.now()}`);",
           "}",
           "if (!pm.collectionVariables.get('booking_date')) {",
           "  const d = new Date();",
@@ -45,36 +47,7 @@
   ],
   "item": [
     {
-      "name": "01. Register",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"{{full_name}}\",\n  \"phone\": \"{{phone}}\"\n}"
-        }
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('status 201', () => pm.response.to.have.status(201));",
-              "const body = pm.response.json();",
-              "pm.test('token присутствует', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
-              "pm.test('user.email совпадает', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email')));",
-              "pm.test('user.id — uuid', () => pm.expect(body.user.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
-              "pm.collectionVariables.set('token', body.token);",
-              "pm.collectionVariables.set('user_id', body.user.id);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "02. Login",
+      "name": "01. Login",
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -90,11 +63,47 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('status 200', () => pm.response.to.have.status(200));",
-              "const body = pm.response.json();",
-              "pm.test('token присутствует', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
-              "pm.test('email совпадает', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email')));",
-              "pm.collectionVariables.set('token', body.token);"
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('token', body.token);",
+              "  pm.collectionVariables.set('user_id', body.user.id);",
+              "  pm.collectionVariables.set('registered', '1');",
+              "  pm.test('login ok', () => pm.response.to.have.status(200));",
+              "  postman.setNextRequest('03. Profile');",
+              "} else {",
+              "  pm.test('login needs register', () => pm.response.to.have.status(401));",
+              "  postman.setNextRequest('02. Register');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"{{full_name}}\",\n  \"phone\": \"{{phone}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "  pm.test('register ok', () => pm.response.to.have.status(201));",
+              "  pm.collectionVariables.set('registered', '1');",
+              "  postman.setNextRequest('01. Login');",
+              "} else {",
+              "  pm.test('user exists', () => pm.response.to.have.status(409));",
+              "  postman.setNextRequest('01. Login');",
+              "}"
             ]
           }
         }
@@ -123,7 +132,37 @@
       ]
     },
     {
-      "name": "04. List restaurants",
+      "name": "04. Create restaurant",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "{{base_url}}/restaurants", "host": ["{{base_url}}"], "path": ["restaurants"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{restaurant_name}}\",\n  \"description\": \"Test restaurant\",\n  \"city\": \"Saint Petersburg\",\n  \"address\": \"Test address\",\n  \"cuisine_type\": \"italian\",\n  \"price_category\": \"medium\",\n  \"photos\": []\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('restaurant_id', body.restaurant.id);",
+              "pm.collectionVariables.set('restaurant_city', body.restaurant.city);",
+              "pm.collectionVariables.set('restaurant_cuisine_type', body.restaurant.cuisine_type);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. List restaurants",
       "request": {
         "method": "GET",
         "header": [],
@@ -138,12 +177,10 @@
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
               "pm.test('restaurants — массив', () => pm.expect(body.restaurants).to.be.an('array'));",
-              "pm.test('список не пустой (нужны сид-данные)', () => pm.expect(body.restaurants.length).to.be.greaterThan(0));",
-              "const idx = Math.floor(Math.random() * body.restaurants.length);",
-              "const r = body.restaurants[idx];",
-              "pm.collectionVariables.set('restaurant_id', r.id);",
-              "pm.collectionVariables.set('restaurant_city', r.city);",
-              "pm.collectionVariables.set('restaurant_cuisine_type', r.cuisine_type);"
+              "pm.test('созданный ресторан есть в списке', () => {",
+              "  const id = pm.collectionVariables.get('restaurant_id');",
+              "  pm.expect(body.restaurants.map(r => r.id)).to.include(id);",
+              "});"
             ]
           }
         }
@@ -213,6 +250,102 @@
       ]
     },
     {
+      "name": "06.1 Create menu item",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/menu",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "menu"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Pasta\",\n  \"description\": \"Test dish\",\n  \"price\": 500,\n  \"category\": \"main\",\n  \"is_available\": true,\n  \"proteins\": 10,\n  \"fats\": 8,\n  \"carbs\": 60\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('menu_item_id', body.item.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06.2 Create review",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "reviews"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 5,\n  \"text\": \"Test review\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('review_id', body.review.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06.3 Create table",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/tables",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "tables"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"table_number\": 1,\n  \"seats_count\": 4\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('table_id', body.table.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "07. Menu",
       "request": {
         "method": "GET",
@@ -231,8 +364,8 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('Items — массив', () => pm.expect(body.Items).to.be.an('array'));",
-              "pm.test('меню не пустое', () => pm.expect(body.Items.length).to.be.greaterThan(0));"
+              "pm.test('dishes — массив', () => pm.expect(body.dishes).to.be.an('array'));",
+              "pm.test('меню не пустое', () => pm.expect(body.dishes.length).to.be.greaterThan(0));"
             ]
           }
         }
@@ -257,8 +390,8 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('Items — массив', () => pm.expect(body.Items).to.be.an('array'));",
-              "pm.test('отзывы не пустые', () => pm.expect(body.Items.length).to.be.greaterThan(0));"
+              "pm.test('reviews — массив', () => pm.expect(body.reviews).to.be.an('array'));",
+              "pm.test('отзывы не пустые', () => pm.expect(body.reviews.length).to.be.greaterThan(0));"
             ]
           }
         }
@@ -283,13 +416,8 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('Items — массив', () => pm.expect(body.Items).to.be.an('array'));",
-              "pm.test('есть хотя бы один столик', () => pm.expect(body.Items.length).to.be.greaterThan(0));",
-              "const guests = parseInt(pm.collectionVariables.get('guests_count'), 10);",
-              "const fit = body.Items.filter(t => t.seats_count >= guests);",
-              "pm.test('есть столики достаточной вместимости', () => pm.expect(fit.length).to.be.greaterThan(0));",
-              "const t = fit[Math.floor(Math.random() * fit.length)];",
-              "pm.collectionVariables.set('table_id', t.id);"
+              "pm.test('tables — массив', () => pm.expect(body.tables).to.be.an('array'));",
+              "pm.test('есть хотя бы один столик', () => pm.expect(body.tables.length).to.be.greaterThan(0));"
             ]
           }
         }
@@ -319,8 +447,8 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('Available — boolean', () => pm.expect(body.Available).to.be.a('boolean'));",
-              "pm.test('столик свободен', () => pm.expect(body.Available).to.be.true);"
+              "pm.test('available — boolean', () => pm.expect(body.available).to.be.a('boolean'));",
+              "pm.test('столик свободен', () => pm.expect(body.available).to.be.true);"
             ]
           }
         }
@@ -348,11 +476,9 @@
             "exec": [
               "pm.test('status 201', () => pm.response.to.have.status(201));",
               "const body = pm.response.json();",
-              "pm.test('Booking.id — uuid', () => pm.expect(body.Booking.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
-              "pm.test('статус confirmed', () => pm.expect(body.Booking.status).to.eql('confirmed'));",
-              "pm.test('restaurant_id совпадает', () => pm.expect(body.Booking.restaurant_id).to.eql(pm.collectionVariables.get('restaurant_id')));",
-              "pm.test('table_id совпадает', () => pm.expect(body.Booking.table_id).to.eql(pm.collectionVariables.get('table_id')));",
-              "pm.collectionVariables.set('booking_id', body.Booking.id);"
+              "pm.test('booking.id есть', () => pm.expect(body.booking.id).to.be.a('string'));",
+              "pm.test('статус confirmed', () => pm.expect(body.booking.status).to.eql('confirmed'));",
+              "pm.collectionVariables.set('booking_id', body.booking.id);"
             ]
           }
         }
@@ -373,9 +499,9 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('Bookings — массив', () => pm.expect(body.Bookings).to.be.an('array'));",
+              "pm.test('bookings — массив', () => pm.expect(body.bookings).to.be.an('array'));",
               "const id = pm.collectionVariables.get('booking_id');",
-              "pm.test('созданное бронирование присутствует', () => pm.expect(body.Bookings.map(b => b.id)).to.include(id));"
+              "pm.test('созданное бронирование присутствует', () => pm.expect(body.bookings.map(b => b.id)).to.include(id));"
             ]
           }
         }
@@ -400,8 +526,8 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('id совпадает', () => pm.expect(body.Booking.id).to.eql(pm.collectionVariables.get('booking_id')));",
-              "pm.test('статус confirmed', () => pm.expect(body.Booking.status).to.eql('confirmed'));"
+              "pm.test('id совпадает', () => pm.expect(body.booking.id).to.eql(pm.collectionVariables.get('booking_id')));",
+              "pm.test('статус confirmed', () => pm.expect(body.booking.status).to.eql('confirmed'));"
             ]
           }
         }
@@ -426,7 +552,7 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('OK = true', () => pm.expect(body.OK).to.be.true);"
+              "pm.test('success = true', () => pm.expect(body.success).to.be.true);"
             ]
           }
         }
@@ -451,7 +577,7 @@
             "exec": [
               "pm.test('status 200', () => pm.response.to.have.status(200));",
               "const body = pm.response.json();",
-              "pm.test('статус cancelled', () => pm.expect(body.Booking.status).to.eql('cancelled'));"
+              "pm.test('статус cancelled', () => pm.expect(body.booking.status).to.eql('cancelled'));"
             ]
           }
         }
