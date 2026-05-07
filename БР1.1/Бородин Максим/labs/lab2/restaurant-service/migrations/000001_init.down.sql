@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS reviews;
+DROP TABLE IF EXISTS menu_items;
+DROP TABLE IF EXISTS tables;
+DROP TABLE IF EXISTS restaurant_photos;
+DROP TABLE IF EXISTS restaurants;
