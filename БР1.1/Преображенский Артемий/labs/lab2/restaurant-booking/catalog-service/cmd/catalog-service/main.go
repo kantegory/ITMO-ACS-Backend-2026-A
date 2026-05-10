@@ -16,6 +16,7 @@ import (
 	"restaurant-booking/catalog-service/docs"
 	"restaurant-booking/catalog-service/internal/adapter/authclient"
 	"restaurant-booking/catalog-service/internal/adapter/postgres"
+	"restaurant-booking/catalog-service/internal/adapter/rabbitmq"
 	httpcontroller "restaurant-booking/catalog-service/internal/controller/http"
 	menucreate "restaurant-booking/catalog-service/internal/features/menu/create"
 	menudelete "restaurant-booking/catalog-service/internal/features/menu/delete"
@@ -30,9 +31,9 @@ import (
 	reviewget "restaurant-booking/catalog-service/internal/features/review/get"
 	reviewlist "restaurant-booking/catalog-service/internal/features/review/list"
 	reviewupdate "restaurant-booking/catalog-service/internal/features/review/update"
-	internaltableget "restaurant-booking/catalog-service/internal/features/table/get"
 	tablecreate "restaurant-booking/catalog-service/internal/features/table/create"
 	tabledelete "restaurant-booking/catalog-service/internal/features/table/delete"
+	internaltableget "restaurant-booking/catalog-service/internal/features/table/get"
 	tableget "restaurant-booking/catalog-service/internal/features/table/get"
 	tablelist "restaurant-booking/catalog-service/internal/features/table/list"
 	"restaurant-booking/catalog-service/pkg/jwt"
@@ -49,9 +50,24 @@ func main() {
 }
 
 func AppRun(ctx context.Context, cfg config.Config) error {
+	appCtx, appCancel := context.WithCancel(ctx)
+	defer appCancel()
+
 	pgPool, err := postgres.New(ctx, cfg.Postgres)
 	if err != nil {
 		return fmt.Errorf("postgres.New: %w", err)
+	}
+
+	if cfg.RabbitMQURL != "" {
+		cons, err := rabbitmq.NewConsumer(cfg.RabbitMQURL)
+		if err != nil {
+			pgPool.Close()
+			return fmt.Errorf("rabbitmq consumer: %w", err)
+		}
+		go func() {
+			_ = cons.Run(appCtx)
+		}()
+		defer cons.Close()
 	}
 
 	jwtCfg := jwt.Config{Secret: []byte(cfg.JWTSecret)}
@@ -98,7 +114,7 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 			ReviewDelete:     reviewdelete.HTTP(reviewDeleteUsecase),
 		},
 		Internal: httpcontroller.InternalRoutes{
-			TableGet:      internaltableget.InternalHTTP(pgPool),
+			TableGet: internaltableget.InternalHTTP(pgPool),
 		},
 	}
 
@@ -133,7 +149,9 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	select {
 	case sig := <-sigCh:
 		fmt.Printf("shutdown signal received: %s\n", sig.String())
+		appCancel()
 	case err := <-errCh:
+		appCancel()
 		pgPool.Close()
 		return fmt.Errorf("http server: %w", err)
 	}

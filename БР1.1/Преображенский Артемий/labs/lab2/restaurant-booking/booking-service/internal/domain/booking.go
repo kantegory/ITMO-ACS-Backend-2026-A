@@ -1,47 +1,33 @@
 package domain
 
 import (
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-func ValidateBookingSchedule(bookingDate, startTime, endTime string) error {
-	d := strings.TrimSpace(bookingDate)
-	st := strings.TrimSpace(startTime)
-	et := strings.TrimSpace(endTime)
-	if d == "" || st == "" || et == "" {
+func JoinBookingDateTimes(bookingDate, startClock, endClock time.Time) (time.Time, time.Time) {
+	d := bookingDate.UTC()
+	s := startClock.UTC()
+	e := endClock.UTC()
+	start := time.Date(d.Year(), d.Month(), d.Day(), s.Hour(), s.Minute(), s.Second(), s.Nanosecond(), time.UTC)
+	end := time.Date(d.Year(), d.Month(), d.Day(), e.Hour(), e.Minute(), e.Second(), e.Nanosecond(), time.UTC)
+	return start, end
+}
+
+func ValidateBookingSchedule(startTime, endTime time.Time) error {
+	if startTime.IsZero() || endTime.IsZero() {
 		return ErrInvalidInput
 	}
-	if _, err := time.Parse(time.DateOnly, d); err != nil {
+	if !endTime.After(startTime) {
 		return ErrInvalidInput
 	}
-	startClock, err := parseClock(st)
-	if err != nil {
-		return ErrInvalidInput
-	}
-	endClock, err := parseClock(et)
-	if err != nil {
-		return ErrInvalidInput
-	}
-	if !endClock.After(startClock) {
+	st := startTime.UTC()
+	et := endTime.UTC()
+	if st.Year() != et.Year() || st.Month() != et.Month() || st.Day() != et.Day() {
 		return ErrInvalidInput
 	}
 	return nil
-}
-
-func parseClock(s string) (time.Time, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return time.Time{}, ErrInvalidInput
-	}
-	for _, layout := range []string{"15:04:05", "15:04"} {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, ErrInvalidInput
 }
 
 type BookingStatus string
@@ -52,9 +38,8 @@ type Booking struct {
 	RestaurantID uuid.UUID     `json:"restaurant_id"`
 	TableID      uuid.UUID     `json:"table_id"`
 	GuestsCount  int           `json:"guests_count"`
-	BookingDate  string        `json:"booking_date"`
-	StartTime    string        `json:"start_time"`
-	EndTime      string        `json:"end_time"`
+	StartTime    time.Time     `json:"start_time"`
+	EndTime      time.Time     `json:"end_time"`
 	Status       BookingStatus `json:"status"`
 	CreatedAt    time.Time     `json:"created_at"`
 	UpdatedAt    time.Time     `json:"updated_at"`
@@ -67,5 +52,5 @@ func (b Booking) Validate() error {
 	if b.GuestsCount <= 0 {
 		return ErrInvalidInput
 	}
-	return ValidateBookingSchedule(b.BookingDate, b.StartTime, b.EndTime)
+	return ValidateBookingSchedule(b.StartTime, b.EndTime)
 }

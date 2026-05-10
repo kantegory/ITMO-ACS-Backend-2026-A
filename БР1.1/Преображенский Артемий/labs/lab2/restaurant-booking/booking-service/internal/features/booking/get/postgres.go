@@ -3,6 +3,7 @@ package get
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,7 @@ func NewPostgres(pool *postgres.Pool) *postgresRepository {
 
 func (r *postgresRepository) GetByIDAndUser(ctx context.Context, bookingID uuid.UUID, userID uuid.UUID) (domain.Booking, error) {
 	var b domain.Booking
+	var bd, stClock, etClock time.Time
 	err := r.pool.Pgx().QueryRow(ctx, `
 		SELECT
 			id,
@@ -28,9 +30,9 @@ func (r *postgresRepository) GetByIDAndUser(ctx context.Context, bookingID uuid.
 			restaurant_id,
 			table_id,
 			guests_count,
-			booking_date::text,
-			start_time::text,
-			end_time::text,
+			booking_date,
+			start_time,
+			end_time,
 			status::text,
 			created_at,
 			updated_at
@@ -42,9 +44,9 @@ func (r *postgresRepository) GetByIDAndUser(ctx context.Context, bookingID uuid.
 		&b.RestaurantID,
 		&b.TableID,
 		&b.GuestsCount,
-		&b.BookingDate,
-		&b.StartTime,
-		&b.EndTime,
+		&bd,
+		&stClock,
+		&etClock,
 		&b.Status,
 		&b.CreatedAt,
 		&b.UpdatedAt,
@@ -55,5 +57,6 @@ func (r *postgresRepository) GetByIDAndUser(ctx context.Context, bookingID uuid.
 		}
 		return domain.Booking{}, err
 	}
+	b.StartTime, b.EndTime = domain.JoinBookingDateTimes(bd, stClock, etClock)
 	return b, nil
 }

@@ -2,7 +2,7 @@ package availability
 
 import (
 	"context"
-	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -11,7 +11,7 @@ import (
 )
 
 type Repository interface {
-	HasOverlap(ctx context.Context, tableID uuid.UUID, bookingDate string, startTime string, endTime string) (bool, error)
+	HasOverlap(ctx context.Context, tableID uuid.UUID, startTime time.Time, endTime time.Time) (bool, error)
 }
 
 type CatalogClient interface {
@@ -36,16 +36,13 @@ func (u *Usecase) Check(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	if err := domain.ValidateBookingSchedule(input.BookingDate, input.StartTime, input.EndTime); err != nil {
+	if err := domain.ValidateBookingSchedule(input.StartTime, input.EndTime); err != nil {
 		return Output{}, err
 	}
-	d := strings.TrimSpace(input.BookingDate)
-	st := strings.TrimSpace(input.StartTime)
-	et := strings.TrimSpace(input.EndTime)
 	if _, err := u.catalog.GetTable(ctx, rid, tid); err != nil {
 		return Output{}, err
 	}
-	overlap, err := u.repo.HasOverlap(ctx, tid, d, st, et)
+	overlap, err := u.repo.HasOverlap(ctx, tid, input.StartTime, input.EndTime)
 	if err != nil {
 		return Output{}, err
 	}

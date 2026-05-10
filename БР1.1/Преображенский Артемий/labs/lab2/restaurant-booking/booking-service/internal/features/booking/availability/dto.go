@@ -1,11 +1,12 @@
 package availability
 
+import "time"
+
 type Input struct {
 	RestaurantID string
 	TableID      string
-	BookingDate  string
-	StartTime    string
-	EndTime      string
+	StartTime    time.Time
+	EndTime      time.Time
 }
 
 type Output struct {
