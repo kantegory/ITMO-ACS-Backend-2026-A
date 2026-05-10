@@ -7,6 +7,27 @@ import (
 	"github.com/google/uuid"
 )
 
+var allowedCuisineTypes = map[string]struct{}{
+	"italian":       {},
+	"japanese":      {},
+	"georgian":      {},
+	"russian":       {},
+	"american":      {},
+	"mexican":       {},
+	"chinese":       {},
+	"thai":          {},
+	"indian":        {},
+	"european":      {},
+	"mediterranean": {},
+	"other":         {},
+}
+
+var allowedPriceCategories = map[string]struct{}{
+	"low":    {},
+	"medium": {},
+	"high":   {},
+}
+
 type City string
 
 type Address string
@@ -36,6 +57,12 @@ func (r Restaurant) Validate() error {
 		strings.TrimSpace(string(r.Address)) == "" ||
 		strings.TrimSpace(string(r.CuisineType)) == "" ||
 		strings.TrimSpace(string(r.PriceCategory)) == "" {
+		return ErrInvalidInput
+	}
+	if _, ok := allowedCuisineTypes[string(r.CuisineType)]; !ok {
+		return ErrInvalidInput
+	}
+	if _, ok := allowedPriceCategories[string(r.PriceCategory)]; !ok {
 		return ErrInvalidInput
 	}
 	return nil

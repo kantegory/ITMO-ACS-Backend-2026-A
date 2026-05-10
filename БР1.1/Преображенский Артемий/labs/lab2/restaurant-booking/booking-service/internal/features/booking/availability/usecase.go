@@ -36,12 +36,12 @@ func (u *Usecase) Check(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
+	if err := domain.ValidateBookingSchedule(input.BookingDate, input.StartTime, input.EndTime); err != nil {
+		return Output{}, err
+	}
 	d := strings.TrimSpace(input.BookingDate)
 	st := strings.TrimSpace(input.StartTime)
 	et := strings.TrimSpace(input.EndTime)
-	if d == "" || st == "" || et == "" {
-		return Output{}, domain.ErrInvalidInput
-	}
 	if _, err := u.catalog.GetTable(ctx, rid, tid); err != nil {
 		return Output{}, err
 	}

@@ -29,17 +29,23 @@ func NewUsecase(repo Repository, catalog CatalogClient) *Usecase {
 }
 
 func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
+	if input.RestaurantID == uuid.Nil || input.TableID == uuid.Nil {
+		return Output{}, domain.ErrInvalidInput
+	}
 	d := strings.TrimSpace(input.BookingDate)
 	st := strings.TrimSpace(input.StartTime)
 	et := strings.TrimSpace(input.EndTime)
-	if d == "" || st == "" || et == "" {
-		return Output{}, domain.ErrInvalidInput
+	b := domain.Booking{
+		UserID:       input.UserID,
+		RestaurantID: input.RestaurantID,
+		TableID:      input.TableID,
+		GuestsCount:  input.GuestsCount,
+		BookingDate:  d,
+		StartTime:    st,
+		EndTime:      et,
 	}
-	if input.GuestsCount <= 0 {
-		return Output{}, domain.ErrInvalidInput
-	}
-	if input.RestaurantID == uuid.Nil || input.TableID == uuid.Nil {
-		return Output{}, domain.ErrInvalidInput
+	if err := b.Validate(); err != nil {
+		return Output{}, err
 	}
 	table, err := u.catalog.GetTable(ctx, input.RestaurantID, input.TableID)
 	if err != nil {
@@ -54,15 +60,6 @@ func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
 	}
 	if overlap {
 		return Output{}, domain.ErrUnavailable
-	}
-	b := domain.Booking{
-		UserID:       input.UserID,
-		RestaurantID: input.RestaurantID,
-		TableID:      input.TableID,
-		GuestsCount:  input.GuestsCount,
-		BookingDate:  d,
-		StartTime:    st,
-		EndTime:      et,
 	}
 	created, err := u.repo.Create(ctx, b)
 	if err != nil {

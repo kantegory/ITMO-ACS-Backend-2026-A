@@ -7,6 +7,43 @@ import (
 	"github.com/google/uuid"
 )
 
+func ValidateBookingSchedule(bookingDate, startTime, endTime string) error {
+	d := strings.TrimSpace(bookingDate)
+	st := strings.TrimSpace(startTime)
+	et := strings.TrimSpace(endTime)
+	if d == "" || st == "" || et == "" {
+		return ErrInvalidInput
+	}
+	if _, err := time.Parse(time.DateOnly, d); err != nil {
+		return ErrInvalidInput
+	}
+	startClock, err := parseClock(st)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	endClock, err := parseClock(et)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	if !endClock.After(startClock) {
+		return ErrInvalidInput
+	}
+	return nil
+}
+
+func parseClock(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, ErrInvalidInput
+	}
+	for _, layout := range []string{"15:04:05", "15:04"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, ErrInvalidInput
+}
+
 type BookingStatus string
 
 type Booking struct {
@@ -30,8 +67,5 @@ func (b Booking) Validate() error {
 	if b.GuestsCount <= 0 {
 		return ErrInvalidInput
 	}
-	if strings.TrimSpace(b.BookingDate) == "" || strings.TrimSpace(b.StartTime) == "" || strings.TrimSpace(b.EndTime) == "" {
-		return ErrInvalidInput
-	}
-	return nil
+	return ValidateBookingSchedule(b.BookingDate, b.StartTime, b.EndTime)
 }

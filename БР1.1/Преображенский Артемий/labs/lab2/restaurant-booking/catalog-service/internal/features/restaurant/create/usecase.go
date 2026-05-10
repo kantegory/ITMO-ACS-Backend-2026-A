@@ -25,9 +25,13 @@ func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
 		Description:   strings.TrimSpace(input.Description),
 		City:          domain.City(strings.TrimSpace(string(input.City))),
 		Address:       domain.Address(strings.TrimSpace(string(input.Address))),
-		CuisineType:   domain.CuisineType(strings.TrimSpace(string(input.CuisineType))),
-		PriceCategory: domain.PriceCategory(strings.TrimSpace(string(input.PriceCategory))),
-		Photos:        input.Photos,
+		CuisineType: domain.CuisineType(strings.ToLower(strings.TrimSpace(string(
+			input.CuisineType,
+		)))),
+		PriceCategory: domain.PriceCategory(strings.ToLower(strings.TrimSpace(string(
+			input.PriceCategory,
+		)))),
+		Photos: input.Photos,
 	}
 	if err := restaurant.Validate(); err != nil {
 		return Output{}, err

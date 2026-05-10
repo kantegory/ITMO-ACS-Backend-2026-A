@@ -35,7 +35,11 @@ func (u *Usecase) Register(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	id, err := u.repo.Create(ctx, domain.Email(email), string(hash), fullName, domain.Phone(strings.TrimSpace(input.Phone)))
+	phone := strings.TrimSpace(input.Phone)
+	if err := domain.ValidatePhone(domain.Phone(phone)); err != nil {
+		return Output{}, err
+	}
+	id, err := u.repo.Create(ctx, domain.Email(email), string(hash), fullName, domain.Phone(phone))
 	if err != nil {
 		return Output{}, err
 	}
