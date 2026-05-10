@@ -1,14 +1,13 @@
 openapi: 3.0.3
 info:
-  title: Internal Microservices API
+  title: Межсервисное HTTP API
   version: 1.0.0
 
 paths:
-  /internal/users/{id}:
+  /service/users/{id}:
     get:
-      tags:
-        - Internal Auth
-      summary: Проверка существования пользователя
+      tags: [auth-service]
+      summary: Пользователь по id (catalog-service → auth-service)
       parameters:
         - name: id
           in: path
@@ -18,65 +17,22 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Пользователь найден
+          description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  user:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                      email:
-                        type: string
-                      full_name:
-                        type: string
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Некорректный id
         '404':
           description: Пользователь не найден
         '500':
-          description: Внутренняя ошибка сервиса
+          description: Ошибка сервиса
 
-  /internal/restaurants/{id}:
+  /service/restaurants/{restaurantID}/tables/{tableID}:
     get:
-      tags:
-        - Internal Catalog
-      summary: Проверка существования ресторана
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Ресторан найден
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  restaurant:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                      name:
-                        type: string
-        '404':
-          description: Ресторан не найден
-        '500':
-          description: Внутренняя ошибка сервиса
-
-  /internal/restaurants/{restaurantID}/tables/{tableID}:
-    get:
-      tags:
-        - Internal Catalog
-      summary: Проверка существования столика и его принадлежности ресторану
+      tags: [catalog-service]
+      summary: Столик по ресторану и id (booking-service → catalog-service)
       parameters:
         - name: restaurantID
           in: path
@@ -92,24 +48,53 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Столик найден
+          description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  table:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                      restaurant_id:
-                        type: string
-                        format: uuid
-                      seats_count:
-                        type: integer
+                $ref: '#/components/schemas/TableBrief'
+        '400':
+          description: Некорректные идентификаторы
         '404':
           description: Столик не найден
         '500':
-          description: Внутренняя ошибка сервиса
+          description: Ошибка сервиса
+
+components:
+  schemas:
+    User:
+      type: object
+      required: [id, full_name, email, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TableBrief:
+      type: object
+      required: [id, restaurant_id, table_number, seats_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        restaurant_id:
+          type: string
+          format: uuid
+        table_number:
+          type: integer
+        seats_count:
+          type: integer

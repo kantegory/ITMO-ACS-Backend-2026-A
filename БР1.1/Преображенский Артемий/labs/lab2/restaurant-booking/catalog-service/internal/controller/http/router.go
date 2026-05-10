@@ -14,9 +14,16 @@ import (
 type PublicRoutes struct {
 	RestaurantList   http.HandlerFunc
 	RestaurantGet    http.HandlerFunc
+	RestaurantCreate http.HandlerFunc
 	RestaurantDelete http.HandlerFunc
 	MenuList         http.HandlerFunc
+	MenuCreate       http.HandlerFunc
+	MenuGet          http.HandlerFunc
+	MenuDelete       http.HandlerFunc
 	TableList        http.HandlerFunc
+	TableCreate      http.HandlerFunc
+	TableGet         http.HandlerFunc
+	TableDelete      http.HandlerFunc
 	ReviewList       http.HandlerFunc
 	ReviewCreate     http.HandlerFunc
 	ReviewGet        http.HandlerFunc
@@ -25,7 +32,6 @@ type PublicRoutes struct {
 }
 
 type InternalRoutes struct {
-	RestaurantGet http.HandlerFunc
 	TableGet      http.HandlerFunc
 }
 
@@ -46,11 +52,18 @@ func Router(routes Routes) http.Handler {
 	r.Route("/api/restaurants", func(r chi.Router) {
 		r.Use(auth)
 		r.Get("/", routes.Public.RestaurantList)
+		r.Post("/", routes.Public.RestaurantCreate)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", routes.Public.RestaurantGet)
 			r.Delete("/", routes.Public.RestaurantDelete)
 			r.Get("/menu", routes.Public.MenuList)
+			r.Post("/menu", routes.Public.MenuCreate)
+			r.Get("/menu/{itemID}", routes.Public.MenuGet)
+			r.Delete("/menu/{itemID}", routes.Public.MenuDelete)
 			r.Get("/tables", routes.Public.TableList)
+			r.Post("/tables", routes.Public.TableCreate)
+			r.Get("/tables/{tableID}", routes.Public.TableGet)
+			r.Delete("/tables/{tableID}", routes.Public.TableDelete)
 			r.Get("/reviews", routes.Public.ReviewList)
 			r.Post("/reviews", routes.Public.ReviewCreate)
 			r.Get("/reviews/{reviewID}", routes.Public.ReviewGet)
@@ -59,8 +72,7 @@ func Router(routes Routes) http.Handler {
 		})
 	})
 
-	r.Route("/internal", func(r chi.Router) {
-		r.Get("/restaurants/{id}", routes.Internal.RestaurantGet)
+	r.Route("/service", func(r chi.Router) {
 		r.Get("/restaurants/{restaurantID}/tables/{tableID}", routes.Internal.TableGet)
 	})
 

@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/google/uuid"
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
 
 type Price float64
 
@@ -17,4 +21,20 @@ type Dish struct {
 	Carbs        float64   `json:"carbs"`
 	Price        Price     `json:"price"`
 	Category     Category  `json:"category"`
+}
+
+func (d Dish) Validate() error {
+	if d.RestaurantID == uuid.Nil {
+		return ErrInvalidInput
+	}
+	if strings.TrimSpace(d.Name) == "" || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(string(d.Category)) == "" {
+		return ErrInvalidInput
+	}
+	if d.Price <= 0 {
+		return ErrInvalidInput
+	}
+	if d.Proteins < 0 || d.Fats < 0 || d.Carbs < 0 {
+		return ErrInvalidInput
+	}
+	return nil
 }

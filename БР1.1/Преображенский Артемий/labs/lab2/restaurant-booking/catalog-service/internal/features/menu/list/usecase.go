@@ -9,7 +9,7 @@ import (
 )
 
 type Repository interface {
-	ListByRestaurant(ctx context.Context, restaurantID uuid.UUID) ([]domain.Dish, error)
+	ListByRestaurant(ctx context.Context, restaurantID uuid.UUID, proteinsMin *float64, proteinsMax *float64, fatsMin *float64, fatsMax *float64, carbsMin *float64, carbsMax *float64) ([]domain.Dish, error)
 }
 
 type Usecase struct {
@@ -25,7 +25,7 @@ func (u *Usecase) List(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	items, err := u.repo.ListByRestaurant(ctx, rid)
+	items, err := u.repo.ListByRestaurant(ctx, rid, input.ProteinsMin, input.ProteinsMax, input.FatsMin, input.FatsMax, input.CarbsMin, input.CarbsMax)
 	if err != nil {
 		return Output{}, err
 	}

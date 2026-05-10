@@ -17,7 +17,7 @@ func NewPostgres(pool *postgres.Pool) *postgresRepository {
 	return &postgresRepository{pool: pool}
 }
 
-func (r *postgresRepository) ListByRestaurant(ctx context.Context, restaurantID uuid.UUID) ([]domain.Dish, error) {
+func (r *postgresRepository) ListByRestaurant(ctx context.Context, restaurantID uuid.UUID, proteinsMin *float64, proteinsMax *float64, fatsMin *float64, fatsMax *float64, carbsMin *float64, carbsMax *float64) ([]domain.Dish, error) {
 	rows, err := r.pool.Pgx().Query(ctx, `
 		SELECT
 			id,
@@ -32,8 +32,14 @@ func (r *postgresRepository) ListByRestaurant(ctx context.Context, restaurantID 
 			pfc_carbs::float8
 		FROM menu_items
 		WHERE restaurant_id = $1
+			AND ($2::float8 IS NULL OR pfc_proteins::float8 >= $2::float8)
+			AND ($3::float8 IS NULL OR pfc_proteins::float8 <= $3::float8)
+			AND ($4::float8 IS NULL OR pfc_fats::float8 >= $4::float8)
+			AND ($5::float8 IS NULL OR pfc_fats::float8 <= $5::float8)
+			AND ($6::float8 IS NULL OR pfc_carbs::float8 >= $6::float8)
+			AND ($7::float8 IS NULL OR pfc_carbs::float8 <= $7::float8)
 		ORDER BY category, name
-	`, restaurantID)
+	`, restaurantID, proteinsMin, proteinsMax, fatsMin, fatsMax, carbsMin, carbsMax)
 	if err != nil {
 		return nil, err
 	}

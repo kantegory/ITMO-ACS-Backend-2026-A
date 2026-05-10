@@ -41,7 +41,7 @@ func Router(routes Routes) http.Handler {
 		r.With(auth).Get("/me", routes.Public.Profile)
 	})
 
-	r.Route("/internal", func(r chi.Router) {
+	r.Route("/service", func(r chi.Router) {
 		r.Get("/users/{id}", routes.Internal.UserGet)
 	})
 

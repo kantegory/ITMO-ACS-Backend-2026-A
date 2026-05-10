@@ -11,7 +11,7 @@ tags:
   - name: menu
   - name: tables
   - name: reviews
-  - name: internal
+  - name: service
 
 paths:
   /api/restaurants/:
@@ -40,6 +40,19 @@ paths:
                   restaurants:
                     type: array
                     items: { $ref: '#/components/schemas/Restaurant' }
+    post:
+      tags: [restaurants]
+      summary: Создать ресторан
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantCreateRequest' }
+      responses:
+        '201': { description: Created }
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
 
   /api/restaurants/{id}/:
     get:
@@ -81,6 +94,24 @@ paths:
           name: id
           required: true
           schema: { type: string, format: uuid }
+        - in: query
+          name: proteins_min
+          schema: { type: number }
+        - in: query
+          name: proteins_max
+          schema: { type: number }
+        - in: query
+          name: fats_min
+          schema: { type: number }
+        - in: query
+          name: fats_max
+          schema: { type: number }
+        - in: query
+          name: carbs_min
+          schema: { type: number }
+        - in: query
+          name: carbs_max
+          schema: { type: number }
       responses:
         '200':
           description: OK
@@ -92,6 +123,65 @@ paths:
                   Items:
                     type: array
                     items: { $ref: '#/components/schemas/MenuItem' }
+    post:
+      tags: [menu]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuCreateRequest' }
+      responses:
+        '201': { description: Created }
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+        '404': { description: Restaurant not found }
+
+  /api/restaurants/{id}/menu/{itemID}:
+    get:
+      tags: [menu]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: itemID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item: { $ref: '#/components/schemas/MenuItem' }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+    delete:
+      tags: [menu]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: itemID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: No Content }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
 
   /api/restaurants/{id}/tables:
     get:
@@ -113,6 +203,65 @@ paths:
                   Items:
                     type: array
                     items: { $ref: '#/components/schemas/Table' }
+    post:
+      tags: [tables]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TableCreateRequest' }
+      responses:
+        '201': { description: Created }
+        '400': { description: Invalid input }
+        '401': { description: Unauthorized }
+        '404': { description: Restaurant not found }
+
+  /api/restaurants/{id}/tables/{tableID}:
+    get:
+      tags: [tables]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: tableID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  table: { $ref: '#/components/schemas/Table' }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+    delete:
+      tags: [tables]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: tableID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: No Content }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
 
   /api/restaurants/{id}/reviews:
     get:
@@ -211,31 +360,9 @@ paths:
         '401': { description: Unauthorized }
         '404': { description: Not found }
 
-  /internal/restaurants/{id}:
+  /service/restaurants/{restaurantID}/tables/{tableID}:
     get:
-      tags: [internal]
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [id, name, city]
-                properties:
-                  id: { type: string, format: uuid }
-                  name: { type: string }
-                  city: { type: string }
-        '404': { description: Not found }
-
-  /internal/restaurants/{restaurantID}/tables/{tableID}:
-    get:
-      tags: [internal]
+      tags: [service]
       parameters:
         - in: path
           name: restaurantID
@@ -283,6 +410,20 @@ components:
         price_category: { type: string }
         cuisine_type: { type: string }
 
+    RestaurantCreateRequest:
+      type: object
+      required: [name, description, city, address, cuisine_type, price_category, photos]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        city: { type: string }
+        address: { type: string }
+        cuisine_type: { type: string }
+        price_category: { type: string }
+        photos:
+          type: array
+          items: { type: string }
+
     MenuItem:
       type: object
       properties:
@@ -297,11 +438,31 @@ components:
         price: { type: number }
         category: { type: string }
 
+    MenuCreateRequest:
+      type: object
+      required: [name, description, price, category, is_available, proteins, fats, carbs]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        category: { type: string }
+        is_available: { type: boolean }
+        proteins: { type: number }
+        fats: { type: number }
+        carbs: { type: number }
+
     Table:
       type: object
       properties:
         id: { type: string, format: uuid }
         restaurant_id: { type: string, format: uuid }
+        table_number: { type: integer }
+        seats_count: { type: integer }
+
+    TableCreateRequest:
+      type: object
+      required: [table_number, seats_count]
+      properties:
         table_number: { type: integer }
         seats_count: { type: integer }
 

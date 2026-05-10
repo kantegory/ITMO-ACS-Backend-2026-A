@@ -17,7 +17,11 @@ import (
 	"restaurant-booking/catalog-service/internal/adapter/authclient"
 	"restaurant-booking/catalog-service/internal/adapter/postgres"
 	httpcontroller "restaurant-booking/catalog-service/internal/controller/http"
+	menucreate "restaurant-booking/catalog-service/internal/features/menu/create"
+	menudelete "restaurant-booking/catalog-service/internal/features/menu/delete"
+	menuget "restaurant-booking/catalog-service/internal/features/menu/get"
 	menulist "restaurant-booking/catalog-service/internal/features/menu/list"
+	restaurantcreate "restaurant-booking/catalog-service/internal/features/restaurant/create"
 	restaurantdelete "restaurant-booking/catalog-service/internal/features/restaurant/delete"
 	restaurantget "restaurant-booking/catalog-service/internal/features/restaurant/get"
 	restaurantlist "restaurant-booking/catalog-service/internal/features/restaurant/list"
@@ -27,6 +31,9 @@ import (
 	reviewlist "restaurant-booking/catalog-service/internal/features/review/list"
 	reviewupdate "restaurant-booking/catalog-service/internal/features/review/update"
 	internaltableget "restaurant-booking/catalog-service/internal/features/table/get"
+	tablecreate "restaurant-booking/catalog-service/internal/features/table/create"
+	tabledelete "restaurant-booking/catalog-service/internal/features/table/delete"
+	tableget "restaurant-booking/catalog-service/internal/features/table/get"
 	tablelist "restaurant-booking/catalog-service/internal/features/table/list"
 	"restaurant-booking/catalog-service/pkg/jwt"
 )
@@ -53,9 +60,16 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 
 	restaurantListUsecase := restaurantlist.NewUsecase(restaurantlist.NewPostgres(pgPool))
 	restaurantGetUsecase := restaurantget.NewUsecase(restaurantget.NewPostgres(pgPool))
+	restaurantCreateUsecase := restaurantcreate.NewUsecase(restaurantcreate.NewPostgres(pgPool))
 	restaurantDeleteUsecase := restaurantdelete.NewUsecase(restaurantdelete.NewPostgres(pgPool))
 	menuListUsecase := menulist.NewUsecase(menulist.NewPostgres(pgPool))
+	menuCreateUsecase := menucreate.NewUsecase(menucreate.NewPostgres(pgPool))
+	menuGetUsecase := menuget.NewUsecase(menuget.NewPostgres(pgPool))
+	menuDeleteUsecase := menudelete.NewUsecase(menudelete.NewPostgres(pgPool))
 	tableListUsecase := tablelist.NewUsecase(tablelist.NewPostgres(pgPool))
+	tableCreateUsecase := tablecreate.NewUsecase(tablecreate.NewPostgres(pgPool))
+	tableGetUsecase := tableget.NewUsecase(tableget.NewPostgres(pgPool))
+	tableDeleteUsecase := tabledelete.NewUsecase(tabledelete.NewPostgres(pgPool))
 	reviewListUsecase := reviewlist.NewUsecase(reviewlist.NewPostgres(pgPool))
 	reviewCreateUsecase := reviewcreate.NewUsecase(reviewcreate.NewPostgres(pgPool), authClient)
 	reviewGetUsecase := reviewget.NewUsecase(reviewget.NewPostgres(pgPool))
@@ -67,9 +81,16 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 		Public: httpcontroller.PublicRoutes{
 			RestaurantList:   restaurantlist.HTTP(restaurantListUsecase),
 			RestaurantGet:    restaurantget.HTTP(restaurantGetUsecase),
+			RestaurantCreate: restaurantcreate.HTTP(restaurantCreateUsecase),
 			RestaurantDelete: restaurantdelete.HTTP(restaurantDeleteUsecase),
 			MenuList:         menulist.HTTP(menuListUsecase),
+			MenuCreate:       menucreate.HTTP(menuCreateUsecase),
+			MenuGet:          menuget.HTTP(menuGetUsecase),
+			MenuDelete:       menudelete.HTTP(menuDeleteUsecase),
 			TableList:        tablelist.HTTP(tableListUsecase),
+			TableCreate:      tablecreate.HTTP(tableCreateUsecase),
+			TableGet:         tableget.HTTP(tableGetUsecase),
+			TableDelete:      tabledelete.HTTP(tableDeleteUsecase),
 			ReviewList:       reviewlist.HTTP(reviewListUsecase),
 			ReviewCreate:     reviewcreate.HTTP(reviewCreateUsecase),
 			ReviewGet:        reviewget.HTTP(reviewGetUsecase),
@@ -77,7 +98,6 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 			ReviewDelete:     reviewdelete.HTTP(reviewDeleteUsecase),
 		},
 		Internal: httpcontroller.InternalRoutes{
-			RestaurantGet: restaurantget.InternalHTTP(pgPool),
 			TableGet:      internaltableget.InternalHTTP(pgPool),
 		},
 	}

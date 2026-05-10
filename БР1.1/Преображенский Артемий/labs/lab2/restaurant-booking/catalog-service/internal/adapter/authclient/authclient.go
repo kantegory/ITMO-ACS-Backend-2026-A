@@ -31,7 +31,7 @@ type userResponse struct {
 }
 
 func (c *Client) GetUserName(ctx context.Context, userID uuid.UUID) (string, error) {
-	url := fmt.Sprintf("%s/internal/users/%s", c.baseURL, userID.String())
+	url := fmt.Sprintf("%s/service/users/%s", c.baseURL, userID.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err

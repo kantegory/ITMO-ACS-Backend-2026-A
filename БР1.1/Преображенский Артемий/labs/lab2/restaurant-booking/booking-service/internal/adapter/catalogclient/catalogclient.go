@@ -33,7 +33,7 @@ type Table struct {
 }
 
 func (c *Client) GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (Table, error) {
-	url := fmt.Sprintf("%s/internal/restaurants/%s/tables/%s", c.baseURL, restaurantID.String(), tableID.String())
+	url := fmt.Sprintf("%s/service/restaurants/%s/tables/%s", c.baseURL, restaurantID.String(), tableID.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return Table{}, err

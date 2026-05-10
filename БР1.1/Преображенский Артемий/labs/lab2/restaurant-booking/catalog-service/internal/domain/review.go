@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,4 +17,17 @@ type Review struct {
 	Rating       Rating    `json:"rating"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func (r Review) Validate() error {
+	if r.UserID == uuid.Nil || r.RestaurantID == uuid.Nil {
+		return ErrInvalidInput
+	}
+	if strings.TrimSpace(r.Text) == "" {
+		return ErrInvalidInput
+	}
+	if r.Rating < 1 || r.Rating > 5 {
+		return ErrInvalidInput
+	}
+	return nil
 }

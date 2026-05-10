@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,4 +27,16 @@ type Restaurant struct {
 	CreatedAt     time.Time     `json:"created_at"`
 	PriceCategory PriceCategory `json:"price_category"`
 	CuisineType   CuisineType   `json:"cuisine_type"`
+}
+
+func (r Restaurant) Validate() error {
+	if strings.TrimSpace(r.Name) == "" ||
+		strings.TrimSpace(r.Description) == "" ||
+		strings.TrimSpace(string(r.City)) == "" ||
+		strings.TrimSpace(string(r.Address)) == "" ||
+		strings.TrimSpace(string(r.CuisineType)) == "" ||
+		strings.TrimSpace(string(r.PriceCategory)) == "" {
+		return ErrInvalidInput
+	}
+	return nil
 }
