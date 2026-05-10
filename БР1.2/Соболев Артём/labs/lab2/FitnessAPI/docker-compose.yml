@@ -1,0 +1,199 @@
+services:
+  user-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: user_service
+      POSTGRES_USER: ${DB_USERNAME:-fitness}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
+    ports:
+      - "15433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  media-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: media_service
+      POSTGRES_USER: ${DB_USERNAME:-fitness}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
+    ports:
+      - "15434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  blog-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: blog_service
+      POSTGRES_USER: ${DB_USERNAME:-fitness}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
+    ports:
+      - "15435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  training-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: training_service
+      POSTGRES_USER: ${DB_USERNAME:-fitness}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
+    ports:
+      - "15436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  progress-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: progress_service
+      POSTGRES_USER: ${DB_USERNAME:-fitness}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
+    ports:
+      - "15437:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  user-service:
+    build:
+      context: .
+      args:
+        SERVICE: user-service
+    environment:
+      USER_SERVICE_DB_URL: jdbc:postgresql://user-db:5432/user_service
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      REFRESH_TTL: ${REFRESH_TTL:-30d}
+    ports:
+      - "8081:8080"
+    depends_on:
+      user-db:
+        condition: service_healthy
+
+  media-service:
+    build:
+      context: .
+      args:
+        SERVICE: media-service
+    environment:
+      MEDIA_SERVICE_DB_URL: jdbc:postgresql://media-db:5432/media_service
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "8082:8080"
+    depends_on:
+      media-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  training-service:
+    build:
+      context: .
+      args:
+        SERVICE: training-service
+    environment:
+      TRAINING_SERVICE_DB_URL: jdbc:postgresql://training-db:5432/training_service
+      MEDIA_SERVICE_BASE_URL: http://media-service:8080/api/v1
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "8083:8080"
+    depends_on:
+      training-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      media-service:
+        condition: service_started
+
+  blog-service:
+    build:
+      context: .
+      args:
+        SERVICE: blog-service
+    environment:
+      BLOG_SERVICE_DB_URL: jdbc:postgresql://blog-db:5432/blog_service
+      MEDIA_SERVICE_BASE_URL: http://media-service:8080/api/v1
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "8084:8080"
+    depends_on:
+      blog-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      media-service:
+        condition: service_started
+
+  progress-service:
+    build:
+      context: .
+      args:
+        SERVICE: progress-service
+    environment:
+      PROGRESS_SERVICE_DB_URL: jdbc:postgresql://progress-db:5432/progress_service
+      TRAINING_SERVICE_BASE_URL: http://training-service:8080/api/v1
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "8085:8080"
+    depends_on:
+      progress-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      training-service:
+        condition: service_started
