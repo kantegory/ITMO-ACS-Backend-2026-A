@@ -37,8 +37,12 @@ func (h *ProfilesHandler) GetMe(c *gin.Context) {
 	role, _ := middleware.GetUserRole(c)
 
 	user, err := h.repos.Users.GetByID(c.Request.Context(), userID)
-	if err != nil || user == nil {
+	if err != nil {
 		errorResponse(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get user")
+		return
+	}
+	if user == nil {
+		errorResponse(c, http.StatusNotFound, "NOT_FOUND", "User not found")
 		return
 	}
 

@@ -40,7 +40,9 @@ func errorResponse(c *gin.Context, statusCode int, errorCode, message string) {
 }
 
 func SetupRouter(repos *repository.Repositories, jwtSecret string) *gin.Engine {
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger())
+	router.Use(middleware.RecoveryMiddleware())
 
 	authH := &AuthHandler{repos: repos, jwtSecret: jwtSecret}
 	dictH := &DictionariesHandler{repos: repos}

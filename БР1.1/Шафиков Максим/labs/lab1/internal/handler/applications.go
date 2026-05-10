@@ -188,7 +188,11 @@ func (h *ApplicationsHandler) GetByID(c *gin.Context) {
 		}
 	} else {
 		company, err := h.repos.Companies.GetByUserID(c.Request.Context(), userID)
-		if err != nil || company == nil {
+		if err != nil {
+			errorResponse(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get company")
+			return
+		}
+		if company == nil {
 			errorResponse(c, http.StatusForbidden, "FORBIDDEN", "Access denied")
 			return
 		}
@@ -230,7 +234,11 @@ func (h *ApplicationsHandler) UpdateStatus(c *gin.Context) {
 	}
 
 	company, err := h.repos.Companies.GetByUserID(c.Request.Context(), userID)
-	if err != nil || company == nil {
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get company")
+		return
+	}
+	if company == nil {
 		errorResponse(c, http.StatusForbidden, "FORBIDDEN", "No company profile")
 		return
 	}

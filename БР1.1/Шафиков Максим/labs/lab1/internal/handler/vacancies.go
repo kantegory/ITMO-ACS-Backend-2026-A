@@ -211,7 +211,11 @@ func (h *VacanciesHandler) Update(c *gin.Context) {
 	}
 
 	company, err := h.repos.Companies.GetByUserID(c.Request.Context(), userID)
-	if err != nil || company == nil || company.ID != companyID {
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get company")
+		return
+	}
+	if company == nil || company.ID != companyID {
 		errorResponse(c, http.StatusForbidden, "FORBIDDEN", "You don't own this vacancy")
 		return
 	}
@@ -273,7 +277,11 @@ func (h *VacanciesHandler) Delete(c *gin.Context) {
 	}
 
 	company, err := h.repos.Companies.GetByUserID(c.Request.Context(), userID)
-	if err != nil || company == nil || company.ID != companyID {
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get company")
+		return
+	}
+	if company == nil || company.ID != companyID {
 		errorResponse(c, http.StatusForbidden, "FORBIDDEN", "You don't own this vacancy")
 		return
 	}
