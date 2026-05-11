@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"restaurant-booking/catalog-service/internal/adapter/postgres"
@@ -50,4 +52,35 @@ func (r *postgresRepository) Create(ctx context.Context, userID uuid.UUID, resta
 		return domain.Review{}, err
 	}
 	return out, nil
+}
+
+func (r *postgresRepository) UpsertUser(ctx context.Context, userID uuid.UUID, fullName string, updatedAt time.Time) error {
+	name := strings.TrimSpace(fullName)
+	if name == "" {
+		return domain.ErrInvalidInput
+	}
+	_, err := r.pool.Pgx().Exec(ctx, `
+		INSERT INTO users_cache (user_id, full_name, updated_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id) DO UPDATE
+		SET full_name = excluded.full_name,
+		    updated_at = excluded.updated_at
+	`, userID, name, updatedAt)
+	return err
+}
+
+func (r *postgresRepository) GetName(ctx context.Context, userID uuid.UUID) (string, error) {
+	var fullName string
+	err := r.pool.Pgx().QueryRow(ctx, `
+		SELECT full_name
+		FROM users_cache
+		WHERE user_id = $1
+	`, userID).Scan(&fullName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrNotFound
+		}
+		return "", err
+	}
+	return fullName, nil
 }

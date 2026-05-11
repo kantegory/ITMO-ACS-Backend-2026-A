@@ -1,6 +1,15 @@
 package register
 
-import "restaurant-booking/auth-service/internal/domain"
+import (
+	"github.com/google/uuid"
+
+	"restaurant-booking/auth-service/internal/domain"
+)
+
+type User struct {
+	ID       uuid.UUID `json:"id"`
+	FullName string    `json:"full_name"`
+}
 
 type Input struct {
 	Email    string `json:"email"`

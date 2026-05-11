@@ -32,7 +32,7 @@ type PublicRoutes struct {
 }
 
 type InternalRoutes struct {
-	TableGet      http.HandlerFunc
+	TableGet http.HandlerFunc
 }
 
 type Routes struct {

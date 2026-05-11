@@ -15,6 +15,7 @@ import (
 	"restaurant-booking/auth-service/config"
 	"restaurant-booking/auth-service/docs"
 	"restaurant-booking/auth-service/internal/adapter/postgres"
+	"restaurant-booking/auth-service/internal/adapter/rabbitmq"
 	httpcontroller "restaurant-booking/auth-service/internal/controller/http"
 	"restaurant-booking/auth-service/internal/features/login"
 	"restaurant-booking/auth-service/internal/features/me"
@@ -22,6 +23,9 @@ import (
 	userget "restaurant-booking/auth-service/internal/features/user-get"
 	"restaurant-booking/auth-service/pkg/jwt"
 )
+
+const rabbitUserExchangeName = "restaurant.user"
+const rabbitUserRoutingKey = "user.registered"
 
 func main() {
 	cfg, err := config.LoadConfig()
@@ -40,6 +44,16 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("postgres.New: %w", err)
 	}
 
+	var rmqPublisher *rabbitmq.Publisher
+	if cfg.RabbitMQURL != "" {
+		p, err := rabbitmq.NewPublisher(cfg.RabbitMQURL)
+		if err != nil {
+			pgPool.Close()
+			return fmt.Errorf("rabbitmq.NewPublisher: %w", err)
+		}
+		rmqPublisher = p
+	}
+
 	jwtDur, err := time.ParseDuration(cfg.JWTExpires)
 	if err != nil {
 		jwtDur = 24 * time.Hour
@@ -49,7 +63,11 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 		Expires: jwtDur,
 	}
 
-	registerUsecase := register.NewUsecase(register.NewPostgres(pgPool), jwtCfg)
+	var registerPublisher register.Publisher
+	if rmqPublisher != nil {
+		registerPublisher = register.NewPublisher(rmqPublisher, rabbitUserExchangeName, rabbitUserRoutingKey)
+	}
+	registerUsecase := register.NewUsecase(register.NewPostgres(pgPool), jwtCfg, registerPublisher)
 	loginUsecase := login.NewUsecase(login.NewPostgres(pgPool), jwtCfg)
 	meUsecase := me.NewUsecase(me.NewPostgres(pgPool))
 	userGetUsecase := userget.NewUsecase(userget.NewPostgres(pgPool))
@@ -98,6 +116,9 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	case sig := <-sigCh:
 		fmt.Printf("shutdown signal received: %s\n", sig.String())
 	case err := <-errCh:
+		if rmqPublisher != nil {
+			rmqPublisher.Close()
+		}
 		pgPool.Close()
 		return fmt.Errorf("http server: %w", err)
 	}
@@ -106,10 +127,16 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		if rmqPublisher != nil {
+			rmqPublisher.Close()
+		}
 		pgPool.Close()
 		return fmt.Errorf("server shutdown: %w", err)
 	}
 
+	if rmqPublisher != nil {
+		rmqPublisher.Close()
+	}
 	pgPool.Close()
 
 	return nil

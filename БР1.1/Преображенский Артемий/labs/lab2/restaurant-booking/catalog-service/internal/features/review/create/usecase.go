@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -10,19 +11,16 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, userID uuid.UUID, restaurantID uuid.UUID, rating int, text string, authorName string) (domain.Review, error)
-}
-
-type AuthClient interface {
-	GetUserName(ctx context.Context, userID uuid.UUID) (string, error)
+	GetName(ctx context.Context, userID uuid.UUID) (string, error)
+	UpsertUser(ctx context.Context, userID uuid.UUID, fullName string, updatedAt time.Time) error
 }
 
 type Usecase struct {
-	repo       Repository
-	authClient AuthClient
+	repo Repository
 }
 
-func NewUsecase(repo Repository, authClient AuthClient) *Usecase {
-	return &Usecase{repo: repo, authClient: authClient}
+func NewUsecase(repo Repository) *Usecase {
+	return &Usecase{repo: repo}
 }
 
 func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
@@ -30,7 +28,7 @@ func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, domain.ErrInvalidInput
 	}
-	authorName, err := u.authClient.GetUserName(ctx, input.UserID)
+	authorName, err := u.repo.GetName(ctx, input.UserID)
 	if err != nil {
 		return Output{}, err
 	}

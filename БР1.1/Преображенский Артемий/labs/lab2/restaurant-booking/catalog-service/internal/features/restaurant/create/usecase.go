@@ -21,10 +21,10 @@ func NewUsecase(repo Repository) *Usecase {
 
 func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
 	restaurant := domain.Restaurant{
-		Name:          strings.TrimSpace(input.Name),
-		Description:   strings.TrimSpace(input.Description),
-		City:          domain.City(strings.TrimSpace(string(input.City))),
-		Address:       domain.Address(strings.TrimSpace(string(input.Address))),
+		Name:        strings.TrimSpace(input.Name),
+		Description: strings.TrimSpace(input.Description),
+		City:        domain.City(strings.TrimSpace(string(input.City))),
+		Address:     domain.Address(strings.TrimSpace(string(input.Address))),
 		CuisineType: domain.CuisineType(strings.ToLower(strings.TrimSpace(string(
 			input.CuisineType,
 		)))),

@@ -6,12 +6,7 @@ import (
 	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-
-	"restaurant-booking/booking-service/internal/domain"
 )
-
-const exchangeName = "restaurant.booking"
-const routingKeyBookingCreated = "booking.created"
 
 type Publisher struct {
 	conn *amqp.Connection
@@ -28,19 +23,6 @@ func NewPublisher(url string) (*Publisher, error) {
 		conn.Close()
 		return nil, fmt.Errorf("amqp channel: %w", err)
 	}
-	if err := ch.ExchangeDeclare(
-		exchangeName,
-		"topic",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	); err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("exchange declare: %w", err)
-	}
 	return &Publisher{conn: conn, ch: ch}, nil
 }
 
@@ -54,15 +36,27 @@ func (p *Publisher) Close() error {
 	return nil
 }
 
-func (p *Publisher) PublishBookingCreated(ctx context.Context, b domain.Booking) error {
-	body, err := json.Marshal(b)
+func (p *Publisher) DeclareTopicExchange(name string) error {
+	return p.ch.ExchangeDeclare(
+		name,
+		"topic",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+}
+
+func (p *Publisher) PublishJSON(ctx context.Context, exchange string, routingKey string, v interface{}) error {
+	body, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	return p.ch.PublishWithContext(
 		ctx,
-		exchangeName,
-		routingKeyBookingCreated,
+		exchange,
+		routingKey,
 		false,
 		false,
 		amqp.Publishing{
@@ -72,3 +66,4 @@ func (p *Publisher) PublishBookingCreated(ctx context.Context, b domain.Booking)
 		},
 	)
 }
+

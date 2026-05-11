@@ -16,13 +16,18 @@ type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (domain.User, error)
 }
 
-type Usecase struct {
-	repo   Repository
-	jwtCfg jwt.Config
+type Publisher interface {
+	PublishUser(ctx context.Context, payload User) error
 }
 
-func NewUsecase(repo Repository, jwtCfg jwt.Config) *Usecase {
-	return &Usecase{repo: repo, jwtCfg: jwtCfg}
+type Usecase struct {
+	repo      Repository
+	jwtCfg    jwt.Config
+	publisher Publisher
+}
+
+func NewUsecase(repo Repository, jwtCfg jwt.Config, publisher Publisher) *Usecase {
+	return &Usecase{repo: repo, jwtCfg: jwtCfg, publisher: publisher}
 }
 
 func (u *Usecase) Register(ctx context.Context, input Input) (Output, error) {
@@ -42,6 +47,11 @@ func (u *Usecase) Register(ctx context.Context, input Input) (Output, error) {
 	id, err := u.repo.Create(ctx, domain.Email(email), string(hash), fullName, domain.Phone(phone))
 	if err != nil {
 		return Output{}, err
+	}
+	if u.publisher != nil {
+		if err := u.publisher.PublishUser(ctx, User{ID: id, FullName: fullName}); err != nil {
+			return Output{}, err
+		}
 	}
 	user, err := u.repo.GetByID(ctx, id)
 	if err != nil {

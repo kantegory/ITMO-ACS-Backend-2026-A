@@ -14,7 +14,6 @@ import (
 
 	"restaurant-booking/catalog-service/config"
 	"restaurant-booking/catalog-service/docs"
-	"restaurant-booking/catalog-service/internal/adapter/authclient"
 	"restaurant-booking/catalog-service/internal/adapter/postgres"
 	"restaurant-booking/catalog-service/internal/adapter/rabbitmq"
 	httpcontroller "restaurant-booking/catalog-service/internal/controller/http"
@@ -50,29 +49,24 @@ func main() {
 }
 
 func AppRun(ctx context.Context, cfg config.Config) error {
-	appCtx, appCancel := context.WithCancel(ctx)
-	defer appCancel()
-
 	pgPool, err := postgres.New(ctx, cfg.Postgres)
 	if err != nil {
 		return fmt.Errorf("postgres.New: %w", err)
 	}
 
-	if cfg.RabbitMQURL != "" {
-		cons, err := rabbitmq.NewConsumer(cfg.RabbitMQURL)
-		if err != nil {
-			pgPool.Close()
-			return fmt.Errorf("rabbitmq consumer: %w", err)
-		}
-		go func() {
-			_ = cons.Run(appCtx)
-		}()
-		defer cons.Close()
-	}
-
 	jwtCfg := jwt.Config{Secret: []byte(cfg.JWTSecret)}
 
-	authClient := authclient.New(cfg.AuthServiceURL)
+	reviewCreateRepo := reviewcreate.NewPostgres(pgPool)
+
+	var rmqConsumer *rabbitmq.Consumer
+	if cfg.RabbitMQURL != "" {
+		c, err := reviewcreate.StartUserConsumer(ctx, cfg.RabbitMQURL, reviewCreateRepo)
+		if err != nil {
+			pgPool.Close()
+			return err
+		}
+		rmqConsumer = c
+	}
 
 	restaurantListUsecase := restaurantlist.NewUsecase(restaurantlist.NewPostgres(pgPool))
 	restaurantGetUsecase := restaurantget.NewUsecase(restaurantget.NewPostgres(pgPool))
@@ -87,7 +81,7 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	tableGetUsecase := tableget.NewUsecase(tableget.NewPostgres(pgPool))
 	tableDeleteUsecase := tabledelete.NewUsecase(tabledelete.NewPostgres(pgPool))
 	reviewListUsecase := reviewlist.NewUsecase(reviewlist.NewPostgres(pgPool))
-	reviewCreateUsecase := reviewcreate.NewUsecase(reviewcreate.NewPostgres(pgPool), authClient)
+	reviewCreateUsecase := reviewcreate.NewUsecase(reviewCreateRepo)
 	reviewGetUsecase := reviewget.NewUsecase(reviewget.NewPostgres(pgPool))
 	reviewUpdateUsecase := reviewupdate.NewUsecase(reviewupdate.NewPostgres(pgPool))
 	reviewDeleteUsecase := reviewdelete.NewUsecase(reviewdelete.NewPostgres(pgPool))
@@ -149,9 +143,10 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	select {
 	case sig := <-sigCh:
 		fmt.Printf("shutdown signal received: %s\n", sig.String())
-		appCancel()
 	case err := <-errCh:
-		appCancel()
+		if rmqConsumer != nil {
+			rmqConsumer.Close()
+		}
 		pgPool.Close()
 		return fmt.Errorf("http server: %w", err)
 	}
@@ -160,10 +155,16 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		if rmqConsumer != nil {
+			rmqConsumer.Close()
+		}
 		pgPool.Close()
 		return fmt.Errorf("server shutdown: %w", err)
 	}
 
+	if rmqConsumer != nil {
+		rmqConsumer.Close()
+	}
 	pgPool.Close()
 	return nil
 }

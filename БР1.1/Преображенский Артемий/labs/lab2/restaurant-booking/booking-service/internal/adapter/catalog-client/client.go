@@ -25,35 +25,28 @@ func New(baseURL string) *Client {
 	}
 }
 
-type Table struct {
-	ID           uuid.UUID `json:"id"`
-	RestaurantID uuid.UUID `json:"restaurant_id"`
-	TableNumber  int       `json:"table_number"`
-	SeatsCount   int       `json:"seats_count"`
-}
-
-func (c *Client) GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (Table, error) {
+func (c *Client) GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (domain.Table, error) {
 	url := fmt.Sprintf("%s/service/restaurants/%s/tables/%s", c.baseURL, restaurantID.String(), tableID.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return Table{}, err
+		return domain.Table{}, err
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return Table{}, fmt.Errorf("catalog-service: %w", err)
+		return domain.Table{}, fmt.Errorf("catalog-service: %w", err)
 	}
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		var t Table
+		var t domain.Table
 		if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-			return Table{}, err
+			return domain.Table{}, err
 		}
 		return t, nil
 	case http.StatusNotFound:
-		return Table{}, domain.ErrNotFound
+		return domain.Table{}, domain.ErrNotFound
 	default:
-		return Table{}, errors.New("catalog-service: unexpected status " + resp.Status)
+		return domain.Table{}, errors.New("catalog-service: unexpected status " + resp.Status)
 	}
 }

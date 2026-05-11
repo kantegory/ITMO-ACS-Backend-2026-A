@@ -14,7 +14,6 @@ type Config struct {
 	HTTPAddr          string
 	JWTSecret         string
 	CatalogServiceURL string
-	RabbitMQURL       string
 }
 
 func LoadConfig() (Config, error) {
@@ -29,7 +28,6 @@ func LoadConfig() (Config, error) {
 		HTTPAddr:          getEnv("BOOKING_HTTP_ADDR", ":8083"),
 		JWTSecret:         getEnv("JWT_SECRET", "dev-secret-change-me"),
 		CatalogServiceURL: getEnv("CATALOG_SERVICE_URL", "http://catalog-service:8082"),
-		RabbitMQURL:       getEnv("RABBITMQ_URL", ""),
 	}, nil
 }
 

@@ -6,7 +6,7 @@ DB_USER ?= postgres
 
 .DEFAULT_GOAL := build
 
-.PHONY: build clean up down restart logs logs-auth logs-catalog logs-booking shell test deps fmt fmt-check vet lint check psql-auth psql-catalog psql-booking
+.PHONY: build clean up down down-volumes restart logs logs-auth logs-catalog logs-booking shell test deps fmt fmt-check vet lint check psql-auth psql-catalog psql-booking
 
 build:
 	mkdir -p bin
@@ -23,6 +23,9 @@ up:
 
 down:
 	$(COMPOSE) down
+
+down-volumes:
+	$(COMPOSE) down -v
 
 restart:
 	$(COMPOSE) restart $(SERVICE)

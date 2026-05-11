@@ -32,7 +32,8 @@ services:
       - "5434:5432"
     volumes:
       - catalog-dbdata:/var/lib/postgresql/data
-      - ../catalog-service/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/000001_init.up.sql:ro
+      - ../catalog-service/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ../catalog-service/migrations/000002_users_cache.up.sql:/docker-entrypoint-initdb.d/02_users_cache.sql:ro
     networks:
       - restaurant-booking
     healthcheck:
@@ -80,7 +81,7 @@ services:
   auth-service:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile
+      dockerfile: deploy/Dockerfile.dev
       args:
         SERVICE: auth-service
     restart: always
@@ -90,18 +91,21 @@ services:
     depends_on:
       auth-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       AUTH_DB_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@auth-db:5432/auth_db?sslmode=disable
       AUTH_HTTP_ADDR: ":8081"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       JWT_EXPIRES: ${JWT_EXPIRES:-24h}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     networks:
       - restaurant-booking
 
   catalog-service:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile
+      dockerfile: deploy/Dockerfile.dev
       args:
         SERVICE: catalog-service
     restart: always
@@ -111,23 +115,20 @@ services:
     depends_on:
       catalog-db:
         condition: service_healthy
-      auth-service:
-        condition: service_started
       rabbitmq:
         condition: service_healthy
     environment:
       CATALOG_DB_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@catalog-db:5432/catalog_db?sslmode=disable
       CATALOG_HTTP_ADDR: ":8082"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      AUTH_SERVICE_URL: http://auth-service:8081
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     networks:
       - restaurant-booking
 
   booking-service:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile
+      dockerfile: deploy/Dockerfile.dev
       args:
         SERVICE: booking-service
     restart: always
@@ -139,14 +140,11 @@ services:
         condition: service_healthy
       catalog-service:
         condition: service_started
-      rabbitmq:
-        condition: service_healthy
     environment:
       BOOKING_DB_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@booking-db:5432/booking_db?sslmode=disable
       BOOKING_HTTP_ADDR: ":8083"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       CATALOG_SERVICE_URL: http://catalog-service:8082
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     networks:
       - restaurant-booking
 

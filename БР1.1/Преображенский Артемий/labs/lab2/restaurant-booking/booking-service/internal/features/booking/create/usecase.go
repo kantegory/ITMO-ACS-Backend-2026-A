@@ -2,12 +2,10 @@ package create
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
 
-	"restaurant-booking/booking-service/internal/adapter/catalogclient"
 	"restaurant-booking/booking-service/internal/domain"
 )
 
@@ -17,21 +15,16 @@ type Repository interface {
 }
 
 type CatalogClient interface {
-	GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (catalogclient.Table, error)
-}
-
-type BookingEventPublisher interface {
-	PublishBookingCreated(ctx context.Context, b domain.Booking) error
+	GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (domain.Table, error)
 }
 
 type Usecase struct {
-	repo      Repository
-	catalog   CatalogClient
-	publisher BookingEventPublisher
+	repo    Repository
+	catalog CatalogClient
 }
 
-func NewUsecase(repo Repository, catalog CatalogClient, publisher BookingEventPublisher) *Usecase {
-	return &Usecase{repo: repo, catalog: catalog, publisher: publisher}
+func NewUsecase(repo Repository, catalog CatalogClient) *Usecase {
+	return &Usecase{repo: repo, catalog: catalog}
 }
 
 func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
@@ -66,11 +59,6 @@ func (u *Usecase) Create(ctx context.Context, input Input) (Output, error) {
 	created, err := u.repo.Create(ctx, b)
 	if err != nil {
 		return Output{}, err
-	}
-	if u.publisher != nil {
-		if err := u.publisher.PublishBookingCreated(ctx, created); err != nil {
-			log.Printf("rabbitmq: %v", err)
-		}
 	}
 	return Output{Booking: created}, nil
 }

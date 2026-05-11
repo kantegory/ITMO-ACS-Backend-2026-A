@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"restaurant-booking/booking-service/internal/adapter/catalogclient"
 	"restaurant-booking/booking-service/internal/domain"
 )
 
@@ -15,7 +14,7 @@ type Repository interface {
 }
 
 type CatalogClient interface {
-	GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (catalogclient.Table, error)
+	GetTable(ctx context.Context, restaurantID uuid.UUID, tableID uuid.UUID) (domain.Table, error)
 }
 
 type Usecase struct {

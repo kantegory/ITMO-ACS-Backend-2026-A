@@ -14,6 +14,7 @@ type Config struct {
 	HTTPAddr   string
 	JWTSecret  string
 	JWTExpires string
+	RabbitMQURL string
 }
 
 func LoadConfig() (Config, error) {
@@ -28,6 +29,7 @@ func LoadConfig() (Config, error) {
 		HTTPAddr:   getEnv("AUTH_HTTP_ADDR", ":8081"),
 		JWTSecret:  getEnv("JWT_SECRET", "dev-secret-change-me"),
 		JWTExpires: getEnv("JWT_EXPIRES", "24h"),
+		RabbitMQURL: getEnv("RABBITMQ_URL", ""),
 	}, nil
 }
 

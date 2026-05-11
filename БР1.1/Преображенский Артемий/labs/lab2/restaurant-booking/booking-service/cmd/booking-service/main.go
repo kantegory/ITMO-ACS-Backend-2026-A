@@ -14,9 +14,8 @@ import (
 
 	"restaurant-booking/booking-service/config"
 	"restaurant-booking/booking-service/docs"
-	"restaurant-booking/booking-service/internal/adapter/catalogclient"
+	"restaurant-booking/booking-service/internal/adapter/catalog-client"
 	"restaurant-booking/booking-service/internal/adapter/postgres"
-	"restaurant-booking/booking-service/internal/adapter/rabbitmq"
 	httpcontroller "restaurant-booking/booking-service/internal/controller/http"
 	"restaurant-booking/booking-service/internal/features/booking/availability"
 	bookingcancel "restaurant-booking/booking-service/internal/features/booking/cancel"
@@ -46,19 +45,8 @@ func AppRun(ctx context.Context, cfg config.Config) error {
 
 	catalogClient := catalogclient.New(cfg.CatalogServiceURL)
 
-	var bookingPublisher bookingcreate.BookingEventPublisher
-	if cfg.RabbitMQURL != "" {
-		pub, err := rabbitmq.NewPublisher(cfg.RabbitMQURL)
-		if err != nil {
-			pgPool.Close()
-			return fmt.Errorf("rabbitmq publisher: %w", err)
-		}
-		defer pub.Close()
-		bookingPublisher = pub
-	}
-
 	availabilityUsecase := availability.NewUsecase(availability.NewPostgres(pgPool), catalogClient)
-	createUsecase := bookingcreate.NewUsecase(bookingcreate.NewPostgres(pgPool), catalogClient, bookingPublisher)
+	createUsecase := bookingcreate.NewUsecase(bookingcreate.NewPostgres(pgPool), catalogClient)
 	listUsecase := bookinglist.NewUsecase(bookinglist.NewPostgres(pgPool))
 	getUsecase := bookingget.NewUsecase(bookingget.NewPostgres(pgPool))
 	cancelUsecase := bookingcancel.NewUsecase(bookingcancel.NewPostgres(pgPool))
