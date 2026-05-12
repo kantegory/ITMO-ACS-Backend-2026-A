@@ -10,6 +10,8 @@
 \usepackage{tabularx}
 \usepackage{booktabs}
 \usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{seqsplit}
 \usepackage{listings}
 \usepackage{enumitem}
 \usepackage{hyperref}
@@ -31,7 +33,11 @@
 
 \setlength{\parindent}{1.25cm}
 \setlength{\parskip}{0.2em}
-\renewcommand{\arraystretch}{1.25}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{4pt}
+\sloppy
+
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
 
 \lstdefinestyle{jsonstyle}{
     basicstyle=\ttfamily\small,
@@ -44,6 +50,7 @@
 }
 
 \newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\pathcode}[1]{{\footnotesize\ttfamily\seqsplit{#1}}}
 
 \begin{document}
 
@@ -102,7 +109,7 @@
 
 \subsection{Выделенные сервисы}
 
-\begin{longtable}{|p{0.22\textwidth}|p{0.48\textwidth}|p{0.18\textwidth}|}
+\begin{longtable}{|L{0.23\textwidth}|L{0.47\textwidth}|L{0.18\textwidth}|}
 \hline
 \textbf{Сервис} & \textbf{Ответственность} & \textbf{Собственная БД} \\
 \hline
@@ -124,77 +131,73 @@ API Gateway не владеет бизнес-данными. Его задача
 
 \begin{center}
 \begin{tikzpicture}[
-    service/.style={rectangle, draw, rounded corners, align=center, minimum width=3.4cm, minimum height=1cm},
-    db/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, minimum width=2.4cm, minimum height=1cm},
+    service/.style={rectangle, draw, rounded corners, align=center, text width=3.1cm, minimum height=0.9cm, font=\small},
+    db/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, text width=2.3cm, minimum height=0.85cm, font=\small},
     arrow/.style={-{Latex}, thick}
 ]
-    \node[service] (client) {Client\\Postman / Web};
-    \node[service, right=1.8cm of client] (gateway) {API Gateway};
-    \node[service, above right=1.1cm and 1.8cm of gateway] (identity) {Identity\\Service};
-    \node[service, right=1.8cm of gateway] (catalog) {Restaurant Catalog\\Service};
-    \node[service, below right=1.1cm and 1.8cm of gateway] (booking) {Booking\\Service};
-    \node[service, below=1.4cm of catalog] (review) {Review\\Service};
+    \node[service] (client) at (0, 0) {Client\\Postman / Web};
+    \node[service] (gateway) at (0, -1.5) {API Gateway};
 
-    \node[db, right=1.2cm of identity] (identitydb) {\code{identity\_db}};
-    \node[db, right=1.2cm of catalog] (catalogdb) {\code{catalog\_db}};
-    \node[db, right=1.2cm of booking] (bookingdb) {\code{booking\_db}};
-    \node[db, right=1.2cm of review] (reviewdb) {\code{review\_db}};
+    \node[service] (identity) at (4.6, 0.1) {Identity\\Service};
+    \node[service] (catalog) at (4.6, -1.3) {Restaurant Catalog\\Service};
+    \node[service] (booking) at (4.6, -2.7) {Booking\\Service};
+    \node[service] (review) at (4.6, -4.1) {Review\\Service};
+
+    \node[db] (identitydb) at (8.4, 0.1) {\code{identity\_db}};
+    \node[db] (catalogdb) at (8.4, -1.3) {\code{catalog\_db}};
+    \node[db] (bookingdb) at (8.4, -2.7) {\code{booking\_db}};
+    \node[db] (reviewdb) at (8.4, -4.1) {\code{review\_db}};
 
     \draw[arrow] (client) -- (gateway);
-    \draw[arrow] (gateway) -- (identity);
-    \draw[arrow] (gateway) -- (catalog);
-    \draw[arrow] (gateway) -- (booking);
-    \draw[arrow] (gateway) -- (review);
+    \draw[arrow] (gateway.east) -- (identity.west);
+    \draw[arrow] (gateway.east) -- (catalog.west);
+    \draw[arrow] (gateway.east) -- (booking.west);
+    \draw[arrow] (gateway.east) -- (review.west);
 
     \draw[arrow] (identity) -- (identitydb);
     \draw[arrow] (catalog) -- (catalogdb);
     \draw[arrow] (booking) -- (bookingdb);
     \draw[arrow] (review) -- (reviewdb);
-
-    \draw[arrow, dashed] (booking) -- node[right, font=\small]{internal REST} (catalog);
-    \draw[arrow, dashed] (review) -- node[left, font=\small]{review context} (booking);
-    \draw[arrow, dashed] (review) -- node[above, font=\small]{user summary} (identity);
-    \draw[arrow, dashed] (review) -- node[right, font=\small]{ReviewCreated event} (catalog);
 \end{tikzpicture}
 \end{center}
 
-Основной тип синхронного взаимодействия между сервисами --- REST по внутренним эндпоинтам. Для обновления агрегированного рейтинга ресторана используется асинхронное событие \code{ReviewCreated}, потому что рейтинг не должен блокировать создание отзыва распределенной транзакцией.
+На схеме показаны внешняя маршрутизация и владение базами данных. Межсервисные вызовы вынесены в отдельную таблицу ниже, чтобы не перегружать диаграмму пересекающимися стрелками. Основной тип синхронного взаимодействия между сервисами --- REST по внутренним эндпоинтам. Для обновления агрегированного рейтинга ресторана используется асинхронное событие \code{ReviewCreated}, потому что рейтинг не должен блокировать создание отзыва распределенной транзакцией.
 
 \subsection{Маршрутизация внешнего API}
 
 Внешние пути можно оставить совместимыми с текущим API, чтобы клиентам не пришлось знать о внутренней декомпозиции.
 
-\begin{longtable}{|p{0.55\textwidth}|p{0.35\textwidth}|}
+\begin{longtable}{|L{0.60\textwidth}|L{0.30\textwidth}|}
 \hline
 \textbf{Внешний endpoint} & \textbf{Целевой сервис} \\
 \hline
-\code{POST /api/v1/auth/register} & Identity Service \\
+\pathcode{POST /api/v1/auth/register} & Identity Service \\
 \hline
-\code{POST /api/v1/auth/login} & Identity Service \\
+\pathcode{POST /api/v1/auth/login} & Identity Service \\
 \hline
-\code{GET /api/v1/users/me}, \code{PATCH /api/v1/users/me} & Identity Service \\
+\pathcode{GET /api/v1/users/me}, \pathcode{PATCH /api/v1/users/me} & Identity Service \\
 \hline
-\code{GET /api/v1/cuisines} & Restaurant Catalog Service \\
+\pathcode{GET /api/v1/cuisines} & Restaurant Catalog Service \\
 \hline
-\code{GET /api/v1/restaurants} & Restaurant Catalog Service \\
+\pathcode{GET /api/v1/restaurants} & Restaurant Catalog Service \\
 \hline
-\code{GET /api/v1/restaurants/\{restaurantId\}} & Restaurant Catalog Service \\
+\pathcode{GET /api/v1/restaurants/\{restaurantId\}} & Restaurant Catalog Service \\
 \hline
-\code{GET /api/v1/restaurants/\{restaurantId\}/menu} & Restaurant Catalog Service \\
+\pathcode{GET /api/v1/restaurants/\{restaurantId\}/menu} & Restaurant Catalog Service \\
 \hline
-\code{GET /api/v1/restaurants/\{restaurantId\}/availability} & Booking Service \\
+\pathcode{GET /api/v1/restaurants/\{restaurantId\}/availability} & Booking Service \\
 \hline
-\code{POST /api/v1/bookings} & Booking Service \\
+\pathcode{POST /api/v1/bookings} & Booking Service \\
 \hline
-\code{GET /api/v1/bookings/me} & Booking Service \\
+\pathcode{GET /api/v1/bookings/me} & Booking Service \\
 \hline
-\code{GET /api/v1/bookings/\{bookingId\}} & Booking Service \\
+\pathcode{GET /api/v1/bookings/\{bookingId\}} & Booking Service \\
 \hline
-\code{PATCH /api/v1/bookings/\{bookingId\}/cancel} & Booking Service \\
+\pathcode{PATCH /api/v1/bookings/\{bookingId\}/cancel} & Booking Service \\
 \hline
-\code{GET /api/v1/restaurants/\{restaurantId\}/reviews} & Review Service \\
+\pathcode{GET /api/v1/restaurants/\{restaurantId\}/reviews} & Review Service \\
 \hline
-\code{POST /api/v1/restaurants/\{restaurantId\}/reviews} & Review Service \\
+\pathcode{POST /api/v1/restaurants/\{restaurantId\}/reviews} & Review Service \\
 \hline
 \end{longtable}
 
@@ -206,7 +209,7 @@ Endpoint доступности столиков относится к Booking S
 
 \subsubsection{\code{identity\_db}}
 
-\begin{longtable}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\begin{longtable}{|L{0.28\textwidth}|L{0.62\textwidth}|}
 \hline
 \textbf{Таблица} & \textbf{Назначение} \\
 \hline
@@ -218,7 +221,7 @@ Identity Service является единственным владельцем 
 
 \subsubsection{\code{catalog\_db}}
 
-\begin{longtable}{|p{0.32\textwidth}|p{0.58\textwidth}|}
+\begin{longtable}{|L{0.32\textwidth}|L{0.58\textwidth}|}
 \hline
 \textbf{Таблица} & \textbf{Назначение} \\
 \hline
@@ -246,7 +249,7 @@ Identity Service является единственным владельцем 
 
 \subsubsection{\code{booking\_db}}
 
-\begin{longtable}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\begin{longtable}{|L{0.28\textwidth}|L{0.62\textwidth}|}
 \hline
 \textbf{Таблица} & \textbf{Назначение} \\
 \hline
@@ -258,7 +261,7 @@ Identity Service является единственным владельцем 
 
 \subsubsection{\code{review\_db}}
 
-\begin{longtable}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\begin{longtable}{|L{0.28\textwidth}|L{0.62\textwidth}|}
 \hline
 \textbf{Таблица} & \textbf{Назначение} \\
 \hline
@@ -272,7 +275,7 @@ Identity Service является единственным владельцем 
 
 \subsection{Замена связей монолита}
 
-\begin{longtable}{|p{0.38\textwidth}|p{0.52\textwidth}|}
+\begin{longtable}{|L{0.38\textwidth}|L{0.52\textwidth}|}
 \hline
 \textbf{Связь в монолите} & \textbf{Решение после декомпозиции} \\
 \hline
@@ -296,25 +299,25 @@ Identity Service является единственным владельцем 
 
 OpenAPI-спецификация внутренних REST-контрактов вынесена в файл \code{homeworks/hw4/interservice-openapi.yaml}.
 
-\begin{longtable}{|p{0.44\textwidth}|p{0.22\textwidth}|p{0.24\textwidth}|}
+\begin{longtable}{|L{0.46\textwidth}|L{0.21\textwidth}|L{0.23\textwidth}|}
 \hline
 \textbf{Endpoint} & \textbf{Кто вызывает} & \textbf{Назначение} \\
 \hline
-\code{GET /identity/internal/v1/auth/jwks} & API Gateway и сервисы & Получение публичных ключей для проверки JWT \\
+\pathcode{GET /identity/internal/v1/auth/jwks} & API Gateway и сервисы & Получение публичных ключей для проверки JWT \\
 \hline
-\code{GET /identity/internal/v1/users/\{userId\}/summary} & Review Service, Booking Service & Получение краткого профиля пользователя \\
+\pathcode{GET /identity/internal/v1/users/\{userId\}/summary} & Review Service, Booking Service & Получение краткого профиля пользователя \\
 \hline
-\code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/summary} & Booking Service, Review Service & Получение краткой информации о ресторане \\
+\pathcode{GET /catalog/internal/v1/restaurants/\{restaurantId\}/summary} & Booking Service, Review Service & Получение краткой информации о ресторане \\
 \hline
-\code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/booking-context} & Booking Service & Проверка ресторана, столика, вместимости и рабочих часов перед созданием бронирования \\
+\pathcode{GET /catalog/internal/v1/restaurants/\{restaurantId\}/booking-context} & Booking Service & Проверка ресторана, столика, вместимости и рабочих часов перед созданием бронирования \\
 \hline
-\code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/availability-context} & Booking Service & Получение активных столиков и рабочих часов для расчета доступности \\
+\pathcode{GET /catalog/internal/v1/restaurants/\{restaurantId\}/availability-context} & Booking Service & Получение активных столиков и рабочих часов для расчета доступности \\
 \hline
-\code{POST /booking/internal/v1/bookings/availability/check} & Restaurant Catalog Service или API Gateway & Проверка занятости набора столиков на интервал времени \\
+\pathcode{POST /booking/internal/v1/bookings/availability/check} & Restaurant Catalog Service или API Gateway & Проверка занятости набора столиков на интервал времени \\
 \hline
-\code{GET /booking/internal/v1/bookings/\{bookingId\}/review-context} & Review Service & Проверка права пользователя оставить отзыв \\
+\pathcode{GET /booking/internal/v1/bookings/\{bookingId\}/review-context} & Review Service & Проверка права пользователя оставить отзыв \\
 \hline
-\code{GET /reviews/internal/v1/restaurants/\{restaurantId\}/rating-stats} & Restaurant Catalog Service & Синхронизация рейтингов при пересчете или восстановлении read-model \\
+\pathcode{GET /reviews/internal/v1/restaurants/\{restaurantId\}/rating-stats} & Restaurant Catalog Service & Синхронизация рейтингов при пересчете или восстановлении read-model \\
 \hline
 \end{longtable}
 
@@ -341,9 +344,9 @@ Catalog Service использует событие для пересчета \c
 \subsubsection{Создание бронирования}
 
 \begin{enumerate}[leftmargin=1.7cm]
-    \item Клиент отправляет \code{POST /api/v1/bookings} в API Gateway.
+    \item Клиент отправляет \pathcode{POST /api/v1/bookings} в API Gateway.
     \item Gateway проверяет JWT и передает запрос в Booking Service вместе с \code{userId}.
-    \item Booking Service вызывает \code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/booking-context}.
+    \item Booking Service вызывает \pathcode{GET /catalog/internal/v1/restaurants/\{restaurantId\}/booking-context}.
     \item Catalog Service проверяет, что ресторан и столик активны, столик принадлежит ресторану, вместимость подходит, а интервал попадает в рабочие часы.
     \item Booking Service проверяет в \code{booking\_db}, что у выбранного столика нет пересекающегося активного бронирования.
     \item Booking Service создает запись в \code{bookings} и сохраняет snapshot ресторана и столика.
@@ -355,7 +358,7 @@ Catalog Service использует событие для пересчета \c
 \subsubsection{Получение доступности ресторана}
 
 \begin{enumerate}[leftmargin=1.7cm]
-    \item Клиент отправляет \code{GET /api/v1/restaurants/\{restaurantId\}/availability}.
+    \item Клиент отправляет \pathcode{GET /api/v1/restaurants/\{restaurantId\}/availability}.
     \item Gateway маршрутизирует запрос в Booking Service.
     \item Booking Service получает из Catalog Service рабочие часы и активные столики.
     \item Booking Service проверяет пересечения с бронированиями в своей БД.
@@ -367,9 +370,9 @@ Catalog Service использует событие для пересчета \c
 \subsubsection{Создание отзыва}
 
 \begin{enumerate}[leftmargin=1.7cm]
-    \item Клиент отправляет \code{POST /api/v1/restaurants/\{restaurantId\}/reviews}.
+    \item Клиент отправляет \pathcode{POST /api/v1/restaurants/\{restaurantId\}/reviews}.
     \item Gateway проверяет JWT и передает запрос в Review Service.
-    \item Review Service вызывает \code{GET /booking/internal/v1/bookings/\{bookingId\}/review-context}.
+    \item Review Service вызывает \pathcode{GET /booking/internal/v1/bookings/\{bookingId\}/review-context}.
     \item Booking Service проверяет, что бронирование принадлежит пользователю, относится к выбранному ресторану, завершено и уже прошло по времени.
     \item Review Service проверяет уникальность \code{booking\_id} в своей БД.
     \item Review Service создает отзыв и записывает событие \code{ReviewCreated} в \code{review\_outbox}.
@@ -381,10 +384,10 @@ Catalog Service использует событие для пересчета \c
 \subsubsection{Поиск ресторанов с сортировкой по рейтингу}
 
 \begin{enumerate}[leftmargin=1.7cm]
-    \item Клиент отправляет \code{GET /api/v1/restaurants} с фильтрами, сортировкой и пагинацией.
+    \item Клиент отправляет \pathcode{GET /api/v1/restaurants} с фильтрами, сортировкой и пагинацией.
     \item Gateway маршрутизирует запрос в Restaurant Catalog Service.
     \item Catalog Service фильтрует рестораны по своим таблицам и использует локальную таблицу \code{restaurant\_rating\_stats}.
-    \item Если read-model нужно восстановить, Catalog Service может запросить \code{GET /reviews/internal/v1/restaurants/\{restaurantId\}/rating-stats}.
+    \item Если read-model нужно восстановить, Catalog Service может запросить \pathcode{GET /reviews/internal/v1/restaurants/\{restaurantId\}/rating-stats}.
 \end{enumerate}
 
 Поиск не должен делать синхронный запрос в Review Service для каждого ресторана из страницы, иначе пагинация и сортировка станут нестабильными и медленными.
@@ -406,7 +409,7 @@ Catalog Service использует событие для пересчета \c
 
 Основные коды:
 
-\begin{longtable}{|p{0.25\textwidth}|p{0.65\textwidth}|}
+\begin{longtable}{|L{0.25\textwidth}|L{0.65\textwidth}|}
 \hline
 \textbf{Код} & \textbf{Когда возвращается} \\
 \hline
