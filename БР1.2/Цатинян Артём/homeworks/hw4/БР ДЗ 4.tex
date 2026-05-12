@@ -1,0 +1,460 @@
+\documentclass[14pt,a4paper]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{cmap}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+
+\geometry{
+    left=30mm,
+    right=15mm,
+    top=20mm,
+    bottom=20mm
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue
+}
+
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2em}
+\renewcommand{\arraystretch}{1.25}
+
+\lstdefinestyle{jsonstyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        САНКТ-ПЕТЕРБУРГСКИЙ НАЦИОНАЛЬНЫЙ\\
+        ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО
+
+        \vspace{1.5cm}
+
+        Дисциплина: Бэк-энд разработка
+
+        \vspace{1.5cm}
+
+        \textbf{Отчет}
+
+        \vspace{0.5cm}
+
+        Домашнее задание 4
+
+        \vspace{0.5cm}
+
+        \textbf{Технический дизайн микросервисной архитектуры}
+
+        \vfill
+
+        \begin{flushright}
+            Выполнил:\\
+            Цатинян Артём\\
+            Группа БР1.2
+
+            \vspace{0.8cm}
+
+            Проверил:\\
+            Добряков Д. И.
+        \end{flushright}
+
+        \vfill
+
+        Санкт-Петербург\\
+        2026 г.
+    \end{center}
+\end{titlepage}
+
+\section{Задача}
+
+Тема проекта: приложение для бронирования столиков в ресторанах.
+
+В рамках домашнего задания требовалось спроектировать переход от монолитного backend-приложения к микросервисной архитектуре. Необходимо разделить приложение на независимые сервисы по принципу \code{database-per-service}, описать взаимодействие между сервисами, спроектировать разделение существующей базы данных, подготовить OpenAPI-спецификацию для межсервисного взаимодействия, а также описать запросы, ответы, возможные ошибки и шаги миграции.
+
+\section{Ход работы}
+
+Исходное приложение реализовано как монолитный REST API на Kotlin и Spring Boot. В одной базе данных находятся пользователи, рестораны, кухни, столики, меню, бронирования и отзывы. Такая структура удобна для первой реализации, но в монолите разные части предметной области связаны прямыми SQL-запросами и внешними ключами. При переходе к микросервисам эти связи нужно заменить на четкие контракты между сервисами.
+
+Декомпозиция выполняется не по каждой таблице отдельно, а по самостоятельным бизнес-областям. Это позволяет не переусложнять архитектуру и при этом соблюсти принцип владения данными.
+
+\subsection{Выделенные сервисы}
+
+\begin{longtable}{|p{0.22\textwidth}|p{0.48\textwidth}|p{0.18\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Ответственность} & \textbf{Собственная БД} \\
+\hline
+API Gateway & Единая внешняя точка входа, маршрутизация публичных запросов, проверка JWT, прокидывание \code{userId} в downstream-сервисы & Нет \\
+\hline
+Identity Service & Регистрация, вход, хранение пользователей, ролей, паролей, профиля пользователя & \code{identity\_db} \\
+\hline
+Restaurant Catalog Service & Каталог ресторанов, кухни, адреса, рабочие часы, столики, фотографии, меню, агрегированные рейтинги & \code{catalog\_db} \\
+\hline
+Booking Service & Создание бронирований, отмена, просмотр бронирований, расчет доступности столиков & \code{booking\_db} \\
+\hline
+Review Service & Создание и просмотр отзывов, проверка права пользователя оставить отзыв, события изменения рейтинга & \code{review\_db} \\
+\hline
+\end{longtable}
+
+API Gateway не владеет бизнес-данными. Его задача --- сохранить для клиента прежний внешний REST API и скрыть от клиента внутреннее разбиение системы.
+
+\subsection{Архитектурная схема}
+
+\begin{center}
+\begin{tikzpicture}[
+    service/.style={rectangle, draw, rounded corners, align=center, minimum width=3.4cm, minimum height=1cm},
+    db/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, minimum width=2.4cm, minimum height=1cm},
+    arrow/.style={-{Latex}, thick}
+]
+    \node[service] (client) {Client\\Postman / Web};
+    \node[service, right=1.8cm of client] (gateway) {API Gateway};
+    \node[service, above right=1.1cm and 1.8cm of gateway] (identity) {Identity\\Service};
+    \node[service, right=1.8cm of gateway] (catalog) {Restaurant Catalog\\Service};
+    \node[service, below right=1.1cm and 1.8cm of gateway] (booking) {Booking\\Service};
+    \node[service, below=1.4cm of catalog] (review) {Review\\Service};
+
+    \node[db, right=1.2cm of identity] (identitydb) {\code{identity\_db}};
+    \node[db, right=1.2cm of catalog] (catalogdb) {\code{catalog\_db}};
+    \node[db, right=1.2cm of booking] (bookingdb) {\code{booking\_db}};
+    \node[db, right=1.2cm of review] (reviewdb) {\code{review\_db}};
+
+    \draw[arrow] (client) -- (gateway);
+    \draw[arrow] (gateway) -- (identity);
+    \draw[arrow] (gateway) -- (catalog);
+    \draw[arrow] (gateway) -- (booking);
+    \draw[arrow] (gateway) -- (review);
+
+    \draw[arrow] (identity) -- (identitydb);
+    \draw[arrow] (catalog) -- (catalogdb);
+    \draw[arrow] (booking) -- (bookingdb);
+    \draw[arrow] (review) -- (reviewdb);
+
+    \draw[arrow, dashed] (booking) -- node[right, font=\small]{internal REST} (catalog);
+    \draw[arrow, dashed] (review) -- node[left, font=\small]{review context} (booking);
+    \draw[arrow, dashed] (review) -- node[above, font=\small]{user summary} (identity);
+    \draw[arrow, dashed] (review) -- node[right, font=\small]{ReviewCreated event} (catalog);
+\end{tikzpicture}
+\end{center}
+
+Основной тип синхронного взаимодействия между сервисами --- REST по внутренним эндпоинтам. Для обновления агрегированного рейтинга ресторана используется асинхронное событие \code{ReviewCreated}, потому что рейтинг не должен блокировать создание отзыва распределенной транзакцией.
+
+\subsection{Маршрутизация внешнего API}
+
+Внешние пути можно оставить совместимыми с текущим API, чтобы клиентам не пришлось знать о внутренней декомпозиции.
+
+\begin{longtable}{|p{0.55\textwidth}|p{0.35\textwidth}|}
+\hline
+\textbf{Внешний endpoint} & \textbf{Целевой сервис} \\
+\hline
+\code{POST /api/v1/auth/register} & Identity Service \\
+\hline
+\code{POST /api/v1/auth/login} & Identity Service \\
+\hline
+\code{GET /api/v1/users/me}, \code{PATCH /api/v1/users/me} & Identity Service \\
+\hline
+\code{GET /api/v1/cuisines} & Restaurant Catalog Service \\
+\hline
+\code{GET /api/v1/restaurants} & Restaurant Catalog Service \\
+\hline
+\code{GET /api/v1/restaurants/\{restaurantId\}} & Restaurant Catalog Service \\
+\hline
+\code{GET /api/v1/restaurants/\{restaurantId\}/menu} & Restaurant Catalog Service \\
+\hline
+\code{GET /api/v1/restaurants/\{restaurantId\}/availability} & Booking Service \\
+\hline
+\code{POST /api/v1/bookings} & Booking Service \\
+\hline
+\code{GET /api/v1/bookings/me} & Booking Service \\
+\hline
+\code{GET /api/v1/bookings/\{bookingId\}} & Booking Service \\
+\hline
+\code{PATCH /api/v1/bookings/\{bookingId\}/cancel} & Booking Service \\
+\hline
+\code{GET /api/v1/restaurants/\{restaurantId\}/reviews} & Review Service \\
+\hline
+\code{POST /api/v1/restaurants/\{restaurantId\}/reviews} & Review Service \\
+\hline
+\end{longtable}
+
+Endpoint доступности столиков относится к Booking Service, потому что именно этот сервис владеет бронированиями и может корректно определить пересечения по времени. При этом Booking Service получает из Restaurant Catalog Service список активных столиков, вместимость и рабочие часы ресторана.
+
+\subsection{Разделение базы данных}
+
+В микросервисной архитектуре сервисы не обращаются напрямую к чужим таблицам. Внешние ключи между разными бизнес-областями заменяются обычными идентификаторами и проверками через внутренние API.
+
+\subsubsection{\code{identity\_db}}
+
+\begin{longtable}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\hline
+\textbf{Таблица} & \textbf{Назначение} \\
+\hline
+\code{users} & Пользователи, email, хэш пароля, имя, фамилия, телефон, роль, активность, даты создания и обновления \\
+\hline
+\end{longtable}
+
+Identity Service является единственным владельцем учетных данных. Остальные сервисы хранят только \code{user\_id} как внешний идентификатор и при необходимости получают краткую информацию о пользователе через internal API.
+
+\subsubsection{\code{catalog\_db}}
+
+\begin{longtable}{|p{0.32\textwidth}|p{0.58\textwidth}|}
+\hline
+\textbf{Таблица} & \textbf{Назначение} \\
+\hline
+\code{restaurants} & Основная информация о ресторанах, адрес, контакты, ценовой сегмент, политика бронирования \\
+\hline
+\code{cuisines} & Справочник кухонь \\
+\hline
+\code{restaurant\_cuisines} & Связь ресторанов и кухонь \\
+\hline
+\code{restaurant\_working\_hours} & Рабочие часы ресторанов \\
+\hline
+\code{restaurant\_tables} & Столики ресторанов и вместимость \\
+\hline
+\code{restaurant\_photos} & Фотографии ресторанов \\
+\hline
+\code{menu\_categories} & Категории меню \\
+\hline
+\code{menu\_items} & Позиции меню \\
+\hline
+\code{restaurant\_rating\_stats} & Денормализованный read-model: средний рейтинг и количество отзывов \\
+\hline
+\end{longtable}
+
+Таблица \code{restaurant\_rating\_stats} нужна для сортировки и фильтрации ресторанов по рейтингу без синхронных запросов в Review Service на каждый поиск.
+
+\subsubsection{\code{booking\_db}}
+
+\begin{longtable}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\hline
+\textbf{Таблица} & \textbf{Назначение} \\
+\hline
+\code{bookings} & Бронирования пользователя: \code{user\_id}, \code{restaurant\_id}, \code{table\_id}, статус, период, количество гостей, пожелания \\
+\hline
+\end{longtable}
+
+В \code{bookings} больше нет внешних ключей на \code{users}, \code{restaurants} и \code{restaurant\_tables}, потому что эти таблицы принадлежат другим сервисам. Для удобства отображения можно добавить snapshot-поля: \code{restaurant\_name\_snapshot}, \code{table\_number\_snapshot}, \code{table\_seats\_snapshot}. Они фиксируют состояние на момент создания бронирования и позволяют отдавать список бронирований без лишних синхронных вызовов.
+
+\subsubsection{\code{review\_db}}
+
+\begin{longtable}{|p{0.28\textwidth}|p{0.62\textwidth}|}
+\hline
+\textbf{Таблица} & \textbf{Назначение} \\
+\hline
+\code{reviews} & Отзывы: \code{booking\_id}, \code{restaurant\_id}, \code{user\_id}, оценка, комментарий, snapshot имени автора \\
+\hline
+\code{review\_outbox} & Очередь исходящих событий для надежной доставки \code{ReviewCreated} \\
+\hline
+\end{longtable}
+
+В \code{reviews.booking\_id} сохраняется уникальное ограничение внутри \code{review\_db}, чтобы по одному бронированию нельзя было оставить два отзыва. Проверка того, что бронирование действительно принадлежит пользователю и завершено, выполняется через Booking Service.
+
+\subsection{Замена связей монолита}
+
+\begin{longtable}{|p{0.38\textwidth}|p{0.52\textwidth}|}
+\hline
+\textbf{Связь в монолите} & \textbf{Решение после декомпозиции} \\
+\hline
+\code{bookings.user\_id -> users.id} & \code{booking\_db.bookings.user\_id} хранится как scalar id, пользователь проверяется через JWT и при необходимости через Identity Service \\
+\hline
+\code{bookings.restaurant\_id -> restaurants.id} & Booking Service вызывает Restaurant Catalog Service перед созданием бронирования \\
+\hline
+\code{bookings.table\_id -> restaurant\_tables.id} & Booking Service получает table context из Restaurant Catalog Service и проверяет вместимость \\
+\hline
+\code{reviews.booking\_id -> bookings.id} & Review Service вызывает Booking Service, чтобы проверить завершенное бронирование \\
+\hline
+\code{reviews.user\_id -> users.id} & Review Service получает имя автора из JWT или Identity Service и хранит snapshot \\
+\hline
+\code{restaurants} joins \code{reviews} для рейтинга & Catalog Service читает локальную таблицу \code{restaurant\_rating\_stats}, обновляемую событием из Review Service \\
+\hline
+\code{restaurant\_tables} joins \code{bookings} для availability & Booking Service считает доступность по своей БД бронирований и данным о столиках из Catalog Service \\
+\hline
+\end{longtable}
+
+\subsection{Межсервисное взаимодействие}
+
+OpenAPI-спецификация внутренних REST-контрактов вынесена в файл \code{homeworks/hw4/interservice-openapi.yaml}.
+
+\begin{longtable}{|p{0.44\textwidth}|p{0.22\textwidth}|p{0.24\textwidth}|}
+\hline
+\textbf{Endpoint} & \textbf{Кто вызывает} & \textbf{Назначение} \\
+\hline
+\code{GET /identity/internal/v1/auth/jwks} & API Gateway и сервисы & Получение публичных ключей для проверки JWT \\
+\hline
+\code{GET /identity/internal/v1/users/\{userId\}/summary} & Review Service, Booking Service & Получение краткого профиля пользователя \\
+\hline
+\code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/summary} & Booking Service, Review Service & Получение краткой информации о ресторане \\
+\hline
+\code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/booking-context} & Booking Service & Проверка ресторана, столика, вместимости и рабочих часов перед созданием бронирования \\
+\hline
+\code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/availability-context} & Booking Service & Получение активных столиков и рабочих часов для расчета доступности \\
+\hline
+\code{POST /booking/internal/v1/bookings/availability/check} & Restaurant Catalog Service или API Gateway & Проверка занятости набора столиков на интервал времени \\
+\hline
+\code{GET /booking/internal/v1/bookings/\{bookingId\}/review-context} & Review Service & Проверка права пользователя оставить отзыв \\
+\hline
+\code{GET /reviews/internal/v1/restaurants/\{restaurantId\}/rating-stats} & Restaurant Catalog Service & Синхронизация рейтингов при пересчете или восстановлении read-model \\
+\hline
+\end{longtable}
+
+Для внутренних запросов используется отдельная сервисная авторизация, например заголовок \code{X-Service-Token}. Пользовательский JWT не должен использоваться как единственный механизм доверия между сервисами.
+
+Асинхронное событие \code{ReviewCreated} передается из Review Service в Catalog Service после создания отзыва. Минимальный payload события:
+
+\begin{lstlisting}[style=jsonstyle]
+{
+  "eventId": "9d15a4f0-4c47-4d68-b79a-6bb0d1e2a111",
+  "eventType": "ReviewCreated",
+  "occurredAt": "2026-05-12T12:00:00Z",
+  "reviewId": 101,
+  "restaurantId": 1,
+  "userId": 3,
+  "rating": 5
+}
+\end{lstlisting}
+
+Catalog Service использует событие для пересчета \code{restaurant\_rating\_stats}. Повторная доставка события должна быть безопасной: для этого можно хранить обработанные \code{eventId} или пересчитывать агрегат по данным Review Service через internal endpoint.
+
+\subsection{Основные сценарии взаимодействия}
+
+\subsubsection{Создание бронирования}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент отправляет \code{POST /api/v1/bookings} в API Gateway.
+    \item Gateway проверяет JWT и передает запрос в Booking Service вместе с \code{userId}.
+    \item Booking Service вызывает \code{GET /catalog/internal/v1/restaurants/\{restaurantId\}/booking-context}.
+    \item Catalog Service проверяет, что ресторан и столик активны, столик принадлежит ресторану, вместимость подходит, а интервал попадает в рабочие часы.
+    \item Booking Service проверяет в \code{booking\_db}, что у выбранного столика нет пересекающегося активного бронирования.
+    \item Booking Service создает запись в \code{bookings} и сохраняет snapshot ресторана и столика.
+    \item Клиент получает созданное бронирование.
+\end{enumerate}
+
+Возможные ошибки: \code{401} при отсутствии JWT, \code{404} если ресторан или столик не найдены, \code{422} если столик не подходит по вместимости или времени работы, \code{409} если столик уже забронирован на выбранное время.
+
+\subsubsection{Получение доступности ресторана}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент отправляет \code{GET /api/v1/restaurants/\{restaurantId\}/availability}.
+    \item Gateway маршрутизирует запрос в Booking Service.
+    \item Booking Service получает из Catalog Service рабочие часы и активные столики.
+    \item Booking Service проверяет пересечения с бронированиями в своей БД.
+    \item Клиент получает список свободных слотов.
+\end{enumerate}
+
+Такой подход сохраняет единственного владельца данных о бронированиях и убирает прямой SQL join между \code{restaurant\_tables} и \code{bookings}.
+
+\subsubsection{Создание отзыва}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент отправляет \code{POST /api/v1/restaurants/\{restaurantId\}/reviews}.
+    \item Gateway проверяет JWT и передает запрос в Review Service.
+    \item Review Service вызывает \code{GET /booking/internal/v1/bookings/\{bookingId\}/review-context}.
+    \item Booking Service проверяет, что бронирование принадлежит пользователю, относится к выбранному ресторану, завершено и уже прошло по времени.
+    \item Review Service проверяет уникальность \code{booking\_id} в своей БД.
+    \item Review Service создает отзыв и записывает событие \code{ReviewCreated} в \code{review\_outbox}.
+    \item Catalog Service получает событие и обновляет \code{restaurant\_rating\_stats}.
+\end{enumerate}
+
+Возможные ошибки: \code{404} если бронирование не найдено или не принадлежит пользователю, \code{400} если оценка вне диапазона, \code{409} если отзыв по бронированию уже существует, \code{422} если бронирование еще не завершено.
+
+\subsubsection{Поиск ресторанов с сортировкой по рейтингу}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент отправляет \code{GET /api/v1/restaurants} с фильтрами, сортировкой и пагинацией.
+    \item Gateway маршрутизирует запрос в Restaurant Catalog Service.
+    \item Catalog Service фильтрует рестораны по своим таблицам и использует локальную таблицу \code{restaurant\_rating\_stats}.
+    \item Если read-model нужно восстановить, Catalog Service может запросить \code{GET /reviews/internal/v1/restaurants/\{restaurantId\}/rating-stats}.
+\end{enumerate}
+
+Поиск не должен делать синхронный запрос в Review Service для каждого ресторана из страницы, иначе пагинация и сортировка станут нестабильными и медленными.
+
+\subsection{Общий формат ошибок}
+
+Для публичных и внутренних endpoint-ов используется единый формат ошибки:
+
+\begin{lstlisting}[style=jsonstyle]
+{
+  "timestamp": "2026-05-12T12:00:00Z",
+  "status": 409,
+  "error": "Conflict",
+  "message": "This table is already booked for the selected time range",
+  "path": "/api/v1/bookings",
+  "details": []
+}
+\end{lstlisting}
+
+Основные коды:
+
+\begin{longtable}{|p{0.25\textwidth}|p{0.65\textwidth}|}
+\hline
+\textbf{Код} & \textbf{Когда возвращается} \\
+\hline
+\code{400 Bad Request} & Ошибка формата запроса или валидации DTO \\
+\hline
+\code{401 Unauthorized} & Нет JWT или service token \\
+\hline
+\code{403 Forbidden} & Пользователь или сервис не имеет прав \\
+\hline
+\code{404 Not Found} & Сущность не найдена или недоступна вызывающей стороне \\
+\hline
+\code{409 Conflict} & Конфликт текущего состояния: занятый столик, повторный отзыв \\
+\hline
+\code{422 Unprocessable Entity} & Запрос синтаксически корректен, но нарушает бизнес-правило \\
+\hline
+\code{503 Service Unavailable} & Зависимый сервис временно недоступен \\
+\hline
+\end{longtable}
+
+\subsection{План миграции монолита}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Зафиксировать текущий внешний REST API из ДЗ2 и ЛР1 как контракт, который должен сохранить API Gateway.
+    \item Вынести Identity Service: перенести таблицу \code{users}, регистрацию, логин, профиль пользователя и выпуск JWT.
+    \item Перевести JWT на схему, удобную для микросервисов: Identity Service выпускает токены, Gateway и сервисы проверяют подпись по публичному ключу или по общему internal contract.
+    \item Вынести Restaurant Catalog Service: перенести таблицы ресторанов, кухонь, столиков, меню, фото и рабочих часов.
+    \item Добавить в Catalog Service internal endpoint-ы для получения restaurant/table context, чтобы Booking Service не обращался к чужой БД.
+    \item Вынести Booking Service: перенести \code{bookings}, убрать внешние ключи на чужие таблицы, добавить snapshot-поля для отображения бронирований.
+    \item Перенести endpoint availability в Booking Service, потому что расчет зависит от бронирований.
+    \item Вынести Review Service: перенести \code{reviews}, убрать внешние ключи на \code{bookings}, \code{users}, \code{restaurants}, оставить scalar id и unique constraint на \code{booking\_id}.
+    \item Добавить проверку права на отзыв через internal endpoint Booking Service.
+    \item Добавить outbox в Review Service и обработчик события \code{ReviewCreated} в Catalog Service для обновления \code{restaurant\_rating\_stats}.
+    \item Подготовить отдельные Liquibase changelog-и для каждой БД.
+    \item Перенести данные из монолитной схемы \code{storage} в новые базы: \code{identity\_db}, \code{catalog\_db}, \code{booking\_db}, \code{review\_db}.
+    \item Выполнить regression smoke-test по Postman-сценарию из ДЗ3: login, users/me, cuisines, restaurant search, details, menu, availability, create booking, my bookings, cancel booking, reviews.
+    \item После стабилизации выключить прямые обращения монолита к старой общей БД.
+\end{enumerate}
+
+\subsection{Требования к надежности}
+
+Распределенные транзакции между сервисами не используются. Если операция затрагивает несколько сервисов, владелец основной бизнес-операции сохраняет свое состояние локально, а дополнительные изменения выполняются через события или повторяемые internal API.
+
+Для событий используется outbox-подход: Review Service сначала сохраняет отзыв и событие в одной локальной транзакции, затем отдельный publisher отправляет событие в брокер. Catalog Service должен обрабатывать событие идемпотентно, чтобы повторная доставка не ломала статистику рейтинга.
+
+Для диагностики каждый входящий запрос получает correlation id. Gateway передает его во все downstream-сервисы, а сервисы пишут его в логи.
+
+\section{Вывод}
+
+В результате был подготовлен технический дизайн микросервисной архитектуры для приложения бронирования столиков в ресторанах. Монолит разделен на четыре предметных сервиса и API Gateway. Для каждого сервиса определены зона ответственности и собственная база данных. Прямые связи между таблицами заменены внутренними REST-контрактами и асинхронным событием обновления рейтинга. Также подготовлена OpenAPI-спецификация межсервисных endpoint-ов и описан пошаговый план миграции от текущего монолита к архитектуре \code{database-per-service}.
+
+\end{document}
