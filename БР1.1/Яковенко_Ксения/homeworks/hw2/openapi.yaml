@@ -1,0 +1,2492 @@
+openapi: 3.0.3
+info:
+  title: Fitness Training & Health Platform API
+  version: 1.0.0
+  description: REST API for a fitness training and health platform. The API covers authentication, user profile, workouts,
+    training plans, progress tracking, workout sessions, body metrics, and blog content.
+servers:
+- url: https://api.fitness-platform.example/v1
+  description: Production server
+tags:
+- name: Auth
+  description: Registration and login
+- name: Users
+  description: Current user and profile
+- name: Metadata
+  description: 'Reference data: workout types, difficulty levels, blog categories'
+- name: Workouts
+  description: Workout catalog and workout management
+- name: Training Plans
+  description: Training plan catalog, enrollment, and user plan tracking
+- name: Workout Sessions
+  description: Executed workouts and activity history
+- name: Body Metrics
+  description: Body measurements history
+- name: Blog
+  description: Health and nutrition blog
+security:
+- bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags:
+      - Auth
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Log in and receive JWT tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me:
+    get:
+      tags:
+      - Users
+      summary: Get current user account and profile
+      responses:
+        '200':
+          description: Current user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/profile:
+    patch:
+      tags:
+      - Users
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /metadata/difficulty-levels:
+    get:
+      tags:
+      - Metadata
+      summary: List difficulty levels
+      security: []
+      responses:
+        '200':
+          description: Difficulty levels list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DifficultyLevelListResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /metadata/workout-types:
+    get:
+      tags:
+      - Metadata
+      summary: List workout types
+      security: []
+      responses:
+        '200':
+          description: Workout types list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutTypeListResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /blog/categories:
+    get:
+      tags:
+      - Blog
+      summary: List blog categories
+      security: []
+      responses:
+        '200':
+          description: Blog categories list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogCategoryListResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /workouts:
+    get:
+      tags:
+      - Workouts
+      summary: Search and filter workouts
+      security: []
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        description: Text search by title or description
+      - name: difficultyLevelId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: typeIds
+        in: query
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+        style: form
+        explode: false
+        description: Comma-separated workout type IDs
+      - name: durationMinFrom
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      - name: durationMinTo
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          enum:
+          - createdAt
+          - durationMin
+          - title
+      - name: sortOrder
+        in: query
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+      responses:
+        '200':
+          description: Workout search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+      - Workouts
+      summary: Create workout (trainer/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkoutRequest'
+      responses:
+        '201':
+          description: Workout created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /workouts/{workoutId}:
+    get:
+      tags:
+      - Workouts
+      summary: Get workout details
+      security: []
+      parameters:
+      - name: workoutId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Workout details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutResponse'
+        '404':
+          description: Workout not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+      - Workouts
+      summary: Update workout (trainer/admin)
+      parameters:
+      - name: workoutId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkoutRequest'
+      responses:
+        '200':
+          description: Workout updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Workouts
+      summary: Delete workout (trainer/admin)
+      parameters:
+      - name: workoutId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: Workout deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /training-plans:
+    get:
+      tags:
+      - Training Plans
+      summary: List training plans
+      security: []
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+      - name: difficultyLevelId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: durationWeeksFrom
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      - name: durationWeeksTo
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: Training plans list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlanListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+      - Training Plans
+      summary: Create training plan (trainer/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTrainingPlanRequest'
+      responses:
+        '201':
+          description: Training plan created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlanResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /training-plans/{planId}:
+    get:
+      tags:
+      - Training Plans
+      summary: Get training plan details
+      security: []
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Training plan details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlanResponse'
+        '404':
+          description: Training plan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+      - Training Plans
+      summary: Update training plan (trainer/admin)
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTrainingPlanRequest'
+      responses:
+        '200':
+          description: Training plan updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlanResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Training Plans
+      summary: Delete training plan (trainer/admin)
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: Training plan deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /training-plans/{planId}/enroll:
+    post:
+      tags:
+      - Training Plans
+      summary: Enroll current user in a training plan
+      parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollTrainingPlanRequest'
+      responses:
+        '201':
+          description: Plan enrollment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTrainingPlanResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/training-plans:
+    get:
+      tags:
+      - Training Plans
+      summary: List current user training plans
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - completed
+          - cancelled
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: Current user plan enrollments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTrainingPlanListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/training-plans/{userPlanId}:
+    get:
+      tags:
+      - Training Plans
+      summary: Get current user enrollment details
+      parameters:
+      - name: userPlanId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Current user training plan enrollment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTrainingPlanResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+      - Training Plans
+      summary: Update current user enrollment status
+      parameters:
+      - name: userPlanId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserTrainingPlanRequest'
+      responses:
+        '200':
+          description: Current user training plan enrollment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTrainingPlanResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/workout-sessions:
+    get:
+      tags:
+      - Workout Sessions
+      summary: List current user workout sessions
+      parameters:
+      - name: workoutId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: dateFrom
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: dateTo
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: Current user workout sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSessionListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+      - Workout Sessions
+      summary: Create workout session for current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkoutSessionRequest'
+      responses:
+        '201':
+          description: Workout session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSessionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/workout-sessions/{sessionId}:
+    get:
+      tags:
+      - Workout Sessions
+      summary: Get current user workout session details
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Workout session details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSessionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/body-metrics:
+    get:
+      tags:
+      - Body Metrics
+      summary: List current user body metrics history
+      parameters:
+      - name: dateFrom
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: dateTo
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: Current user body metrics history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BodyMetricListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+      - Body Metrics
+      summary: Create body metrics record for current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBodyMetricRequest'
+      responses:
+        '201':
+          description: Body metrics record created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BodyMetricResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /users/me/body-metrics/{metricId}:
+    patch:
+      tags:
+      - Body Metrics
+      summary: Update current user body metrics record
+      parameters:
+      - name: metricId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBodyMetricRequest'
+      responses:
+        '200':
+          description: Body metrics record updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BodyMetricResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Body Metrics
+      summary: Delete current user body metrics record
+      parameters:
+      - name: metricId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: Body metrics record deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /blog/posts:
+    get:
+      tags:
+      - Blog
+      summary: List blog posts
+      security: []
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+      - name: categoryIds
+        in: query
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+        style: form
+        explode: false
+        description: Comma-separated category IDs
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - draft
+          - published
+        description: Visible only to content managers
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: Blog posts list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPostListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+      - Blog
+      summary: Create blog post (trainer/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBlogPostRequest'
+      responses:
+        '201':
+          description: Blog post created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPostResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /blog/posts/{postId}:
+    get:
+      tags:
+      - Blog
+      summary: Get blog post details
+      security: []
+      parameters:
+      - name: postId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Blog post details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPostResponse'
+        '404':
+          description: Blog post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+      - Blog
+      summary: Update blog post (trainer/admin)
+      parameters:
+      - name: postId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBlogPostRequest'
+      responses:
+        '200':
+          description: Blog post updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPostResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - Blog
+      summary: Delete blog post (trainer/admin)
+      parameters:
+      - name: postId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: Blog post deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+          example: RESOURCE_NOT_FOUND
+        message:
+          type: string
+          example: Requested resource was not found
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ValidationErrorResponse:
+      allOf:
+      - $ref: '#/components/schemas/ErrorResponse'
+      - type: object
+        properties:
+          errors:
+            type: array
+            items:
+              $ref: '#/components/schemas/FieldValidationError'
+    FieldValidationError:
+      type: object
+      required:
+      - field
+      - message
+      properties:
+        field:
+          type: string
+          example: email
+        message:
+          type: string
+          example: Must be a valid email address
+    PaginationMeta:
+      type: object
+      required:
+      - page
+      - pageSize
+      - totalItems
+      - totalPages
+      properties:
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+        totalItems:
+          type: integer
+          example: 120
+        totalPages:
+          type: integer
+          example: 6
+    User:
+      type: object
+      required:
+      - id
+      - email
+      - role
+      - status
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 101
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        role:
+          type: string
+          enum:
+          - user
+          - trainer
+          - admin
+          example: user
+        status:
+          type: string
+          enum:
+          - active
+          - blocked
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    Profile:
+      type: object
+      required:
+      - userId
+      properties:
+        userId:
+          type: integer
+          format: int64
+          example: 101
+        firstName:
+          type: string
+          example: Ksenia
+          nullable: true
+        lastName:
+          type: string
+          example: Ivanova
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        heightCm:
+          type: integer
+          example: 168
+          nullable: true
+        fitnessGoal:
+          type: string
+          example: weight_loss
+          nullable: true
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        about:
+          type: string
+          nullable: true
+    CurrentUserResponse:
+      type: object
+      required:
+      - user
+      - profile
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        profile:
+          $ref: '#/components/schemas/Profile'
+    ProfileResponse:
+      type: object
+      required:
+      - profile
+      properties:
+        profile:
+          $ref: '#/components/schemas/Profile'
+    RegisterRequest:
+      type: object
+      required:
+      - email
+      - password
+      - firstName
+      - lastName
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          format: password
+          description: At least 8 characters
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        heightCm:
+          type: integer
+          minimum: 50
+          maximum: 300
+          nullable: true
+        fitnessGoal:
+          type: string
+          nullable: true
+          example: weight_loss
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AuthResponse:
+      type: object
+      required:
+      - accessToken
+      - refreshToken
+      - tokenType
+      - expiresIn
+      - user
+      - profile
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          example: def50200...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          example: 3600
+        user:
+          $ref: '#/components/schemas/User'
+        profile:
+          $ref: '#/components/schemas/Profile'
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        heightCm:
+          type: integer
+          minimum: 50
+          maximum: 300
+          nullable: true
+        fitnessGoal:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        about:
+          type: string
+          nullable: true
+      additionalProperties: false
+    DifficultyLevel:
+      type: object
+      required:
+      - id
+      - name
+      - sortOrder
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: beginner
+        sortOrder:
+          type: integer
+          example: 1
+        description:
+          type: string
+          nullable: true
+    DifficultyLevelListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DifficultyLevel'
+    WorkoutType:
+      type: object
+      required:
+      - id
+      - name
+      - slug
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Cardio
+        slug:
+          type: string
+          example: cardio
+        description:
+          type: string
+          nullable: true
+    WorkoutTypeListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutType'
+    Workout:
+      type: object
+      required:
+      - id
+      - title
+      - durationMin
+      - difficultyLevel
+      - types
+      - authorId
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          example: Morning Fat Burn Cardio
+        description:
+          type: string
+          nullable: true
+        instructions:
+          type: string
+          nullable: true
+        durationMin:
+          type: integer
+          example: 25
+        videoUrl:
+          type: string
+          format: uri
+          nullable: true
+        caloriesEstimate:
+          type: integer
+          nullable: true
+          example: 210
+        difficultyLevel:
+          $ref: '#/components/schemas/DifficultyLevel'
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutType'
+        authorId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    WorkoutResponse:
+      type: object
+      required:
+      - workout
+      properties:
+        workout:
+          $ref: '#/components/schemas/Workout'
+    WorkoutListResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workout'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    CreateWorkoutRequest:
+      type: object
+      required:
+      - title
+      - durationMin
+      - difficultyLevelId
+      - typeIds
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        instructions:
+          type: string
+          nullable: true
+        durationMin:
+          type: integer
+          minimum: 1
+        videoUrl:
+          type: string
+          format: uri
+          nullable: true
+        caloriesEstimate:
+          type: integer
+          minimum: 0
+          nullable: true
+        difficultyLevelId:
+          type: integer
+          format: int64
+        typeIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+      additionalProperties: false
+    UpdateWorkoutRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        instructions:
+          type: string
+          nullable: true
+        durationMin:
+          type: integer
+          minimum: 1
+        videoUrl:
+          type: string
+          format: uri
+          nullable: true
+        caloriesEstimate:
+          type: integer
+          minimum: 0
+          nullable: true
+        difficultyLevelId:
+          type: integer
+          format: int64
+        typeIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+      additionalProperties: false
+    PlanWorkoutItem:
+      type: object
+      required:
+      - workoutId
+      - weekNo
+      - dayNo
+      - orderNo
+      properties:
+        workoutId:
+          type: integer
+          format: int64
+        weekNo:
+          type: integer
+          minimum: 1
+        dayNo:
+          type: integer
+          minimum: 1
+          maximum: 7
+        orderNo:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+          nullable: true
+    TrainingPlanWorkout:
+      allOf:
+      - $ref: '#/components/schemas/PlanWorkoutItem'
+      - type: object
+        required:
+        - workout
+        properties:
+          workout:
+            $ref: '#/components/schemas/Workout'
+    TrainingPlan:
+      type: object
+      required:
+      - id
+      - title
+      - difficultyLevel
+      - durationWeeks
+      - authorId
+      - workouts
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          example: 4-Week Beginner Weight Loss Plan
+        description:
+          type: string
+          nullable: true
+        difficultyLevel:
+          $ref: '#/components/schemas/DifficultyLevel'
+        durationWeeks:
+          type: integer
+          minimum: 1
+          example: 4
+        authorId:
+          type: integer
+          format: int64
+        workouts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingPlanWorkout'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    TrainingPlanResponse:
+      type: object
+      required:
+      - trainingPlan
+      properties:
+        trainingPlan:
+          $ref: '#/components/schemas/TrainingPlan'
+    TrainingPlanListResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingPlan'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    CreateTrainingPlanRequest:
+      type: object
+      required:
+      - title
+      - difficultyLevelId
+      - durationWeeks
+      - workouts
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        difficultyLevelId:
+          type: integer
+          format: int64
+        durationWeeks:
+          type: integer
+          minimum: 1
+        workouts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PlanWorkoutItem'
+      additionalProperties: false
+    UpdateTrainingPlanRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        difficultyLevelId:
+          type: integer
+          format: int64
+        durationWeeks:
+          type: integer
+          minimum: 1
+        workouts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PlanWorkoutItem'
+      additionalProperties: false
+    EnrollTrainingPlanRequest:
+      type: object
+      required:
+      - startDate
+      properties:
+        startDate:
+          type: string
+          format: date
+      additionalProperties: false
+    UserTrainingPlan:
+      type: object
+      required:
+      - id
+      - userId
+      - planId
+      - status
+      - startDate
+      - progressPercent
+      - trainingPlan
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        planId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - active
+          - completed
+          - cancelled
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        progressPercent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 37.5
+        trainingPlan:
+          $ref: '#/components/schemas/TrainingPlan'
+    UserTrainingPlanResponse:
+      type: object
+      required:
+      - userTrainingPlan
+      properties:
+        userTrainingPlan:
+          $ref: '#/components/schemas/UserTrainingPlan'
+    UserTrainingPlanListResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserTrainingPlan'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    UpdateUserTrainingPlanRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - active
+          - completed
+          - cancelled
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        progressPercent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+      additionalProperties: false
+    WorkoutSession:
+      type: object
+      required:
+      - id
+      - userId
+      - workoutId
+      - startedAt
+      - durationFactMin
+      - workout
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        workoutId:
+          type: integer
+          format: int64
+        userPlanId:
+          type: integer
+          format: int64
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationFactMin:
+          type: integer
+          minimum: 1
+        caloriesFact:
+          type: integer
+          minimum: 0
+          nullable: true
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        workout:
+          $ref: '#/components/schemas/Workout'
+    WorkoutSessionResponse:
+      type: object
+      required:
+      - workoutSession
+      properties:
+        workoutSession:
+          $ref: '#/components/schemas/WorkoutSession'
+    WorkoutSessionListResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSession'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    CreateWorkoutSessionRequest:
+      type: object
+      required:
+      - workoutId
+      - startedAt
+      - durationFactMin
+      properties:
+        workoutId:
+          type: integer
+          format: int64
+        userPlanId:
+          type: integer
+          format: int64
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationFactMin:
+          type: integer
+          minimum: 1
+        caloriesFact:
+          type: integer
+          minimum: 0
+          nullable: true
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      additionalProperties: false
+    BodyMetric:
+      type: object
+      required:
+      - id
+      - userId
+      - measuredAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        measuredAt:
+          type: string
+          format: date
+        weightKg:
+          type: number
+          format: float
+          nullable: true
+        chestCm:
+          type: number
+          format: float
+          nullable: true
+        waistCm:
+          type: number
+          format: float
+          nullable: true
+        hipsCm:
+          type: number
+          format: float
+          nullable: true
+        bodyFatPercent:
+          type: number
+          format: float
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+    BodyMetricResponse:
+      type: object
+      required:
+      - bodyMetric
+      properties:
+        bodyMetric:
+          $ref: '#/components/schemas/BodyMetric'
+    BodyMetricListResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BodyMetric'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    CreateBodyMetricRequest:
+      type: object
+      required:
+      - measuredAt
+      properties:
+        measuredAt:
+          type: string
+          format: date
+        weightKg:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        chestCm:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        waistCm:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        hipsCm:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        bodyFatPercent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+      additionalProperties: false
+    UpdateBodyMetricRequest:
+      type: object
+      properties:
+        measuredAt:
+          type: string
+          format: date
+        weightKg:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        chestCm:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        waistCm:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        hipsCm:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        bodyFatPercent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+      additionalProperties: false
+    BlogCategory:
+      type: object
+      required:
+      - id
+      - name
+      - slug
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Nutrition
+        slug:
+          type: string
+          example: nutrition
+        description:
+          type: string
+          nullable: true
+    BlogCategoryListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlogCategory'
+    BlogPost:
+      type: object
+      required:
+      - id
+      - title
+      - slug
+      - authorId
+      - status
+      - categories
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        slug:
+          type: string
+        summary:
+          type: string
+          nullable: true
+        content:
+          type: string
+        authorId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlogCategory'
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    BlogPostResponse:
+      type: object
+      required:
+      - blogPost
+      properties:
+        blogPost:
+          $ref: '#/components/schemas/BlogPost'
+    BlogPostListResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlogPost'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    CreateBlogPostRequest:
+      type: object
+      required:
+      - title
+      - slug
+      - content
+      - status
+      - categoryIds
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+        summary:
+          type: string
+          nullable: true
+        content:
+          type: string
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+        categoryIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    UpdateBlogPostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+        summary:
+          type: string
+          nullable: true
+        content:
+          type: string
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+        categoryIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: false
