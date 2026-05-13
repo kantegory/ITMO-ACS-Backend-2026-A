@@ -1,0 +1,1353 @@
+openapi: 3.0.3
+info:
+  title: Fitness Platform API
+  version: 1.0.0
+  description: API designed строго по ER-диаграмме (users/profiles/workouts/plans/progress/payments).
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: Auth
+  - name: Me
+  - name: Users
+  - name: Lookups
+  - name: Workouts
+  - name: Exercises
+  - name: Training Plans
+  - name: Progress
+  - name: Payments
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [errorCode, message]
+      properties:
+        errorCode:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
+
+    IdResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+          format: int64
+
+    TokenResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+
+    # --- enums (по диаграмме) ---
+    UserStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE, BLOCKED, DELETED]
+
+    WorkoutStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, ARCHIVED]
+
+    UserWorkoutProgressStatus:
+      type: string
+      enum: [NOT_STARTED, IN_PROGRESS, COMPLETED]
+
+    PaymentStatus:
+      type: string
+      enum: [PENDING, PAID, FAILED, REFUNDED]
+
+    # --- auth ---
+    AuthRegisterRequest:
+      type: object
+      required: [name, last_name, email, password]
+      properties:
+        name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+
+    AuthLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    # --- lookups ---
+    Role:
+      type: object
+      required: [role_id, name]
+      properties:
+        role_id: { type: integer, format: int64 }
+        name: { type: string }
+
+    Level:
+      type: object
+      required: [level_id, name]
+      properties:
+        level_id: { type: integer, format: int64 }
+        name: { type: string }
+
+    Location:
+      type: object
+      required: [location_id, name]
+      properties:
+        location_id: { type: integer, format: int64 }
+        name: { type: string }
+
+    WorkoutType:
+      type: object
+      required: [workout_type_id, name]
+      properties:
+        workout_type_id: { type: integer, format: int64 }
+        name: { type: string }
+
+    # --- core tables ---
+    User:
+      type: object
+      required:
+        - user_id
+        - name
+        - last_name
+        - email
+        - is_verified
+        - status
+        - created_at
+        - updated_at
+      properties:
+        user_id: { type: integer, format: int64 }
+        name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        is_verified: { type: boolean }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UserProfile:
+      type: object
+      required:
+        - profile_id
+        - role_id
+        - user_id
+        - birth_date
+        - gender
+        - height
+        - weight
+        - fitness_goal
+        - created_at
+        - updated_at
+      properties:
+        profile_id: { type: integer, format: int64 }
+        role_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        birth_date: { type: string, format: date-time }
+        gender: { type: string }
+        height: { type: number, format: double }
+        weight: { type: number, format: double }
+        fitness_goal: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UserProfileUpdateRequest:
+      type: object
+      properties:
+        role_id: { type: integer, format: int64 }
+        birth_date: { type: string, format: date-time }
+        gender: { type: string }
+        height: { type: number, format: double }
+        weight: { type: number, format: double }
+        fitness_goal: { type: string }
+
+    Workout:
+      type: object
+      required:
+        - workout_id
+        - user_id
+        - title
+        - description
+        - video_url
+        - duration_minutes
+        - location_id
+        - level_id
+        - workout_type_id
+        - status
+        - created_at
+        - updated_at
+      properties:
+        workout_id: { type: integer, format: int64 }
+        user_id:
+          type: integer
+          format: int64
+          description: Trainer/author (FK to user)
+        title: { type: string }
+        description: { type: string }
+        video_url: { type: string }
+        duration_minutes: { type: number, format: double }
+        location_id: { type: integer, format: int64 }
+        level_id: { type: integer, format: int64 }
+        workout_type_id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/WorkoutStatus' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    WorkoutCreateRequest:
+      type: object
+      required:
+        - user_id
+        - title
+        - description
+        - video_url
+        - duration_minutes
+        - location_id
+        - level_id
+        - workout_type_id
+        - status
+      properties:
+        user_id: { type: integer, format: int64 }
+        title: { type: string }
+        description: { type: string }
+        video_url: { type: string }
+        duration_minutes: { type: number, format: double }
+        location_id: { type: integer, format: int64 }
+        level_id: { type: integer, format: int64 }
+        workout_type_id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/WorkoutStatus' }
+
+    WorkoutUpdateRequest:
+      type: object
+      properties:
+        user_id: { type: integer, format: int64 }
+        title: { type: string }
+        description: { type: string }
+        video_url: { type: string }
+        duration_minutes: { type: number, format: double }
+        location_id: { type: integer, format: int64 }
+        level_id: { type: integer, format: int64 }
+        workout_type_id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/WorkoutStatus' }
+
+    Exercise:
+      type: object
+      required: [exercise_id, name, description, muscle_group, difficulty_level, created_at]
+      properties:
+        exercise_id: { type: integer, format: int64 }
+        name: { type: string }
+        description: { type: string }
+        muscle_group: { type: string }
+        difficulty_level: { type: string }
+        created_at: { type: string, format: date-time }
+
+    ExerciseCreateRequest:
+      type: object
+      required: [name, description, muscle_group, difficulty_level]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        muscle_group: { type: string }
+        difficulty_level: { type: string }
+
+    WorkoutExercise:
+      type: object
+      required: [id, workout_id, exercise_id, sets, rep, duration_spent]
+      properties:
+        id: { type: integer, format: int64 }
+        workout_id: { type: integer, format: int64 }
+        exercise_id: { type: integer, format: int64 }
+        sets:
+          type: integer
+          format: int32
+          description: "На диаграмме ENUM; в API используем число (кол-во подходов)."
+        rep:
+          type: integer
+          format: int32
+          description: "На диаграмме rep; в API число повторений."
+        duration_spent:
+          type: string
+          format: date-time
+          description: "На диаграмме TIMESTAMP; в API можно хранить timestamp/или заменить на seconds в реализации."
+
+    WorkoutExerciseCreateRequest:
+      type: object
+      required: [exercise_id, sets, rep, duration_spent]
+      properties:
+        exercise_id: { type: integer, format: int64 }
+        sets: { type: integer, format: int32 }
+        rep: { type: integer, format: int32 }
+        duration_spent: { type: string, format: date-time }
+
+    TrainingPlan:
+      type: object
+      required: [training_plan_id, title, description, user_id, duration_weeks, price, created_at, updated_at]
+      properties:
+        training_plan_id: { type: integer, format: int64 }
+        title: { type: string }
+        description: { type: string }
+        user_id:
+          type: integer
+          format: int64
+          description: Trainer/author (FK to user)
+        duration_weeks: { type: number, format: double }
+        price: { type: number, format: double }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TrainingPlanCreateRequest:
+      type: object
+      required: [title, description, user_id, duration_weeks, price]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        user_id: { type: integer, format: int64 }
+        duration_weeks: { type: number, format: double }
+        price: { type: number, format: double }
+
+    TrainingPlanUpdateRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        user_id: { type: integer, format: int64 }
+        duration_weeks: { type: number, format: double }
+        price: { type: number, format: double }
+
+    PlanWorkout:
+      type: object
+      required: [plan_workout_id, training_plan_id, workout_id, day_number, workout_order]
+      properties:
+        plan_workout_id: { type: integer, format: int64 }
+        training_plan_id: { type: integer, format: int64 }
+        workout_id: { type: integer, format: int64 }
+        day_number: { type: number, format: double }
+        workout_order: { type: number, format: double }
+
+    PlanWorkoutCreateRequest:
+      type: object
+      required: [workout_id, day_number, workout_order]
+      properties:
+        workout_id: { type: integer, format: int64 }
+        day_number: { type: number, format: double }
+        workout_order: { type: number, format: double }
+
+    UserPlanProgress:
+      type: object
+      required: [user_plan_prog_id, user_id, training_plan_id, progress_percent, started_at, completed_at]
+      properties:
+        user_plan_prog_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        training_plan_id: { type: integer, format: int64 }
+        progress_percent: { type: number, format: double }
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+
+    UserPlanProgressUpdateRequest:
+      type: object
+      required: [progress_percent]
+      properties:
+        progress_percent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+
+    UserWorkoutProgress:
+      type: object
+      required: [progress_id, user_id, workout_id, status, completed_at, duration_spent, calories_burned]
+      properties:
+        progress_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        workout_id: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/UserWorkoutProgressStatus' }
+        completed_at: { type: string, format: date-time, nullable: true }
+        duration_spent: { type: string, format: date-time, nullable: true }
+        calories_burned: { type: number, format: double, nullable: true }
+
+    UserWorkoutProgressUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/UserWorkoutProgressStatus' }
+        completed_at: { type: string, format: date-time, nullable: true }
+        duration_spent: { type: string, format: date-time, nullable: true }
+        calories_burned: { type: number, format: double, nullable: true }
+
+    Payment:
+      type: object
+      required: [payment_id, training_plan_id, user_id, amount, payment_method, paid_at, status]
+      properties:
+        payment_id: { type: integer, format: int64 }
+        training_plan_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        amount: { type: number, format: double }
+        payment_method: { type: string }
+        paid_at: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+
+    PaymentCreateRequest:
+      type: object
+      required: [training_plan_id, payment_method]
+      properties:
+        training_plan_id: { type: integer, format: int64 }
+        payment_method: { type: string }
+
+paths:
+  # ---------------- Auth ----------------
+  /v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthRegisterRequest' }
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdResponse' }
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Email уже существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Логин
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthLoginRequest' }
+      responses:
+        '200':
+          description: JWT токен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401':
+          description: Неверные учетные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Me ----------------
+  /v1/me:
+    get:
+      tags: [Me]
+      summary: Текущий пользователь (таблица user)
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/me/profile:
+    get:
+      tags: [Me]
+      summary: Профиль текущего пользователя (таблица user_profile)
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Профиль не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      tags: [Me]
+      summary: Обновить профиль текущего пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserProfileUpdateRequest' }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Users (admin) ----------------
+  /v1/users:
+    get:
+      tags: [Users]
+      summary: Список пользователей (admin) + фильтрация
+      description: "Фильтры: status, is_verified, email, name/last_name (search), пагинация."
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/UserStatus' }
+        - in: query
+          name: is_verified
+          schema: { type: boolean }
+        - in: query
+          name: email
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/users/{user_id}:
+    get:
+      tags: [Users]
+      summary: Пользователь по id (admin)
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Lookups ----------------
+  /v1/roles:
+    get:
+      tags: [Lookups]
+      summary: Роли
+      responses:
+        '200':
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+
+  /v1/levels:
+    get:
+      tags: [Lookups]
+      summary: Уровни сложности
+      responses:
+        '200':
+          description: Levels
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Level' }
+
+  /v1/locations:
+    get:
+      tags: [Lookups]
+      summary: Локации
+      responses:
+        '200':
+          description: Locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Location' }
+
+  /v1/workout-types:
+    get:
+      tags: [Lookups]
+      summary: Типы тренировок
+      responses:
+        '200':
+          description: Workout types
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WorkoutType' }
+
+  # ---------------- Workouts ----------------
+  /v1/workouts:
+    get:
+      tags: [Workouts]
+      summary: Список тренировок + фильтрация
+      description: "Фильтры строго по FK: level_id, workout_type_id, location_id, user_id(trainer), status, duration range, search; пагинация."
+      security: []
+      parameters:
+        - in: query
+          name: level_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: workout_type_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: location_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: user_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/WorkoutStatus' }
+        - in: query
+          name: min_duration_minutes
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: max_duration_minutes
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: search
+          schema: { type: string, description: "Поиск по title/description" }
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [created_at, duration_minutes]
+            default: created_at
+        - in: query
+          name: order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Workouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Workout' }
+        '400':
+          description: Некорректные фильтры
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [Workouts]
+      summary: Создать тренировку (admin/trainer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkoutCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdResponse' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/workouts/{workout_id}:
+    get:
+      tags: [Workouts]
+      summary: Детальная тренировка
+      security: []
+      parameters:
+        - in: path
+          name: workout_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Workout
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workout' }
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      tags: [Workouts]
+      summary: Обновить тренировку (admin/trainer)
+      parameters:
+        - in: path
+          name: workout_id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkoutUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workout' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [Workouts]
+      summary: Удалить тренировку (admin)
+      parameters:
+        - in: path
+          name: workout_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '204': { description: Deleted }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/workouts/{workout_id}/workout-exercises:
+    get:
+      tags: [Workouts]
+      summary: Упражнения тренировки (workout_exercise)
+      security: []
+      parameters:
+        - in: path
+          name: workout_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Workout exercises
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WorkoutExercise' }
+        '404':
+          description: Workout not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [Workouts]
+      summary: Добавить упражнение в тренировку (admin/trainer)
+      parameters:
+        - in: path
+          name: workout_id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkoutExerciseCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdResponse' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Exercises ----------------
+  /v1/exercises:
+    get:
+      tags: [Exercises]
+      summary: Список упражнений + фильтрация
+      security: []
+      parameters:
+        - in: query
+          name: muscle_group
+          schema: { type: string }
+        - in: query
+          name: difficulty_level
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Exercises
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Exercise' }
+    post:
+      tags: [Exercises]
+      summary: Создать упражнение (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExerciseCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/exercises/{exercise_id}:
+    get:
+      tags: [Exercises]
+      summary: Упражнение по id
+      security: []
+      parameters:
+        - in: path
+          name: exercise_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Exercise
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Exercise' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Training plans ----------------
+  /v1/training-plans:
+    get:
+      tags: [Training Plans]
+      summary: Список планов + фильтрация
+      description: "Фильтры: user_id(trainer), price range, duration_weeks range, search; пагинация."
+      security: []
+      parameters:
+        - in: query
+          name: user_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: min_price
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: max_price
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: min_duration_weeks
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: max_duration_weeks
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TrainingPlan' }
+        '400':
+          description: Некорректные фильтры
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [Training Plans]
+      summary: Создать план (admin/trainer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainingPlanCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdResponse' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/training-plans/{training_plan_id}:
+    get:
+      tags: [Training Plans]
+      summary: Детально план + состав (plan_workout)
+      security: []
+      parameters:
+        - in: path
+          name: training_plan_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Plan + workouts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plan, plan_workouts]
+                properties:
+                  plan: { $ref: '#/components/schemas/TrainingPlan' }
+                  plan_workouts:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlanWorkout' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      tags: [Training Plans]
+      summary: Обновить план (admin/trainer)
+      parameters:
+        - in: path
+          name: training_plan_id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrainingPlanUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingPlan' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [Training Plans]
+      summary: Удалить план (admin)
+      parameters:
+        - in: path
+          name: training_plan_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '204': { description: Deleted }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/training-plans/{training_plan_id}/plan-workouts:
+    get:
+      tags: [Training Plans]
+      summary: Состав плана (plan_workout) + фильтрация по day_number
+      security: []
+      parameters:
+        - in: path
+          name: training_plan_id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: day_number
+          schema: { type: number, format: double }
+      responses:
+        '200':
+          description: Plan workouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PlanWorkout' }
+    post:
+      tags: [Training Plans]
+      summary: Добавить тренировку в план (admin/trainer)
+      parameters:
+        - in: path
+          name: training_plan_id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanWorkoutCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdResponse' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Progress ----------------
+  /v1/me/user-workout-progress:
+    get:
+      tags: [Progress]
+      summary: Мой прогресс по тренировкам + фильтрация
+      parameters:
+        - in: query
+          name: workout_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/UserWorkoutProgressStatus' }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Progress list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserWorkoutProgress' }
+
+  /v1/me/user-workout-progress/{workout_id}:
+    patch:
+      tags: [Progress]
+      summary: Обновить мой прогресс по конкретной тренировке
+      parameters:
+        - in: path
+          name: workout_id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserWorkoutProgressUpdateRequest' }
+      responses:
+        '200':
+          description: Updated progress
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserWorkoutProgress' }
+        '400':
+          description: Валидация/некорректная смена статуса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Workout not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/me/user-plan-progress:
+    get:
+      tags: [Progress]
+      summary: Мой прогресс по планам + фильтрация
+      parameters:
+        - in: query
+          name: training_plan_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: is_completed
+          schema: { type: boolean, description: "true -> completed_at != null" }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Plan progress list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserPlanProgress' }
+
+  /v1/me/user-plan-progress/{training_plan_id}:
+    patch:
+      tags: [Progress]
+      summary: Обновить мой прогресс по плану
+      parameters:
+        - in: path
+          name: training_plan_id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserPlanProgressUpdateRequest' }
+      responses:
+        '200':
+          description: Updated plan progress
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPlanProgress' }
+        '400':
+          description: Валидация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Training plan not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------- Payments ----------------
+  /v1/payments:
+    get:
+      tags: [Payments]
+      summary: Список платежей (admin) + фильтрация
+      parameters:
+        - in: query
+          name: user_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: training_plan_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/PaymentStatus' }
+        - in: query
+          name: min_amount
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: max_amount
+          schema: { type: number, format: double, minimum: 0 }
+        - in: query
+          name: payment_method
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Payment' }
+        '403':
+          description: Нет прав
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [Payments]
+      summary: Создать платеж (покупка плана)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentCreateRequest' }
+      responses:
+        '201':
+          description: Created payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '400':
+          description: Валидация/план не найден/уже оплачен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/payments/{payment_id}:
+    get:
+      tags: [Payments]
+      summary: Платеж по id
+      parameters:
+        - in: path
+          name: payment_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/me/payments:
+    get:
+      tags: [Payments]
+      summary: Мои платежи + фильтрация
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/PaymentStatus' }
+        - in: query
+          name: training_plan_id
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        '200':
+          description: My payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Payment' }
