@@ -1,0 +1,384 @@
+{
+  "info": {
+    "_postman_id": "7c8d0e2c-0c20-4a4b-9a6d-1f2f2b8f8a10",
+    "name": "Fitness API — E2E scenario (HW3)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Helper: generate unique email per run",
+          "if (!pm.collectionVariables.get('run_ts')) {",
+          "  pm.collectionVariables.set('run_ts', String(Date.now()));",
+          "}",
+          "if (!pm.collectionVariables.get('email')) {",
+          "  pm.collectionVariables.set('email', `user_${pm.collectionVariables.get('run_ts')}@example.com`);",
+          "}",
+          "if (!pm.collectionVariables.get('password')) {",
+          "  pm.collectionVariables.set('password', 'password123');",
+          "}",
+          "if (!pm.collectionVariables.get('display_name')) {",
+          "  pm.collectionVariables.set('display_name', 'Test User');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}{{api_prefix}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"display_name\": \"{{display_name}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.code === 201);",
+              "const json = pm.response.json();",
+              "pm.test('Token exists', () => pm.expect(json.token).to.be.a('string'));",
+              "pm.test('User exists', () => pm.expect(json.user && json.user.id).to.be.ok);",
+              "pm.environment.set('token', json.token);",
+              "pm.environment.set('user_id', String(json.user.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}{{api_prefix}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const json = pm.response.json();",
+              "pm.test('Token exists', () => pm.expect(json.token).to.be.a('string'));",
+              "pm.environment.set('token', json.token);",
+              "pm.environment.set('user_id', String(json.user.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Get my profile",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{base_url}}{{api_prefix}}/users/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const me = pm.response.json();",
+              "pm.test('Me has id', () => pm.expect(me.id).to.eql(Number(pm.environment.get('user_id'))));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Create workout (auth)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{base_url}}{{api_prefix}}/workouts",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Cardio test workout\",\n  \"description\": \"Simple description\",\n  \"instructions\": \"Step 1... Step 2...\",\n  \"video_url\": \"https://example.com/video.mp4\",\n  \"duration_minutes\": 20,\n  \"difficulty_level\": \"BEGINNER\",\n  \"workout_type\": \"CARDIO\",\n  \"is_published\": true\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.code === 201);",
+              "const w = pm.response.json();",
+              "pm.test('Workout has id', () => pm.expect(w.id).to.be.a('number'));",
+              "pm.environment.set('workout_id', String(w.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. List workouts",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}{{api_prefix}}/workouts?limit=20&offset=0",
+          "query": [
+            { "key": "limit", "value": "20" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const arr = pm.response.json();",
+              "pm.test('Array response', () => pm.expect(arr).to.be.an('array'));",
+              "const ids = arr.map(x => x.id).filter(Boolean);",
+              "pm.environment.set('workout_ids_json', JSON.stringify(ids));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Filter workouts (type+level+duration)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}{{api_prefix}}/workouts?workout_type=CARDIO&difficulty_level=BEGINNER&duration_min=10&duration_max=60&limit=20&offset=0",
+          "query": [
+            { "key": "workout_type", "value": "CARDIO" },
+            { "key": "difficulty_level", "value": "BEGINNER" },
+            { "key": "duration_min", "value": "10" },
+            { "key": "duration_max", "value": "60" },
+            { "key": "limit", "value": "20" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const arr = pm.response.json();",
+              "pm.test('Array response', () => pm.expect(arr).to.be.an('array'));",
+              "pm.test('All cardio beginner', () => {",
+              "  for (const w of arr) {",
+              "    pm.expect(w.workout_type).to.eql('CARDIO');",
+              "    pm.expect(w.difficulty_level).to.eql('BEGINNER');",
+              "    pm.expect(w.duration_minutes).to.be.within(10, 60);",
+              "  }",
+              "});",
+              "// Pick random workout id from filtered list; fallback to created workout_id",
+              "const ids = arr.map(x => x.id).filter(Boolean);",
+              "let picked = pm.environment.get('workout_id');",
+              "if (ids.length > 0) {",
+              "  picked = String(ids[Math.floor(Math.random() * ids.length)]);",
+              "}",
+              "pm.environment.set('workout_id', picked);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Get workout by id (random)",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}{{api_prefix}}/workouts/{{workout_id}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const w = pm.response.json();",
+              "pm.test('Workout has video+instructions', () => {",
+              "  pm.expect(w.video_url).to.be.a('string');",
+              "  pm.expect(w.instructions).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Create training plan (auth)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{base_url}}{{api_prefix}}/training-plans",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"My plan\",\n  \"items\": [\n    { \"workout_id\": {{workout_id}}, \"day_number\": 1, \"sort_order\": 0 }\n  ]\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.code === 201);",
+              "const plan = pm.response.json();",
+              "pm.test('Plan has id', () => pm.expect(plan.id).to.be.a('number'));",
+              "pm.environment.set('plan_id', String(plan.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Upsert workout progress (auth)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{base_url}}{{api_prefix}}/workout-progress",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"workout_id\": {{workout_id}},\n  \"training_plan_id\": {{plan_id}},\n  \"status\": \"IN_PROGRESS\",\n  \"progress_percent\": 25,\n  \"notes\": \"started\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const pr = pm.response.json();",
+              "pm.test('Progress has id', () => pm.expect(pr.id).to.be.a('number'));",
+              "pm.environment.set('progress_id', String(pr.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. List workout progress (auth)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": {
+          "raw": "{{base_url}}{{api_prefix}}/workout-progress?workout_id={{workout_id}}&limit=20&offset=0",
+          "query": [
+            { "key": "workout_id", "value": "{{workout_id}}" },
+            { "key": "limit", "value": "20" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const arr = pm.response.json();",
+              "pm.test('Array response', () => pm.expect(arr).to.be.an('array'));",
+              "pm.test('Contains our progress', () => {",
+              "  const pid = Number(pm.environment.get('progress_id'));",
+              "  pm.expect(arr.some(x => x.id === pid)).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Create blog post (auth)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{base_url}}{{api_prefix}}/blog-posts",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Nutrition tips\",\n  \"slug\": \"nutrition-tips-{{run_ts}}\",\n  \"excerpt\": \"short\",\n  \"body\": \"Long text...\",\n  \"topic\": \"NUTRITION\",\n  \"is_published\": true\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.code === 201);",
+              "const post = pm.response.json();",
+              "pm.test('Post has id', () => pm.expect(post.id).to.be.a('number'));",
+              "pm.environment.set('blog_post_id', String(post.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. List blog posts (public filter)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}{{api_prefix}}/blog-posts?topic=NUTRITION&limit=20&offset=0",
+          "query": [
+            { "key": "topic", "value": "NUTRITION" },
+            { "key": "limit", "value": "20" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.code === 200);",
+              "const arr = pm.response.json();",
+              "pm.test('Array response', () => pm.expect(arr).to.be.an('array'));",
+              "pm.test('Contains our post (best effort)', () => {",
+              "  const id = Number(pm.environment.get('blog_post_id'));",
+              "  if (!Number.isFinite(id)) return;",
+              "  pm.expect(arr.some(x => x.id === id)).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+
