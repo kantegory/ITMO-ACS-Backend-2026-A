@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"rental-service/internal/dto"
 	"rental-service/internal/services"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -69,4 +70,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+func parseUintParam(c *gin.Context, param string) (uint, error) {
+	id, err := strconv.ParseUint(c.Param(param), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return uint(id), nil
 }

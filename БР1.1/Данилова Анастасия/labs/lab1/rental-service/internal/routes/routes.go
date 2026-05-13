@@ -34,6 +34,10 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, jwtSecret string) {
 	r.GET("/properties", h.ListProperties)
 	r.GET("/properties/:id", h.GetPropertyByID)
 
+	// public amenities endpoints
+	r.GET("/amenities", h.ListAmenities)
+	r.GET("/amenities/:id", h.GetAmenityByID)
+
 	// protected group
 	auth := r.Group("/")
 	auth.Use(middleware.JWTAuth(jwtSecret))
@@ -50,5 +54,10 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, jwtSecret string) {
 		auth.GET("/chats", h.ListMyChats)
 		auth.GET("/chats/:id/messages", h.ListMessages)
 		auth.POST("/chats/:id/messages", h.SendMessage)
+
+		auth.POST("/amenities", h.CreateAmenity)
+		auth.PUT("/amenities/:id", h.UpdateAmenity)
+		auth.DELETE("/amenities/:id", h.DeleteAmenity)
+		auth.POST("/amenities/bulk", h.BulkCreateAmenities)
 	}
 }
