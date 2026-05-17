@@ -47,6 +47,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	token, _ := service.GenerateToken(user.ID, "guest")
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(models.AuthResponse{AccessToken: token, User: user})
 }
 
