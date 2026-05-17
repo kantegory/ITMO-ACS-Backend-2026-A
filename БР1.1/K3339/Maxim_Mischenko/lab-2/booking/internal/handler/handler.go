@@ -6,6 +6,7 @@ import (
 	"booking/internal/repository"
 	"encoding/json"
 	"net/http"
+	"strconv"
 )
 
 type BookingHandler struct {
@@ -19,11 +20,15 @@ func NewBookingHandler(r *repository.BookingRepository, c *client.CatalogClient)
 
 func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.Booking
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
 
-	// URGENT: user_id must came from API Gateway (after verifing the JWT)
-	req.UserID = 1
-	
+	userIDStr := r.Header.Get("X-User-Id")
+	userID, _ := strconv.Atoi(userIDStr)
+	req.UserID = userID
+
 	tableInfo, err := h.catalog.GetTableInfo(req.TableID)
 	if err != nil {
 		http.Error(w, "Invalid table or service error", http.StatusBadRequest)
