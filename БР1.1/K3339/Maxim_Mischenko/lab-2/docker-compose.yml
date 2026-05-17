@@ -12,10 +12,10 @@ services:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d catalog_db"]
-      interval: 1s
-      timeout: 1s
-      retries: 10
-      start_period: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   booking-db:
     image: postgres:15-alpine
@@ -30,10 +30,10 @@ services:
       - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d booking_db"]
-      interval: 1s
-      timeout: 1s
-      retries: 10
-      start_period: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   auth-db:
     image: postgres:15-alpine
@@ -48,10 +48,10 @@ services:
       - "5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
-      interval: 1s
-      timeout: 1s
-      retries: 10
-      start_period: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   review-db:
     image: postgres:15-alpine
@@ -66,10 +66,39 @@ services:
       - "5435:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d review_db"]
-      interval: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  auth-service:
+    build: ./auth
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgres://postgres:a@auth-db:5432/auth_db?sslmode=disable
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/ping"]
+      interval: 20s
       timeout: 1s
       retries: 10
       start_period: 1s
+    restart: on-failure
+    depends_on:
+      auth-db:
+        condition: service_healthy
 
   catalog-service:
     build: ./catalog
@@ -84,8 +113,11 @@ services:
       timeout: 1s
       retries: 10
       start_period: 1s
+    restart: on-failure
     depends_on:
       catalog-db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   booking-service:
@@ -101,26 +133,11 @@ services:
       timeout: 1s
       retries: 10
       start_period: 1s
+    restart: on-failure
     depends_on:
       booking-db:
         condition: service_healthy
       catalog-service:
-        condition: service_healthy
-
-  auth-service:
-    build: ./auth
-    ports:
-      - "8001:8001"
-    environment:
-      DATABASE_URL: postgres://postgres:a@auth-db:5432/auth_db?sslmode=disable
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/ping"]
-      interval: 20s
-      timeout: 1s
-      retries: 10
-      start_period: 1s
-    depends_on:
-      auth-db:
         condition: service_healthy
 
   review-service:
@@ -136,8 +153,11 @@ services:
       timeout: 1s
       retries: 10
       start_period: 1s
+    restart: on-failure
     depends_on:
       review-db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   gateway:
@@ -152,23 +172,21 @@ services:
       timeout: 1s
       retries: 10
       start_period: 1s
+    restart: on-failure
     depends_on:
-      catalog-service:
-        condition: service_healthy
-      booking-service:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
+      - auth-service
+      - booking-service
+      - catalog-service
+      - review-service
 
   review-init:
     image: curlimages/curl:8.8.0
-    depends_on:
-      gateway:
-        condition: service_healthy
+    entrypoint: ["sh", "/insert.sh"]
     volumes:
       - ./init-dbs/init_review_insert.sh:/insert.sh:ro
-    entrypoint: ["sh", "/insert.sh"]
-    restart: "no"
+    restart: no
+    depends_on:
+      - gateway
 
 volumes:
   catalog_db:

@@ -2,12 +2,11 @@ package repository
 
 import (
 	"review/internal/models"
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/streadway/amqp"
 )
 
 type ReviewRepository struct {
@@ -49,22 +48,37 @@ func (r *ReviewRepository) CreateReview(rev *models.Review) error {
 		return err
 	}
 
-	go r.notifyCatalog(rev.RestaurantID, stats.Avg, stats.Count)
+	r.notifyCatalogAsync(rev.RestaurantID, stats.Avg, stats.Count)
 
 	return nil
 }
 
-func (r *ReviewRepository) notifyCatalog(resID int, avg float64, count int) {
-	updateReq := models.UpdateRatingReq{
-		AvgRating: avg,
-		ReviewsCount: count,
+func (r *ReviewRepository) notifyCatalogAsync(resID int, avg float64, count int) {
+	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
+	if err != nil {
+		fmt.Printf("Failed to connect to RabbitMQ: %v\n", err)
+		return
 	}
-	body, _ := json.Marshal(updateReq)
-	url := fmt.Sprintf("%s/internal/restaurants/%d/rating", r.catalogURL, resID)
+	defer conn.Close()
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		fmt.Printf("Failed ot notify Catalog Service for restaurant %d\n", resID)
+	ch, _ := conn.Channel()
+	defer ch.Close()
+
+	q, _ := ch.QueueDeclare("rating_updates", true, false, false, false, nil)
+
+	msgData := map[string]interface{}{
+		"restaurant_id": resID,
+		"avg_rating": avg,
+		"reviews_count": count,
+	}
+	body, _ := json.Marshal(msgData)
+
+	err = ch.Publish("", q.Name, false, false, amqp.Publishing{
+		ContentType: "application/json",
+		Body: body,
+	})
+	if err != nil {
+		fmt.Printf("Failed to publish message: %v\n", err)
 	}
 }
 

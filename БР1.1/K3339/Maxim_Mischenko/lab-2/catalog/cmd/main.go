@@ -4,6 +4,7 @@ import (
 	"catalog/internal/client"
 	"catalog/internal/handler"
 	"catalog/internal/repository"
+	"catalog/internal/service"
 	"log"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ func main() {
 	defer db.Close()
 
 	repo := repository.NewCatalogRepository(db)
+	go service.StartRatingWorker(repo)
 	bookingCli := &client.BookingClient{BaseURL: os.Getenv("BOOKING_SERVICE_URL")}
 	h := handler.NewCatalogHandler(repo, bookingCli)
 
