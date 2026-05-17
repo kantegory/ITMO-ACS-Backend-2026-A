@@ -3,7 +3,7 @@ package models
 import "time"
 
 type Booking struct {
-	ID int `db:"db" json:"id"`
+	ID int `db:"id" json:"id"`
 	UserID int `db:"user_id" json:"user_id"`
 	RestaurantID int `db:"restaurant_id" json:"restaurant_id"`
 	TableID int `db:"table_id" json:"table_id"`

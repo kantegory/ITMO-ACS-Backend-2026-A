@@ -14,11 +14,14 @@ type TableInfo struct {
 	ID int `json:"id"`
 	RestaurantID int `json:"restaurant_id"`
 	Capacity int `json:"capacity"`
-	}
+}
 
-func (c *CatalogClient) GetTableInfo(tableID int) (*TableInfo, error) {
+func (c *CatalogClient) GetTableInfo(tableID int, reqID string) (*TableInfo, error) {
 	url := fmt.Sprintf("%s/internal/tables/%d", c.BaseURL, tableID)
-	resp, err := http.Get(url)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("X-Request-Id", reqID)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		return nil, fmt.Errorf("catalog service unavailable or table not found")
 	}

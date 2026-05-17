@@ -22,7 +22,7 @@ func main() {
 	defer db.Close()
 
 	repo := repository.NewBookingRepository(db)
-	catalogCli := &client.CatalogClient{BaseURL: "http://catalog-service:8002"}
+	catalogCli := &client.CatalogClient{BaseURL: os.Getenv("CATALOG_SERVICE_URL")}
 	h := handler.NewBookingHandler(repo, catalogCli)
 
 	r := chi.NewRouter()
@@ -33,6 +33,8 @@ func main() {
 	r.Use(middleware.Heartbeat("/ping"))
 
 	r.Post("/api/v1/bookings", h.Create)
+	r.Get("/api/v1/bookings", h.Get)
+	r.Get("/internal/restaurants/{id}/busy-tables", h.GetInternalBusyTables)
 
 	log.Println("Catalog Service starting on :8003...")
 	if err := http.ListenAndServe(":8003", r); err != nil {

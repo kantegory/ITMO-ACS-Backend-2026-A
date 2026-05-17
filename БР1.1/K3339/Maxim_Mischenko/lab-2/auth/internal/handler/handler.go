@@ -63,7 +63,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.repo.GetUserByEmail(req.Email)
-	if err != nil || service.CheckPasswordHash(req.Password, user.PasswordHash) {
+	if err != nil || !service.CheckPasswordHash(req.Password, user.PasswordHash) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}

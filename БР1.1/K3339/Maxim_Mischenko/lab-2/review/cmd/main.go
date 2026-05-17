@@ -32,7 +32,7 @@ func main() {
 	r.Use(middleware.Heartbeat("/ping"))
 
 	r.Route("/api/v1", func (r chi.Router)  {
-		r.Get("/catalog/restaurants/{id}/reviews", h.GetByRestaurant)
+		r.Get("/restaurants/{id}/reviews", h.GetByRestaurant)
 		r.Post("/reviews", h.Create)
 	})
 

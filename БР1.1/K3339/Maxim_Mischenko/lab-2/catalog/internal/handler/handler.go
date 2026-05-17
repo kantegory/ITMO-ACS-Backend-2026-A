@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"catalog/internal/client"
 	"catalog/internal/models"
 	"catalog/internal/repository"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -12,10 +15,11 @@ import (
 
 type CatalogHandler struct {
 	repo *repository.CatalogRepository
+	bookingClient *client.BookingClient
 }
 
-func NewCatalogHandler(repo *repository.CatalogRepository) *CatalogHandler {
-	return &CatalogHandler{repo: repo}
+func NewCatalogHandler(repo *repository.CatalogRepository, bookingClient *client.BookingClient) *CatalogHandler {
+	return &CatalogHandler{repo: repo, bookingClient: bookingClient}
 }
 
 // GET /restaurants
@@ -65,6 +69,45 @@ func (h *CatalogHandler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 	// 1. Get restaurant info
 	// 2. Get menu items
 	json.NewEncoder(w).Encode(res)
+}
+
+// GET /restaurants/{id}/tables
+func (h *CatalogHandler) GetRestaurantTables(w http.ResponseWriter, r *http.Request) {
+	resID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	capacity, _ := strconv.Atoi(r.URL.Query().Get("capacity"))
+ 	date := r.URL.Query().Get("date")
+	reqID := r.Header.Get("X-Request-Id")
+
+	alltables, err := h.repo.GetTables(resID, capacity)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var busyIDs []int
+	if date != "" {
+		busyIDs, err = h.bookingClient.GetBusyTableIDs(resID, date, reqID)
+		if err != nil {
+			log.Printf("Error calling booking service %v", err)
+			http.Error(w, fmt.Sprintf("Availability check failed: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	availableTables := []models.Table{}
+	busyMap := make(map[int]bool)
+	for _, id := range busyIDs {
+		busyMap[id] = true
+	}
+
+	for _, table := range alltables {
+		if !busyMap[table.ID] {
+			availableTables = append(availableTables, table)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(availableTables)
 }
 
 // GET /internal/tables/{id}

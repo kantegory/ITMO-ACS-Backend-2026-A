@@ -124,6 +124,13 @@ func (r *CatalogRepository) GetTableByID(id int) (*models.Table, error) {
 	return &t, err
 }
 
+func (r *CatalogRepository) GetTables(restaurantID int, minCapacity int) ([]models.Table, error) {
+	var tables []models.Table
+	query := "SELECT * FROM tables WHERE restaurant_id = $1 AND capacity >= $2"
+	err := r.db.Select(&tables, query, restaurantID, minCapacity)
+	return tables, err
+}
+
 func (r *CatalogRepository) UpdateRestaurantRating(id int, avg float64, count int) error {
 	_, err := r.db.Exec("UPDATE restaurants SET avg_rating = $1, reviews_count = $2 WHERE id = $3", avg, count, id)
 	return err

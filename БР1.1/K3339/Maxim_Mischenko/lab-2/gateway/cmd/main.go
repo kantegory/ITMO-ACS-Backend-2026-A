@@ -37,8 +37,8 @@ func main() {
 	bookingProxy := httputil.NewSingleHostReverseProxy(bookingURL)
 	reviewProxy := httputil.NewSingleHostReverseProxy(reviewURL)
 
-	r.Handle("/auth/*", proxyHandler(authProxy))
-	r.Handle("/api/v1/catalog/restaurants/{id}/reviews", proxyHandler(reviewProxy))
+	r.Handle("/api/v1/auth/*", proxyHandler(authProxy))
+	r.Handle("/api/v1/restaurants/{id}/reviews", proxyHandler(reviewProxy))
 	r.Handle("/api/v1/catalog/*", proxyHandler(catalogProxy))
 
 	r.Route("/api/v1/bookings", func(r chi.Router) {
