@@ -1,9 +1,10 @@
 package repository
 
 import (
-	"review/internal/models"
 	"encoding/json"
 	"fmt"
+	"log"
+	"review/internal/models"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/streadway/amqp"
@@ -64,7 +65,15 @@ func (r *ReviewRepository) notifyCatalogAsync(resID int, avg float64, count int)
 	ch, _ := conn.Channel()
 	defer ch.Close()
 
-	q, _ := ch.QueueDeclare("rating_updates", true, false, false, false, nil)
+	ch.ExchangeDeclare("rating_exchange", "direct", true, false, false, false, nil)
+
+	args := amqp.Table{
+		"x-dead-letter-exchange": "rating_exchange",
+		"x-dead-letter-routing-key": "rating_key",
+		"x-message-ttl": 30000,
+	}
+
+	q, _ := ch.QueueDeclare("rating_updates_wait", true, false, false, false, args)
 
 	msgData := map[string]interface{}{
 		"restaurant_id": resID,
@@ -80,6 +89,8 @@ func (r *ReviewRepository) notifyCatalogAsync(resID int, avg float64, count int)
 	if err != nil {
 		fmt.Printf("Failed to publish message: %v\n", err)
 	}
+
+	log.Printf("Review Service: Sent message to Queue")
 }
 
 func (r *ReviewRepository) GetByRestaurant(resID int) ([]models.Review, error) {

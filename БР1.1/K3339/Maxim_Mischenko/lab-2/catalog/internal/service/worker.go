@@ -15,7 +15,12 @@ func StartRatingWorker(repo *repository.CatalogRepository) {
 	}
 
 	ch, _ := conn.Channel()
-	q, _ := ch.QueueDeclare("rating_updates", true, false, false, false, nil)
+
+	ch.ExchangeDeclare("rating_exchange", "direct", true, false, false, false, nil)
+
+	q, _ := ch.QueueDeclare("rating_updates_main", true, false, false, false, nil)
+
+	ch.QueueBind(q.Name, "rating_key", "rating_exchange", false, nil)
 
 	msgs, _ := ch.Consume(q.Name, "", true, false, false, false, nil)
 
