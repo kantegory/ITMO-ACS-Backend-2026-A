@@ -4,15 +4,7 @@ CREATE TABLE property_types (
     name VARCHAR(50) NOT NULL UNIQUE -- (Квартира, Дом, Офис, Студия)
 );
 
--- 2. Справочник удобств (amenities)
-CREATE TABLE amenities (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    icon VARCHAR(50),
-    description TEXT
-);
-
--- 3. Таблица пользователей
+-- 2. Таблица пользователей
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(150) UNIQUE NOT NULL,
@@ -47,12 +39,6 @@ CREATE TABLE property_images (
     is_main BOOLEAN DEFAULT FALSE
 );
 
-CREATE TABLE property_amenities (
-    property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
-    amenity_id INTEGER REFERENCES amenities(id) ON DELETE CASCADE,
-    PRIMARY KEY (property_id, amenity_id)
-);
-
 -- 5. Сделки / Аренда
 CREATE TABLE rentals (
     id SERIAL PRIMARY KEY,
@@ -83,8 +69,6 @@ CREATE TABLE transactions (
     rental_id INTEGER REFERENCES rentals(id) ON DELETE CASCADE,
     amount DECIMAL(12, 2) NOT NULL,
     payment_method VARCHAR(50),
-    idempotency_key VARCHAR(64) CONSTRAINT uni_transactions_idempotency_key UNIQUE,
-    type VARCHAR(20) DEFAULT 'payment' CHECK (type IN ('payment', 'refund')),
-    status VARCHAR(20) DEFAULT 'success' CHECK (status IN ('success', 'failed', 'pending', 'refunded')),
+    status VARCHAR(20) DEFAULT 'success' CHECK (status IN ('success', 'failed', 'pending')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

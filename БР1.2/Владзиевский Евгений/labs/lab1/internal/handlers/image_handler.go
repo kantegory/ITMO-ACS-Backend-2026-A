@@ -44,7 +44,7 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	propertyIDStr := c.Param("propertyId")
+	propertyIDStr := c.Param("id")
 	propertyID, err := strconv.ParseUint(propertyIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -106,7 +106,7 @@ func (h *ImageHandler) Upload(c *gin.Context) {
 }
 
 func (h *ImageHandler) List(c *gin.Context) {
-	propertyIDStr := c.Param("propertyId")
+	propertyIDStr := c.Param("id")
 	propertyID, err := strconv.ParseUint(propertyIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{

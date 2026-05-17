@@ -128,7 +128,12 @@ func (s *rentalService) Create(input RentalInput, tenantID uint) (*models.Rental
 	if err := s.rentalRepo.Create(rental); err != nil {
 		return nil, err
 	}
-	return rental, nil
+	// Reload with preloads so Property.Owner is populated in the response
+	reloaded, err := s.rentalRepo.FindByID(rental.ID)
+	if err != nil {
+		return nil, err
+	}
+	return reloaded, nil
 }
 
 func (s *rentalService) UpdateStatus(id uint, status string, userID uint, userRole string) (*models.Rental, error) {
