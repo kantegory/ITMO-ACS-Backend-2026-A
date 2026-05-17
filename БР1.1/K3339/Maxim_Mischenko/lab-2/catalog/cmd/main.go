@@ -37,11 +37,11 @@ func main() {
 
 	r.Route("/internal", func(r chi.Router) {
 		r.Get("/tables/{id}", h.InternalGetTable)
+		r.Post("/restaurants/{id}/rating", h.InternalUpdateRestaurantRating)
 	})
 
 	log.Println("Catalog Service starting on :8002...")
 	if err := http.ListenAndServe(":8002", r); err != nil {
 		log.Fatalf("Could not start server: %v", err)
 	}
-
 }

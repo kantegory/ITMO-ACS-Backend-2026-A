@@ -64,7 +64,6 @@ func (h *CatalogHandler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 	// Find details for the restaurant (menu + tables)
 	// 1. Get restaurant info
 	// 2. Get menu items
-	// 3. Get reviews
 	json.NewEncoder(w).Encode(res)
 }
 
@@ -78,4 +77,22 @@ func (h *CatalogHandler) InternalGetTable(w http.ResponseWriter, r *http.Request
 	}
 
 	json.NewEncoder(w).Encode(table)
+}
+
+// POST /internal/restaurants/{id}/rating
+func (h *CatalogHandler) InternalUpdateRestaurantRating(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+
+	var input struct {
+		Avg float64 `json:"avg_rating"`
+		Count int `json:"reviews_count"`
+	}
+	json.NewDecoder(r.Body).Decode(&input)
+
+	err := h.repo.UpdateRestaurantRating(id, input.Avg, input.Count)
+	if err != nil {
+		http.Error(w, "Interval error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

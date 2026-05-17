@@ -15,6 +15,8 @@ type Restaurant struct {
 	City string `db:"city" json:"city"`
 	Address string `db:"address" json:"address"`
 	AvgPricePerPerson *float64 `db:"avg_price_per_person" json:"avg_price_per_person"`
+	AvgRating float64 `db:"avg_rating" json:"avg_rating"`
+	ReviewsCount int `db:"reviews_count" json:"reviews_count"`
 	Status string `db:"status" json:"status"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
@@ -40,6 +42,8 @@ type RestaurantFilters struct {
 	CuisineID int
 	MinPrice float64
 	MaxPrice float64
+	AvgRating float64
+	ReviewsCount int
 	SortBy string
 	Limit int
 	Offset int

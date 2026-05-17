@@ -55,6 +55,18 @@ func (r *CatalogRepository) GetRestaurants(f models.RestaurantFilters) (*models.
 		argCounter++
 	}
 
+	if f.AvgRating > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("avg_rating >= $%d", argCounter))
+		args = append(args, f.AvgRating)
+		argCounter++
+	}
+
+	if f.ReviewsCount > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("reviews_count >= $%d", argCounter))
+		args = append(args, f.ReviewsCount)
+		argCounter++
+	}
+
 	whereSQL := " WHERE " + strings.Join(whereClauses, " AND ")
 
 	err := r.db.Get(&response.Total, countClause+whereSQL, args...)
@@ -72,6 +84,14 @@ func (r *CatalogRepository) GetRestaurants(f models.RestaurantFilters) (*models.
 		sortSQL = " ORDER BY name ASC"
 	case "name_desc":
 		sortSQL = " ORDER BY name DESC"
+	case "rating_asc":
+		sortSQL = " ORDER BY avg_rating ASC"
+	case "rating_desc":
+		sortSQL = " ORDER BY avg_rating DESC"
+	case "reviews_count_asc":
+		sortSQL = " ORDER BY reviews_count ASC"
+	case "reviews_count_desc":
+		sortSQL = " ORDER BY reviews_count DESC"
 	}
 
 	paginationSQL := fmt.Sprintf(" LIMIT $%d OFFSET $%d", argCounter, argCounter+1)
@@ -102,4 +122,9 @@ func (r *CatalogRepository) GetTableByID(id int) (*models.Table, error) {
 	var t models.Table
 	err := r.db.Get(&t, "SELECT * FROM tables WHERE id = $1", id)
 	return &t, err
+}
+
+func (r *CatalogRepository) UpdateRestaurantRating(id int, avg float64, count int) error {
+	_, err := r.db.Exec("UPDATE restaurants SET avg_rating = $1, reviews_count = $2 WHERE id = $3", avg, count, id)
+	return err
 }

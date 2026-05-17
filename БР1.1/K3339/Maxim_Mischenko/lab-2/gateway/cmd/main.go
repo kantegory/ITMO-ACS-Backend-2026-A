@@ -30,17 +30,25 @@ func main() {
 	authURL, _ := url.Parse("http://auth-service:8001")
 	catalogURL, _ := url.Parse("http://catalog-service:8002")
 	bookingURL, _ := url.Parse("http://booking-service:8003")
+	reviewURL, _ := url.Parse("http://review-service:8004")
 
 	authProxy := httputil.NewSingleHostReverseProxy(authURL)
 	catalogProxy := httputil.NewSingleHostReverseProxy(catalogURL)
 	bookingProxy := httputil.NewSingleHostReverseProxy(bookingURL)
+	reviewProxy := httputil.NewSingleHostReverseProxy(reviewURL)
 
 	r.Handle("/auth/*", proxyHandler(authProxy))
+	r.Handle("/api/v1/catalog/restaurants/{id}/reviews", proxyHandler(reviewProxy))
 	r.Handle("/api/v1/catalog/*", proxyHandler(catalogProxy))
 
 	r.Route("/api/v1/bookings", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.HandleFunc("/*", proxyHandler(bookingProxy))
+	})
+
+	r.Route("/api/v1/reviews", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Post("/", proxyHandler(reviewProxy))
 	})
 
 	log.Println("API Gateway starting on :8080...")
