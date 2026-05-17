@@ -2,6 +2,9 @@ package repository
 
 import (
 	"catalog/internal/models"
+	"fmt"
+	"strings"
+
 	"github.com/jmoiron/sqlx"
 )
 
@@ -13,19 +16,74 @@ func NewCatalogRepository(db *sqlx.DB) *CatalogRepository {
 	return &CatalogRepository{db: db}
 }
 
-func (r *CatalogRepository) GetRestaurants(city string, cuisineID int) ([]models.Restaurant, error) {
-	var res []models.Restaurant
-	query := "SELECT * FROM restaurants WHERE 1=1"
+func (r *CatalogRepository) GetRestaurants(f models.RestaurantFilters) (*models.RestaurantListResponse, error) {
+	var response models.RestaurantListResponse
+
+	selectClause := "SELECT * FROM restaurants"
+	countClause := "SELECT COUNT(*) FROM restaurants"
+	whereClauses := []string{"1=1"}
 	args := []interface{}{}
+	argCounter := 1
 
-	if city != "" {
-		query += " AND city = $1"
-		args = append(args, city)
+	if f.Name != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("name ILIKE $%d", argCounter))
+		args = append(args, "%"+f.Name+"%")
+		argCounter++
 	}
-	// Filters logic
 
-	err := r.db.Select(&res, query, args...)
-	return res, err
+	if f.City != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("city = $%d", argCounter))
+		args = append(args, f.City)
+		argCounter++
+	}
+
+	if f.CuisineID > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("cuisine_id = $%d", argCounter))
+		args = append(args, f.CuisineID)
+		argCounter++
+	}
+
+	if f.MinPrice > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("avg_price_per_person >= $%d", argCounter))
+		args = append(args, f.MinPrice)
+		argCounter++
+	}
+
+	if f.MaxPrice > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("avg_price_per_person <= $%d", argCounter))
+		args = append(args, f.MaxPrice)
+		argCounter++
+	}
+
+	whereSQL := " WHERE " + strings.Join(whereClauses, " AND ")
+
+	err := r.db.Get(&response.Total, countClause+whereSQL, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	sortSQL := " ORDER BY id DESC"
+	switch f.SortBy {
+	case "avg_price_asc":
+		sortSQL = " ORDER BY avg_price_per_person ASC"
+	case "avg_price_desc":
+		sortSQL = " ORDER BY avg_price_per_person DESC"
+	case "name_asc":
+		sortSQL = " ORDER BY name ASC"
+	case "name_desc":
+		sortSQL = " ORDER BY name DESC"
+	}
+
+	paginationSQL := fmt.Sprintf(" LIMIT $%d OFFSET $%d", argCounter, argCounter+1)
+	args = append(args, f.Limit, f.Offset)
+
+	finalQuery := selectClause + whereSQL + sortSQL + paginationSQL
+	err = r.db.Select(&response.Items, finalQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &response, err
 }
 
 func (r *CatalogRepository) GetRestaurantByID(id int) (*models.Restaurant, error) {

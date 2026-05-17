@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"catalog/internal/models"
 	"catalog/internal/repository"
 	"encoding/json"
 	"net/http"
@@ -19,16 +20,35 @@ func NewCatalogHandler(repo *repository.CatalogRepository) *CatalogHandler {
 
 // GET /restaurants
 func (h *CatalogHandler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
-	city := r.URL.Query().Get("city")
-	cuisineID, _ := strconv.Atoi(r.URL.Query().Get("cuisine_id"))
+	q := r.URL.Query()
 
-	restaurants, err := h.repo.GetRestaurants(city, cuisineID)
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 { limit = 20 }
+
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	cuisineID, _ := strconv.Atoi(q.Get("cuisine_id"))
+	minPrice, _ := strconv.ParseFloat(q.Get("min_price"), 64)
+	maxPrice, _ := strconv.ParseFloat(q.Get("max_price"), 64)
+
+	filters := models.RestaurantFilters{
+		Name: q.Get("name"),
+		City: q.Get("city"),
+		CuisineID: cuisineID,
+		MinPrice: minPrice,
+		MaxPrice: maxPrice,
+		SortBy: q.Get("sort_by"),
+		Limit: limit,
+		Offset: offset,
+	}
+
+	response, err := h.repo.GetRestaurants(filters)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(restaurants)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // GET /restaurants/{id}

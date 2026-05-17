@@ -33,3 +33,19 @@ type Table struct {
 	Capacity int `db:"capacity" json:"capacity"`
 	Label *string `db:"label" json:"label"`
 }
+
+type RestaurantFilters struct {
+	Name string
+	City string
+	CuisineID int
+	MinPrice float64
+	MaxPrice float64
+	SortBy string
+	Limit int
+	Offset int
+}
+
+type RestaurantListResponse struct {
+	Total int `json:"total"`
+	Items []Restaurant  `json:"items"`
+}
