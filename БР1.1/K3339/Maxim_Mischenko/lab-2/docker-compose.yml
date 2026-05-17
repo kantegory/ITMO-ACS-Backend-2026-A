@@ -1,0 +1,73 @@
+services:
+  catalog-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: a
+      POSTGRES_DB: catalog_db
+    volumes:
+      - catalog_db:/var/lib/postgresql/data
+      - ./init-dbs/init_catalog.sql:/docker-entrypoint-initdb.d/init_catalog.sql
+    ports:
+      - "5432:5432"
+
+  booking-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: a
+      POSTGRES_DB: booking_db
+    volumes:
+      - booking_db:/var/lib/postgresql/data
+      - ./init-dbs/init_booking.sql:/docker-entrypoint-initdb.d/init_booking.sql
+    ports:
+      - "5433:5432"
+
+  auth-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: a
+      POSTGRES_DB: auth_db
+    volumes:
+      - auth_db:/var/lib/postgresql/data
+      - ./init-dbs/init_auth.sql:/docker-entrypoint-initdb.d/init_auth.sql
+    ports:
+      - "5434:5432"
+
+  catalog-service:
+    build:
+      context: ./catalog
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: "postgres://postgres:a@catalog-db:5432/catalog_db?sslmode=disable"
+    depends_on:
+      - catalog-db
+
+  booking-service:
+    build:
+      context: ./booking
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: "postgres://postgres:a@booking-db:5432/booking_db?sslmode=disable"
+      CATALOG_SERVICE_URL: "http://catalog-service:8002"
+    depends_on:
+      - booking-db
+      - catalog-service
+
+  auth-service:
+    build:
+      context: ./auth
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgres://postgres:a@auth-db:5432/auth_db?sslmode=disable
+    depends_on:
+      - auth-db
+
+volumes:
+  catalog_db:
+  booking_db:
+  auth_db:
