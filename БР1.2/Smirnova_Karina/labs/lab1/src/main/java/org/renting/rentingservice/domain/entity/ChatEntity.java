@@ -26,6 +26,10 @@ public class ChatEntity {
     @JoinColumn(name = "user2_id", nullable = false)
     private UserEntity user2;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "listing_id", nullable = false)
+    private ListingEntity listing;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

@@ -11,7 +11,7 @@ import java.util.Optional;
 
 public interface ChatRepository extends JpaRepository<ChatEntity, Long> {
 
-    Optional<ChatEntity> findByUser1IdAndUser2Id(Long user1Id, Long user2Id);
+    Optional<ChatEntity> findByUser1IdAndUser2IdAndListingId(Long user1Id, Long user2Id, Long listingId);
 
     @Query("""
             SELECT c FROM ChatEntity c

@@ -9,6 +9,7 @@ import java.time.Instant;
 @Builder
 public class ChatResponse {
     Long id;
+    Long listingId;
     Long user1Id;
     Long user2Id;
     Instant createdAt;

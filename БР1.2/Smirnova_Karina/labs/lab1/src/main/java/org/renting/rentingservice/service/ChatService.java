@@ -4,15 +4,14 @@ import lombok.RequiredArgsConstructor;
 import org.renting.rentingservice.domain.entity.ChatEntity;
 import org.renting.rentingservice.domain.entity.ListingEntity;
 import org.renting.rentingservice.domain.entity.MessageEntity;
-import org.renting.rentingservice.domain.entity.RentEntity;
 import org.renting.rentingservice.domain.entity.UserEntity;
-import org.renting.rentingservice.domain.enums.CommunicationMethod;
 import org.renting.rentingservice.domain.enums.RentStatus;
 import org.renting.rentingservice.dto.chat.ChatResponse;
 import org.renting.rentingservice.dto.chat.CreateChatRequest;
 import org.renting.rentingservice.dto.chat.MessageResponse;
 import org.renting.rentingservice.dto.chat.SendMessageRequest;
 import org.renting.rentingservice.dto.common.PageResponse;
+import org.renting.rentingservice.exception.BusinessException;
 import org.renting.rentingservice.exception.ConflictException;
 import org.renting.rentingservice.exception.ForbiddenException;
 import org.renting.rentingservice.exception.NotFoundException;
@@ -27,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +35,7 @@ public class ChatService {
     private final ChatRepository chatRepository;
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final ListingService listingService;
     private final RentRepository rentRepository;
     private final ChatMapper chatMapper;
 
@@ -43,16 +44,23 @@ public class ChatService {
         if (currentUserId.equals(request.getOtherUserId())) {
             throw new ConflictException("Cannot create chat with yourself");
         }
+        ListingEntity listing = listingService.findListing(request.getListingId());
+        validateChatParticipants(listing, currentUserId, request.getOtherUserId());
+
         long user1Id = Math.min(currentUserId, request.getOtherUserId());
         long user2Id = Math.max(currentUserId, request.getOtherUserId());
-        return chatRepository.findByUser1IdAndUser2Id(user1Id, user2Id)
+        return chatRepository.findByUser1IdAndUser2IdAndListingId(user1Id, user2Id, listing.getId())
                 .map(chatMapper::toChatResponse)
                 .orElseGet(() -> {
                     UserEntity user1 = userRepository.findById(user1Id)
                             .orElseThrow(() -> new NotFoundException("User not found"));
                     UserEntity user2 = userRepository.findById(user2Id)
                             .orElseThrow(() -> new NotFoundException("User not found"));
-                    ChatEntity chat = ChatEntity.builder().user1(user1).user2(user2).build();
+                    ChatEntity chat = ChatEntity.builder()
+                            .user1(user1)
+                            .user2(user2)
+                            .listing(listing)
+                            .build();
                     return chatMapper.toChatResponse(chatRepository.save(chat));
                 });
     }
@@ -95,39 +103,52 @@ public class ChatService {
         chatRepository.delete(chat);
     }
 
-    public ChatEntity findOrCreateBetween(Long userA, Long userB) {
+    @Transactional
+    public ChatEntity findOrCreateForListing(Long listingId, Long userA, Long userB) {
+        ListingEntity listing = listingService.findListing(listingId);
+        validateChatParticipants(listing, userA, userB);
+
         long user1Id = Math.min(userA, userB);
         long user2Id = Math.max(userA, userB);
-        return chatRepository.findByUser1IdAndUser2Id(user1Id, user2Id).orElseGet(() -> {
+        return chatRepository.findByUser1IdAndUser2IdAndListingId(user1Id, user2Id, listingId).orElseGet(() -> {
             UserEntity user1 = userRepository.findById(user1Id).orElseThrow();
             UserEntity user2 = userRepository.findById(user2Id).orElseThrow();
-            return chatRepository.save(ChatEntity.builder().user1(user1).user2(user2).build());
+            return chatRepository.save(ChatEntity.builder()
+                    .user1(user1)
+                    .user2(user2)
+                    .listing(listing)
+                    .build());
         });
     }
 
-    private void promoteRentOnOwnerReply(ChatEntity chat, Long senderId) {
-        rentRepository.findByGuestId(chat.getUser1().getId()).stream()
-                .filter(r -> r.getListing().getOwner() != null)
-                .forEach(r -> tryPromoteRent(r, chat, senderId));
-        rentRepository.findByGuestId(chat.getUser2().getId()).stream()
-                .filter(r -> r.getListing().getOwner() != null)
-                .forEach(r -> tryPromoteRent(r, chat, senderId));
-    }
-
-    private void tryPromoteRent(RentEntity rent, ChatEntity chat, Long senderId) {
-        ListingEntity listing = rent.getListing();
+    private void validateChatParticipants(ListingEntity listing, Long userA, Long userB) {
         if (listing.getOwner() == null) {
-            return;
+            throw new BusinessException("Listing has no owner");
         }
         Long ownerId = listing.getOwner().getId();
-        boolean participantsMatch = (chat.getUser1().getId().equals(rent.getGuest().getId())
-                && chat.getUser2().getId().equals(ownerId))
-                || (chat.getUser2().getId().equals(rent.getGuest().getId())
-                && chat.getUser1().getId().equals(ownerId));
-        if (participantsMatch && senderId.equals(ownerId) && rent.getStatus() == RentStatus.NEW) {
-            rent.setStatus(RentStatus.IN_PROGRESS);
-            rentRepository.save(rent);
+        Set<Long> participants = Set.of(userA, userB);
+        if (!participants.contains(ownerId)) {
+            throw new BusinessException("Chat must include the listing owner");
         }
+        if (participants.size() != 2 || userA.equals(userB)) {
+            throw new BusinessException("Chat must be between the listing owner and another user");
+        }
+    }
+
+    private void promoteRentOnOwnerReply(ChatEntity chat, Long senderId) {
+        ListingEntity listing = chat.getListing();
+        if (listing.getOwner() == null || !listing.getOwner().getId().equals(senderId)) {
+            return;
+        }
+        Long guestId = chat.getUser1().getId().equals(senderId)
+                ? chat.getUser2().getId()
+                : chat.getUser1().getId();
+        rentRepository.findFirstByListingIdAndGuestIdOrderByCreatedAtDesc(listing.getId(), guestId)
+                .filter(rent -> rent.getStatus() == RentStatus.NEW)
+                .ifPresent(rent -> {
+                    rent.setStatus(RentStatus.IN_PROGRESS);
+                    rentRepository.save(rent);
+                });
     }
 
     private ChatEntity findChat(Long chatId) {

@@ -57,7 +57,7 @@ public class RentService {
                 .build();
         rent = rentRepository.save(rent);
         if (request.getCommunicationMethod() == CommunicationMethod.CHAT && listing.getOwner() != null) {
-            chatService.findOrCreateBetween(guestId, listing.getOwner().getId());
+            chatService.findOrCreateForListing(listing.getId(), guestId, listing.getOwner().getId());
         }
         return rentMapper.toResponse(rent);
     }

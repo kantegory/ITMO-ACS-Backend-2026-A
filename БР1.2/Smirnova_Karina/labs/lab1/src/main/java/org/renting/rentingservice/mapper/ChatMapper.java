@@ -10,6 +10,7 @@ import org.renting.rentingservice.dto.chat.MessageResponse;
 @Mapper(componentModel = "spring")
 public interface ChatMapper {
 
+    @Mapping(target = "listingId", source = "listing.id")
     @Mapping(target = "user1Id", source = "user1.id")
     @Mapping(target = "user2Id", source = "user2.id")
     ChatResponse toChatResponse(ChatEntity entity);

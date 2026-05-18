@@ -6,5 +6,8 @@ import lombok.Data;
 @Data
 public class CreateChatRequest {
     @NotNull
+    private Long listingId;
+
+    @NotNull
     private Long otherUserId;
 }

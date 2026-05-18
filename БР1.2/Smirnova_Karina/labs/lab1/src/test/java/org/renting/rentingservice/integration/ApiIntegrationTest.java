@@ -3,6 +3,7 @@ package org.renting.rentingservice.integration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.renting.rentingservice.security.JwtTokenProvider;
 import org.testcontainers.junit.jupiter.EnabledIfDockerAvailable;
 import org.renting.rentingservice.TestcontainersConfiguration;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,9 @@ class ApiIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+        @Autowired
+        private JwtTokenProvider jwtTokenProvider;
 
     @Test
     void authListingBookingPaymentFlow() throws Exception {
@@ -72,6 +76,19 @@ class ApiIntegrationTest {
                 .isEqualTo("ACCEPTED");
     }
 
+        @Test
+        void registerIgnoresStaleBearerToken() throws Exception {
+                String staleToken = jwtTokenProvider.createAccessToken(999999L, "ghost@test.com");
+
+                mockMvc.perform(post("/auth/register")
+                                                .header("Authorization", "Bearer " + staleToken)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("""
+                                                                {"email":"fresh@test.com","username":"fresh","phone":"+79007777777","password":"password123"}
+                                                                """))
+                                .andExpect(status().isCreated());
+        }
+
     @Test
     void bookingDateConflictReturns409() throws Exception {
         registerUser("g2@test.com", "guest2", "+79003333333", "secret12");
@@ -98,15 +115,18 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void chatUniqueness() throws Exception {
+    void chatUniquenessPerListing() throws Exception {
         registerUser("a@test.com", "userA", "+79005555555", "secret12");
         registerUser("b@test.com", "userB", "+79006666666", "secret12");
         String tokenA = login("a@test.com", "secret12");
+        String tokenB = login("b@test.com", "secret12");
         long userBId = objectMapper.readTree(mockMvc.perform(get("/users/me")
-                        .header("Authorization", "Bearer " + login("b@test.com", "secret12")))
+                        .header("Authorization", "Bearer " + tokenB))
                 .andReturn().getResponse().getContentAsString()).get("id").asLong();
 
-        String chatBody = "{\"otherUserId\":" + userBId + "}";
+        long listingId = createDailyListing(tokenB);
+        String chatBody = "{\"listingId\":" + listingId + ",\"otherUserId\":" + userBId + "}";
+
         mockMvc.perform(post("/chats")
                         .header("Authorization", "Bearer " + tokenA)
                         .contentType(MediaType.APPLICATION_JSON)
