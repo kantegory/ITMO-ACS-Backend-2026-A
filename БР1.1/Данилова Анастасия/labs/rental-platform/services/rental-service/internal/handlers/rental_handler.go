@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -79,9 +80,17 @@ func (h *RentalHandler) CreateRental(c *gin.Context) {
 		TenantID:   uid,
 	})
 	if err != nil {
-		writeServiceError(c, err)
+		c.Error(err) // gin log
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": err.Error(),
+		})
+		log.Printf("create rental error: %+v", err)
 		return
 	}
+	// if err != nil {
+	// 	writeServiceError(c, err)
+	// 	return
+	// }
 	c.JSON(http.StatusCreated, toRentalFullJSON(full))
 }
 

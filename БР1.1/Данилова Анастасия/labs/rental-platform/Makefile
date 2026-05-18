@@ -23,6 +23,18 @@ test:
 docker-build:
 	docker compose -f deploy/docker-compose.yml build
 
+docker-build auth-service:
+	docker compose -f deploy/docker-compose.yml up -d --build auth-service
+
+docker-build property-service:
+	docker compose -f deploy/docker-compose.yml up -d --build property-service
+
+docker-build chat-service:
+	docker compose -f deploy/docker-compose.yml up -d --build chat-service
+
+docker-build rental-service:
+	docker compose -f deploy/docker-compose.yml up -d --build rental-service
+
 docker-up:
 	docker compose -f deploy/docker-compose.yml up -d --build
 
