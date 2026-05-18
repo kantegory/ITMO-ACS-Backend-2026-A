@@ -1,0 +1,200 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  restaurant-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: restaurant_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d restaurant_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  availability-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: availability_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d availability_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  booking-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: booking_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d booking_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  feedback-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: feedback_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d feedback_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: identity-service
+    environment:
+      SERVICE_NAME: identity-service
+      DATABASE_URL: jdbc:postgresql://auth-db:5432/auth_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      JWT_SECRET: dev-jwt-secret
+      SERVICE_TOKEN: dev-service-token
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  restaurant-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: restaurant-service
+    environment:
+      SERVICE_NAME: restaurant-service
+      DATABASE_URL: jdbc:postgresql://restaurant-db:5432/restaurant_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_TOKEN: dev-service-token
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      restaurant-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  availability-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: availability-service
+    environment:
+      SERVICE_NAME: availability-service
+      DATABASE_URL: jdbc:postgresql://availability-db:5432/availability_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_TOKEN: dev-service-token
+      REDIS_URL: redis://redis:6379
+      RESTAURANT_SERVICE_URL: http://restaurant-service:8082
+    depends_on:
+      availability-db:
+        condition: service_healthy
+      restaurant-service:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: booking-service
+    environment:
+      SERVICE_NAME: booking-service
+      DATABASE_URL: jdbc:postgresql://booking-db:5432/booking_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_TOKEN: dev-service-token
+      REDIS_URL: redis://redis:6379
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      RESTAURANT_SERVICE_URL: http://restaurant-service:8082
+      AVAILABILITY_SERVICE_URL: http://availability-service:8083
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      restaurant-service:
+        condition: service_started
+      availability-service:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  feedback-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: feedback-service
+    environment:
+      SERVICE_NAME: feedback-service
+      DATABASE_URL: jdbc:postgresql://feedback-db:5432/feedback_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_TOKEN: dev-service-token
+      REDIS_URL: redis://redis:6379
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      RESTAURANT_SERVICE_URL: http://restaurant-service:8082
+    depends_on:
+      feedback-db:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      restaurant-service:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: dev-jwt-secret
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      RESTAURANT_SERVICE_URL: http://restaurant-service:8082
+      AVAILABILITY_SERVICE_URL: http://availability-service:8083
+      BOOKING_SERVICE_URL: http://booking-service:8084
+      FEEDBACK_SERVICE_URL: http://feedback-service:8085
+    depends_on:
+      - identity-service
+      - restaurant-service
+      - availability-service
+      - booking-service
+      - feedback-service

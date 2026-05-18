@@ -1,0 +1,27 @@
+# Build a single service only (use when multi-target Dockerfile is not available).
+FROM gradle:8.11.1-jdk21 AS build
+ARG SERVICE_NAME
+WORKDIR /workspace
+
+COPY settings.gradle.kts build.gradle.kts gradle.properties gradlew ./
+COPY gradle ./gradle
+COPY shared ./shared
+COPY identity-service ./identity-service
+COPY restaurant-service ./restaurant-service
+COPY availability-service ./availability-service
+COPY booking-service ./booking-service
+COPY feedback-service ./feedback-service
+COPY api-gateway ./api-gateway
+
+ENV GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8 -Dorg.gradle.configuration-cache=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.daemon.jvmargs=-Xmx768m"
+
+RUN chmod +x gradlew && \
+    ./gradlew :shared:jar :${SERVICE_NAME}:installDist -x test --no-daemon --max-workers=1
+
+FROM eclipse-temurin:21-jre
+ARG SERVICE_NAME
+WORKDIR /app
+COPY --from=build /workspace/${SERVICE_NAME}/build/install/${SERVICE_NAME} /app
+ENV SERVICE_NAME=${SERVICE_NAME}
+EXPOSE 8080
+CMD ["/bin/sh", "-c", "exec /app/bin/${SERVICE_NAME}"]
