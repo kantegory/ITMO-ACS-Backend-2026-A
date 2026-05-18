@@ -48,6 +48,9 @@ public class BookingService {
         if (!listing.isActive()) {
             throw new BusinessException("Listing is not active");
         }
+        if (listing.getOwner() != null && listing.getOwner().getId().equals(guestId)) {
+            throw new BusinessException("Cannot book your own listing");
+        }
         if (!request.getEndDate().isAfter(request.getStartDate())) {
             throw new BusinessException("endDate must be after startDate");
         }

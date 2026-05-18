@@ -20,4 +20,6 @@ public interface RentRepository extends JpaRepository<RentEntity, Long> {
     List<RentEntity> findByListing_Owner_Id(Long ownerId);
 
     Optional<RentEntity> findFirstByListingIdAndGuestIdOrderByCreatedAtDesc(Long listingId, Long guestId);
+
+    Optional<RentEntity> findByListingIdAndGuestIdAndStatusIn(Long listingId, Long guestId, List<RentStatus> statusList);
 }

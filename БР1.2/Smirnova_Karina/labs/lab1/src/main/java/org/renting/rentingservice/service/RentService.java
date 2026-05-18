@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -47,6 +48,22 @@ public class RentService {
         if (listing.getOwner() != null && listing.getOwner().getId().equals(guestId)) {
             throw new BusinessException("Cannot create rent inquiry for own listing");
         }
+        Optional<RentEntity> existingRent = rentRepository.findByListingIdAndGuestIdAndStatusIn(
+                request.getListingId(),
+                guestId,
+                List.of(RentStatus.NEW, RentStatus.IN_PROGRESS)
+        );
+
+        if (existingRent.isPresent()) {
+            RentEntity rent = existingRent.get();
+
+            if (request.getCommunicationMethod() == CommunicationMethod.CHAT && listing.getOwner() != null) {
+                chatService.findOrCreateForListing(listing.getId(), guestId, listing.getOwner().getId());
+            }
+
+            return rentMapper.toResponse(rent);
+        }
+
         UserEntity guest = userRepository.findById(guestId)
                 .orElseThrow(() -> new NotFoundException("User not found"));
         RentEntity rent = RentEntity.builder()
