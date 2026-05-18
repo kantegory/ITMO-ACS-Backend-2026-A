@@ -179,6 +179,55 @@ paths:
   # AUTH-SERVICE — INTERNAL
   # ─────────────────────────────────────────
 
+  /internal/users:
+    get:
+      tags: [auth — internal]
+      summary: Массовое получение пользователей по списку ID (internal)
+      description: |
+        Batch-эндпоинт для устранения проблемы N+1 при агрегации данных.
+
+        Вызывается из:
+        - **restaurant-service** — обогащение списка бронирований (`GET /restaurants/:id/reservations`) именами пользователей
+        - **restaurant-service** — обогащение списка отзывов (`GET /restaurants/:id/reviews`) данными авторов
+        - **restaurant-service** — обогащение списка персонала (`GET /restaurants/:id/staff`) профилями сотрудников
+
+        Пример: вместо 20 отдельных вызовов `GET /internal/users/{id}` для списка бронирований
+        делается один вызов `GET /internal/users?ids=1,5,7,42`.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID пользователей через запятую
+          schema:
+            type: string
+            example: "1,5,7,42"
+      responses:
+        "200":
+          description: Список найденных пользователей (отсутствующие ID молча пропускаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserInternal"
+              example:
+                - user_id: 1
+                  email: alice@example.com
+                  role: User
+                - user_id: 42
+                  email: v.persuk@example.com
+                  role: Owner
+        "400":
+          description: Параметр ids не передан или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "ids parameter is required"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /internal/users/{id}:
     get:
       tags: [auth — internal]
@@ -707,6 +756,56 @@ paths:
   # RESTAURANT-SERVICE — INTERNAL
   # ─────────────────────────────────────────
 
+  /internal/restaurants:
+    get:
+      tags: [restaurant — internal]
+      summary: Массовое получение ресторанов по списку ID (internal)
+      description: |
+        Batch-эндпоинт для устранения проблемы N+1 при агрегации данных.
+
+        Вызывается из:
+        - **auth-service** — обогащение списка бронирований пользователя (`GET /users/me/reservations`)
+          данными ресторанов (название, адрес) через цепочку: бронь → table_id → restaurant_id
+        - **reservation-service** — обогащение batch-ответа при агрегации нескольких ресторанов
+
+        Пример: `GET /internal/restaurants?ids=5,7,12`
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID ресторанов через запятую
+          schema:
+            type: string
+            example: "5,7,12"
+      responses:
+        "200":
+          description: Список найденных ресторанов (отсутствующие ID молча пропускаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RestaurantInternal"
+              example:
+                - restaurant_id: 7
+                  name: Sakura Garden
+                  status: Verified
+                  city: Москва
+                - restaurant_id: 12
+                  name: Pasta Bar
+                  status: Verified
+                  city: Москва
+        "400":
+          description: Параметр ids не передан или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "ids parameter is required"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /internal/restaurants/{id}:
     get:
       tags: [restaurant — internal]
@@ -1069,6 +1168,54 @@ paths:
   # ─────────────────────────────────────────
   # RESERVATION-SERVICE — INTERNAL
   # ─────────────────────────────────────────
+
+  /internal/tables:
+    get:
+      tags: [reservation — internal]
+      summary: Массовое получение столиков по списку ID (internal)
+      description: |
+        Batch-эндпоинт для устранения проблемы N+1 при агрегации данных.
+
+        Вызывается из:
+        - **auth-service** — обогащение списка бронирований пользователя (`GET /users/me/reservations`)
+          данными столиков (вместимость, restaurant_id) за один запрос вместо N отдельных вызовов
+        - **restaurant-service** — при формировании полного ответа с бронированиями ресторана
+
+        Пример: `GET /internal/tables?ids=15,16,17`
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID столиков через запятую
+          schema:
+            type: string
+            example: "15,16,17"
+      responses:
+        "200":
+          description: Список найденных столиков (отсутствующие ID молча пропускаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TableInternal"
+              example:
+                - table_id: 15
+                  restaurant_id: 7
+                  capacity: 4
+                - table_id: 16
+                  restaurant_id: 7
+                  capacity: 2
+        "400":
+          description: Параметр ids не передан или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "ids parameter is required"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /internal/reservations:
     get:

@@ -1073,6 +1073,224 @@ ReviewDeletedEvent:
 
 ---
 
+### 6.7 Batch internal-эндпоинты (массовое получение сущностей)
+
+В микросервисной архитектуре агрегирующие эндпоинты часто собирают данные из нескольких сервисов. Если в ответе нужно обогатить список объектов данными из другого сервиса (например, добавить имя пользователя к каждому бронированию), вызов `GET /internal/users/{id}` отдельно для каждого элемента порождает **проблему N+1**: при 20 бронированиях — 20 HTTP-запросов между сервисами.
+
+**Решение** — batch-эндпоинты: один запрос с набором ID возвращает все объекты сразу.
+
+---
+
+#### `GET /internal/users?ids={id1,id2,...}` — auth-service
+
+Вызывается из:
+- `restaurant-service` — обогащение бронирований (`GET /restaurants/:id/reservations`) именами пользователей
+- `restaurant-service` — обогащение отзывов (`GET /restaurants/:id/reviews`) данными авторов
+- `restaurant-service` — обогащение персонала (`GET /restaurants/:id/staff`) профилями сотрудников
+
+**Запрос:**
+
+```
+GET /internal/users?ids=1,5,42
+```
+
+**Ответ:**
+
+```json
+[
+  { "user_id": 1,  "email": "alice@example.com", "role": "User" },
+  { "user_id": 5,  "email": "bob@example.com",   "role": "Manager" },
+  { "user_id": 42, "email": "user@example.com",  "role": "Owner" }
+]
+```
+
+> Отсутствующие ID молча пропускаются — сервис возвращает только те записи, которые нашёл.
+
+**OpenAPI-схема:**
+
+```yaml
+/internal/users:
+  get:
+    summary: Массовое получение пользователей по списку ID
+    tags: [Internal]
+    parameters:
+      - name: ids
+        in: query
+        required: true
+        description: Список ID через запятую
+        schema:
+          type: string
+          example: "1,5,42"
+    responses:
+      "200":
+        description: Список найденных пользователей
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserInternal"
+      "400":
+        description: Параметр ids не передан
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Error"
+```
+
+**Возможные ошибки:**
+
+| HTTP-код | message | Причина |
+|---|---|---|
+| 400 | ids parameter is required | Параметр ids не передан |
+| 500 | Internal server error | Ошибка базы данных |
+
+---
+
+#### `GET /internal/restaurants?ids={id1,id2,...}` — restaurant-service
+
+Вызывается из:
+- `auth-service` — обогащение списка бронирований пользователя (`GET /users/me/reservations`) названиями и адресами ресторанов
+
+**Запрос:**
+
+```
+GET /internal/restaurants?ids=5,7,12
+```
+
+**Ответ:**
+
+```json
+[
+  { "restaurant_id": 5,  "name": "Pasta Bar",     "status": "Verified", "city": "Москва" },
+  { "restaurant_id": 7,  "name": "Sakura Garden", "status": "Verified", "city": "Москва" },
+  { "restaurant_id": 12, "name": "Burger House",  "status": "Verified", "city": "СПб" }
+]
+```
+
+**OpenAPI-схема:**
+
+```yaml
+/internal/restaurants:
+  get:
+    summary: Массовое получение ресторанов по списку ID
+    tags: [Internal]
+    parameters:
+      - name: ids
+        in: query
+        required: true
+        schema:
+          type: string
+          example: "5,7,12"
+    responses:
+      "200":
+        description: Список найденных ресторанов
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/RestaurantInternal"
+      "400":
+        description: Параметр ids не передан
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Error"
+```
+
+**Возможные ошибки:**
+
+| HTTP-код | message | Причина |
+|---|---|---|
+| 400 | ids parameter is required | Параметр ids не передан |
+| 500 | Internal server error | Ошибка базы данных |
+
+---
+
+#### `GET /internal/tables?ids={id1,id2,...}` — reservation-service
+
+Вызывается из:
+- `auth-service` — обогащение бронирований пользователя данными столика (вместимость, `restaurant_id`) для последующей подтяжки ресторанов batch-запросом
+
+**Запрос:**
+
+```
+GET /internal/tables?ids=15,16,17
+```
+
+**Ответ:**
+
+```json
+[
+  { "table_id": 15, "restaurant_id": 7,  "capacity": 4 },
+  { "table_id": 16, "restaurant_id": 7,  "capacity": 2 },
+  { "table_id": 17, "restaurant_id": 12, "capacity": 6 }
+]
+```
+
+**OpenAPI-схема:**
+
+```yaml
+/internal/tables:
+  get:
+    summary: Массовое получение столиков по списку ID
+    tags: [Internal]
+    parameters:
+      - name: ids
+        in: query
+        required: true
+        schema:
+          type: string
+          example: "15,16,17"
+    responses:
+      "200":
+        description: Список найденных столиков
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/TableInternal"
+      "400":
+        description: Параметр ids не передан
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Error"
+```
+
+**Возможные ошибки:**
+
+| HTTP-код | message | Причина |
+|---|---|---|
+| 400 | ids parameter is required | Параметр ids не передан |
+| 500 | Internal server error | Ошибка базы данных |
+
+---
+
+#### Пример цепочки batch-вызовов: `GET /users/me/reservations`
+
+Без batch-эндпоинтов при N бронированиях — **2N + 1 запрос** между сервисами. С batch — **всегда 3 запроса**:
+
+```
+1. auth-service → reservation-service
+   GET /internal/reservations?user_id=42
+   ← [{ reservation_id: 101, table_id: 15 }, { reservation_id: 102, table_id: 16 }, ...]
+
+2. auth-service → reservation-service  (batch)
+   GET /internal/tables?ids=15,16
+   ← [{ table_id: 15, restaurant_id: 7 }, { table_id: 16, restaurant_id: 7 }]
+
+3. auth-service → restaurant-service  (batch)
+   GET /internal/restaurants?ids=7
+   ← [{ restaurant_id: 7, name: "Sakura Garden", city: "Москва" }]
+```
+
+Итоговый ответ клиенту содержит полные данные: бронирование + столик + ресторан — без единого избыточного запроса.
+
+---
+
 ## 7. Пошаговый план декомпозиции
 
 ### Шаг 1 — Выделение auth-service
