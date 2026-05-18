@@ -1,0 +1,1255 @@
+openapi: 3.0.3
+info:
+  title: Job Search API
+  version: 1.0.0
+  description: API для сайта поиска работы с ролями "соискатель" и "работодатель"
+
+servers:
+  - url: http://localhost:8000/api/v1
+
+tags:
+  - name: Auth
+    description: Регистрация и вход
+  - name: Seeker Profile
+    description: Профиль и резюме соискателя
+  - name: Employer Profile
+    description: Профиль работодателя
+  - name: Reference Data
+    description: Справочники опыта работы и отраслей
+  - name: Vacancies
+    description: Работа с вакансиями
+  - name: Responses
+    description: Работа с откликами
+
+components:
+  schemas:
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required:
+        - message
+        - errors
+
+    SimpleError:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Объект не найден
+      required:
+        - message
+
+    RegisterSeekerRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        phone:
+          type: string
+        first_name:
+          type: string
+        surname:
+          type: string
+        middle_name:
+          type: string
+          nullable: true
+        birth_date:
+          type: string
+          format: date
+        city:
+          type: string
+      required:
+        - email
+        - password
+        - phone
+        - first_name
+        - surname
+        - birth_date
+        - city
+
+    RegisterSeekerResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Соискатель успешно зарегистрирован
+        user_id:
+          type: integer
+        role:
+          type: string
+          enum: [seeker]
+        profile_id:
+          type: integer
+        resume_id:
+          type: integer
+      required:
+        - message
+        - user_id
+        - role
+        - profile_id
+        - resume_id
+
+    RegisterEmployerRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        phone:
+          type: string
+        company_name:
+          type: string
+        company_website:
+          type: string
+          nullable: true
+      required:
+        - email
+        - password
+        - phone
+        - company_name
+
+    RegisterEmployerResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Работодатель успешно зарегистрирован
+        user_id:
+          type: integer
+        role:
+          type: string
+          enum: [employer]
+        profile_id:
+          type: integer
+      required:
+        - message
+        - user_id
+        - role
+        - profile_id
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Вход выполнен успешно
+        user_id:
+          type: integer
+        role:
+          type: string
+          enum: [seeker, employer]
+        profile_id:
+          type: integer
+      required:
+        - message
+        - user_id
+        - role
+        - profile_id
+
+    Resume:
+      type: object
+      properties:
+        resume_id:
+          type: integer
+        seeker_id:
+          type: integer
+        title:
+          type: string
+          example: Junior Python Developer
+        education:
+          type: string
+          example: ИТМО, программная инженерия
+        about_me:
+          type: string
+          example: Начинающий backend-разработчик
+      required:
+        - resume_id
+        - seeker_id
+        - title
+        - education
+        - about_me
+
+    UpdateResumeRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Junior Python Developer
+        education:
+          type: string
+          example: ИТМО, программная инженерия
+        about_me:
+          type: string
+          example: Начинающий backend-разработчик
+
+
+    SeekerProfile:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        profile_id:
+          type: integer
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [seeker]
+        first_name:
+          type: string
+        surname:
+          type: string
+        middle_name:
+          type: string
+          nullable: true
+        birth_date:
+          type: string
+          format: date
+        city:
+          type: string
+        resume:
+          $ref: '#/components/schemas/Resume'
+      required:
+        - user_id
+        - profile_id
+        - email
+        - phone
+        - role
+        - first_name
+        - surname
+        - birth_date
+        - city
+        - resume
+
+    UpdateSeekerProfileRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        first_name:
+          type: string
+        surname:
+          type: string
+        middle_name:
+          type: string
+          nullable: true
+        birth_date:
+          type: string
+          format: date
+        city:
+          type: string
+
+    EmployerProfile:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        profile_id:
+          type: integer
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [employer]
+        company_name:
+          type: string
+        company_website:
+          type: string
+          nullable: true
+      required:
+        - user_id
+        - profile_id
+        - email
+        - phone
+        - role
+        - company_name
+
+    UpdateEmployerProfileRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        company_name:
+          type: string
+        company_website:
+          type: string
+          nullable: true
+
+    ExperienceOption:
+      type: object
+      properties:
+        experience_id:
+          type: integer
+        period:
+          type: string
+          example: 1-3 года
+      required:
+        - experience_id
+        - period
+
+    IndustryOption:
+      type: object
+      properties:
+        industry_id:
+          type: integer
+        name:
+          type: string
+          example: Информационные технологии
+      required:
+        - industry_id
+        - name
+
+    VacancyCreateRequest:
+      type: object
+      properties:
+        experience_id:
+          type: integer
+        industry_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        requirements:
+          type: string
+        salary:
+          type: integer
+          minimum: 0
+        city:
+          type: string
+      required:
+        - experience_id
+        - industry_id
+        - title
+        - description
+        - requirements
+        - salary
+        - city
+
+    VacancyUpdateRequest:
+      type: object
+      properties:
+        experience_id:
+          type: integer
+        industry_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        requirements:
+          type: string
+        salary:
+          type: integer
+          minimum: 0
+        city:
+          type: string
+
+    VacancyShort:
+      type: object
+      properties:
+        vacancy_id:
+          type: integer
+        employer_id:
+          type: integer
+        title:
+          type: string
+        salary:
+          type: integer
+        city:
+          type: string
+        experience_id:
+          type: integer
+        experience:
+          type: string
+        industry_id:
+          type: integer
+        industry:
+          type: string
+      required:
+        - vacancy_id
+        - employer_id
+        - title
+        - salary
+        - city
+        - experience_id
+        - experience
+        - industry_id
+        - industry
+
+    VacancyDetail:
+      type: object
+      properties:
+        vacancy_id:
+          type: integer
+        employer_id:
+          type: integer
+        company_name:
+          type: string
+        experience_id:
+          type: integer
+        experience:
+          type: string
+        industry_id:
+          type: integer
+        industry:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        requirements:
+          type: string
+        salary:
+          type: integer
+        city:
+          type: string
+      required:
+        - vacancy_id
+        - employer_id
+        - company_name
+        - experience_id
+        - experience
+        - industry_id
+        - industry
+        - title
+        - description
+        - requirements
+        - salary
+        - city
+
+    CreateResponseRequest:
+      type: object
+      properties:
+        seeker_id:
+          type: integer
+        resume_id:
+          type: integer
+      required:
+        - seeker_id
+        - resume_id
+
+    ResponseCreated:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Отклик успешно отправлен
+        response_id:
+          type: integer
+        vacancy_id:
+          type: integer
+        resume_id:
+          type: integer
+        status:
+          type: string
+          example: new
+        created_at:
+          type: string
+          format: date
+      required:
+        - message
+        - response_id
+        - vacancy_id
+        - resume_id
+        - status
+        - created_at
+
+    EmployerResponseShort:
+      type: object
+      properties:
+        response_id:
+          type: integer
+        vacancy_id:
+          type: integer
+        vacancy_title:
+          type: string
+        seeker_id:
+          type: integer
+        seeker_full_name:
+          type: string
+        resume_id:
+          type: integer
+        resume_title:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date
+      required:
+        - response_id
+        - vacancy_id
+        - vacancy_title
+        - seeker_id
+        - seeker_full_name
+        - resume_id
+        - resume_title
+        - status
+        - created_at
+
+    EmployerResponseDetail:
+      type: object
+      properties:
+        response_id:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date
+        vacancy:
+          type: object
+          properties:
+            vacancy_id:
+              type: integer
+            title:
+              type: string
+            city:
+              type: string
+            salary:
+              type: integer
+          required:
+            - vacancy_id
+            - title
+            - city
+            - salary
+        seeker:
+          type: object
+          properties:
+            profile_id:
+              type: integer
+            first_name:
+              type: string
+            surname:
+              type: string
+            middle_name:
+              type: string
+              nullable: true
+            birth_date:
+              type: string
+              format: date
+            city:
+              type: string
+            email:
+              type: string
+              format: email
+            phone:
+              type: string
+          required:
+            - profile_id
+            - first_name
+            - surname
+            - birth_date
+            - city
+            - email
+            - phone
+        resume:
+          $ref: '#/components/schemas/Resume'
+      required:
+        - response_id
+        - status
+        - created_at
+        - vacancy
+        - seeker
+        - resume
+
+paths:
+  /auth/register/seeker:
+    post:
+      tags:
+        - Auth
+      summary: Регистрация соискателя
+      description: Создаёт пользователя, профиль соискателя и пустое резюме
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterSeekerRequest'
+      responses:
+        '201':
+          description: Соискатель успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterSeekerResponse'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                message: Ошибка валидации
+                errors:
+                  email:
+                    - Это поле обязательно
+                  password:
+                    - Пароль должен содержать минимум ... символов
+
+        '409':
+          description: Email уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                message: Ошибка валидации
+                errors:
+                  email:
+                    - Пользователь с таким email уже существует
+
+  /auth/register/employer:
+    post:
+      tags:
+        - Auth
+      summary: Регистрация работодателя
+      description: Создаёт пользователя и профиль работодателя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterEmployerRequest'
+      responses:
+        '201':
+          description: Работодатель успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterEmployerResponse'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                message: Ошибка валидации
+                errors:
+                  email:
+                    - Это поле обязательно
+                  password:
+                    - Пароль должен содержать минимум ... символов
+
+        '409':
+          description: Email уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                message: Ошибка валидации
+                errors:
+                  email:
+                    - Пользователь с таким email уже существует
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Вход в систему
+      description: Проверяет email и пароль пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Вход выполнен успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /seekers/{user_id}/profile:
+    get:
+      tags:
+        - Seeker Profile
+      summary: Получить профиль соискателя
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные профиля соискателя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeekerProfile'
+        '404':
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+    patch:
+      tags:
+        - Seeker Profile
+      summary: Обновить профиль соискателя
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSeekerProfileRequest'
+      responses:
+        '200':
+          description: Профиль успешно обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeekerProfile'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /seekers/{user_id}/resume:
+    get:
+      tags:
+        - Seeker Profile
+      summary: Получить резюме соискателя
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Резюме соискателя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '404':
+          description: Резюме не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+    patch:
+      tags:
+        - Seeker Profile
+      summary: Обновить резюме соискателя
+      description: Частично обновляет данные резюме соискателя
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateResumeRequest'
+      responses:
+        '200':
+          description: Резюме успешно сохранено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Соискатель не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /employers/{user_id}/profile:
+    get:
+      tags:
+        - Employer Profile
+      summary: Получить профиль работодателя
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные профиля работодателя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '404':
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+    patch:
+      tags:
+        - Employer Profile
+      summary: Обновить профиль работодателя
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmployerProfileRequest'
+      responses:
+        '200':
+          description: Профиль успешно обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /reference/experiences:
+    get:
+      tags:
+        - Reference Data
+      summary: Получить список вариантов опыта работы
+      description: Используется для выпадающего списка при создании вакансии
+      responses:
+        '200':
+          description: Список вариантов опыта работы
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExperienceOption'
+
+  /reference/industries:
+    get:
+      tags:
+        - Reference Data
+      summary: Получить список отраслей
+      description: Используется для выпадающего списка при создании вакансии
+      responses:
+        '200':
+          description: Список отраслей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndustryOption'
+
+  /vacancies:
+    get:
+      tags:
+        - Vacancies
+      summary: Получить список вакансий
+      description: Поддерживает поиск и фильтрацию
+      parameters:
+        - name: search
+          in: query
+          required: false
+          description: Поиск по названию, описанию и требованиям
+          schema:
+            type: string
+        - name: salary_from
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: salary_to
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: experience_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: industry_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: city
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список вакансий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VacancyShort'
+        '400':
+          description: Некорректные параметры фильтрации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /vacancies/{vacancy_id}:
+    get:
+      tags:
+        - Vacancies
+      summary: Получить детали вакансии
+      parameters:
+        - name: vacancy_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Детальная информация о вакансии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyDetail'
+        '404':
+          description: Вакансия не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /employers/{employer_id}/vacancies:
+    get:
+      tags:
+        - Vacancies
+      summary: Получить вакансии работодателя
+      parameters:
+        - name: employer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список вакансий работодателя
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VacancyShort'
+        '404':
+          description: Работодатель не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+    post:
+      tags:
+        - Vacancies
+      summary: Создать вакансию
+      parameters:
+        - name: employer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancyCreateRequest'
+      responses:
+        '201':
+          description: Вакансия успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyDetail'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Работодатель, опыт работы или отрасль не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /employers/{employer_id}/vacancies/{vacancy_id}:
+    patch:
+      tags:
+        - Vacancies
+      summary: Обновить вакансию
+      parameters:
+        - name: employer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: vacancy_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancyUpdateRequest'
+      responses:
+        '200':
+          description: Вакансия успешно обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyDetail'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '403':
+          description: Нет прав на изменение вакансии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '404':
+          description: Вакансия не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+    delete:
+      tags:
+        - Vacancies
+      summary: Удалить вакансию
+      parameters:
+        - name: employer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: vacancy_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Вакансия успешно удалена
+        '403':
+          description: Нет прав на удаление вакансии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '404':
+          description: Вакансия не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /vacancies/{vacancy_id}/responses:
+    post:
+      tags:
+        - Responses
+      summary: Откликнуться на вакансию
+      description: Соискатель отправляет отклик на вакансию со своим резюме
+      parameters:
+        - name: vacancy_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponseRequest'
+      responses:
+        '201':
+          description: Отклик успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseCreated'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Вакансия или резюме не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '409':
+          description: Отклик на эту вакансию уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /employers/{employer_id}/responses:
+    get:
+      tags:
+        - Responses
+      summary: Получить отклики на вакансии работодателя
+      parameters:
+        - name: employer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: vacancy_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список откликов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployerResponseShort'
+        '404':
+          description: Работодатель не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+
+  /responses/{response_id}:
+    get:
+      tags:
+        - Responses
+      summary: Получить подробную информацию об отклике
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Подробная информация об отклике
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerResponseDetail'
+        '404':
+          description: Отклик не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
