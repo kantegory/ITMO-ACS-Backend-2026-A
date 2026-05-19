@@ -1,0 +1,161 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rental_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rental
+      POSTGRES_PASSWORD: rental
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rental"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rental_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rental
+      RABBITMQ_DEFAULT_PASS: rental
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  identity-service:
+    build: ./services/identity-service
+    container_name: rental_identity
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: rental
+      DB_PASSWORD: rental
+      DB_NAME: identity
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-internal-shared-token}
+      RABBITMQ_URL: amqp://rental:rental@rabbitmq:5672
+    ports:
+      - "3001:3001"
+
+  property-service:
+    build: ./services/property-service
+    container_name: rental_property
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: rental
+      DB_PASSWORD: rental
+      DB_NAME: property
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-internal-shared-token}
+      RABBITMQ_URL: amqp://rental:rental@rabbitmq:5672
+    ports:
+      - "3002:3002"
+
+  rental-service:
+    build: ./services/rental-service
+    container_name: rental_rental
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+    environment:
+      PORT: 3003
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: rental
+      DB_PASSWORD: rental
+      DB_NAME: rental
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-internal-shared-token}
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      PROPERTY_SERVICE_URL: http://property-service:3002
+      RABBITMQ_URL: amqp://rental:rental@rabbitmq:5672
+    ports:
+      - "3003:3003"
+
+  messaging-service:
+    build: ./services/messaging-service
+    container_name: rental_messaging
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rental-service:
+        condition: service_started
+      identity-service:
+        condition: service_started
+    environment:
+      PORT: 3004
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: rental
+      DB_PASSWORD: rental
+      DB_NAME: messaging
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-internal-shared-token}
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      RENTAL_SERVICE_URL: http://rental-service:3003
+      RABBITMQ_URL: amqp://rental:rental@rabbitmq:5672
+    ports:
+      - "3004:3004"
+
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: rental_gateway
+    restart: unless-stopped
+    depends_on:
+      identity-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+      rental-service:
+        condition: service_started
+      messaging-service:
+        condition: service_started
+    environment:
+      PORT: 8080
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      PROPERTY_SERVICE_URL: http://property-service:3002
+      RENTAL_SERVICE_URL: http://rental-service:3003
+      MESSAGING_SERVICE_URL: http://messaging-service:3004
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
