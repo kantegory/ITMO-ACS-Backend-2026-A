@@ -1,70 +1,17 @@
 services:
-  user-db:
+  postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: user_service
+      POSTGRES_DB: fitness
       POSTGRES_USER: ${DB_USERNAME:-fitness}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
     ports:
       - "15433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  media-db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: media_service
-      POSTGRES_USER: ${DB_USERNAME:-fitness}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
-    ports:
-      - "15434:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  blog-db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: blog_service
-      POSTGRES_USER: ${DB_USERNAME:-fitness}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
-    ports:
-      - "15435:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  training-db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: training_service
-      POSTGRES_USER: ${DB_USERNAME:-fitness}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
-    ports:
-      - "15436:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  progress-db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: progress_service
-      POSTGRES_USER: ${DB_USERNAME:-fitness}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitness}
-    ports:
-      - "15437:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d fitness"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -89,16 +36,16 @@ services:
       args:
         SERVICE: user-service
     environment:
-      USER_SERVICE_DB_URL: jdbc:postgresql://user-db:5432/user_service
+      USER_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/user_service
       DB_USERNAME: ${DB_USERNAME:-fitness}
       DB_PASSWORD: ${DB_PASSWORD:-fitness}
       JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
       REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
       REFRESH_TTL: ${REFRESH_TTL:-30d}
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     depends_on:
-      user-db:
+      postgres:
         condition: service_healthy
 
   media-service:
@@ -107,7 +54,7 @@ services:
       args:
         SERVICE: media-service
     environment:
-      MEDIA_SERVICE_DB_URL: jdbc:postgresql://media-db:5432/media_service
+      MEDIA_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/media_service
       DB_USERNAME: ${DB_USERNAME:-fitness}
       DB_PASSWORD: ${DB_PASSWORD:-fitness}
       JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
@@ -116,9 +63,9 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080"
     depends_on:
-      media-db:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -129,7 +76,7 @@ services:
       args:
         SERVICE: training-service
     environment:
-      TRAINING_SERVICE_DB_URL: jdbc:postgresql://training-db:5432/training_service
+      TRAINING_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/training_service
       MEDIA_SERVICE_BASE_URL: http://media-service:8080/api/v1
       DB_USERNAME: ${DB_USERNAME:-fitness}
       DB_PASSWORD: ${DB_PASSWORD:-fitness}
@@ -139,9 +86,9 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
     ports:
-      - "8083:8080"
+      - "127.0.0.1:8083:8080"
     depends_on:
-      training-db:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -154,7 +101,7 @@ services:
       args:
         SERVICE: blog-service
     environment:
-      BLOG_SERVICE_DB_URL: jdbc:postgresql://blog-db:5432/blog_service
+      BLOG_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/blog_service
       MEDIA_SERVICE_BASE_URL: http://media-service:8080/api/v1
       DB_USERNAME: ${DB_USERNAME:-fitness}
       DB_PASSWORD: ${DB_PASSWORD:-fitness}
@@ -164,9 +111,9 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
     ports:
-      - "8084:8080"
+      - "127.0.0.1:8084:8080"
     depends_on:
-      blog-db:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -179,7 +126,7 @@ services:
       args:
         SERVICE: progress-service
     environment:
-      PROGRESS_SERVICE_DB_URL: jdbc:postgresql://progress-db:5432/progress_service
+      PROGRESS_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/progress_service
       TRAINING_SERVICE_BASE_URL: http://training-service:8080/api/v1
       DB_USERNAME: ${DB_USERNAME:-fitness}
       DB_PASSWORD: ${DB_PASSWORD:-fitness}
@@ -189,11 +136,39 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
     ports:
-      - "8085:8080"
+      - "127.0.0.1:8085:8080"
     depends_on:
-      progress-db:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
       training-service:
         condition: service_started
+
+  user-training-interaction-service:
+    build:
+      context: .
+      args:
+        SERVICE: user-training-interaction-service
+    environment:
+      USER_TRAINING_INTERACTION_SERVICE_DB_URL: jdbc:postgresql://postgres:5432/user_training_interaction_service
+      TRAINING_SERVICE_BASE_URL: http://training-service:8080/api/v1
+      DB_USERNAME: ${DB_USERNAME:-fitness}
+      DB_PASSWORD: ${DB_PASSWORD:-fitness}
+      JWT_SECRET: ${JWT_SECRET:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      REFRESH_PEPPER: ${REFRESH_PEPPER:-dev-refresh-pepper}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-fitness}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-fitness}
+    ports:
+      - "127.0.0.1:8086:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      training-service:
+        condition: service_started
+
+volumes:
+  postgres-data:
