@@ -1,0 +1,38 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from "typeorm";
+import { User } from "./User";
+
+@Entity("candidate_profiles")
+export class CandidateProfile {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Column({ name: "user_id", type: "uuid", unique: true })
+  userId!: string;
+
+  @OneToOne(() => User, (u) => u.candidateProfile, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "user_id" })
+  user!: User;
+
+  @Column({ type: "text", nullable: true })
+  city!: string | null;
+
+  @Column({ type: "text", nullable: true })
+  phone!: string | null;
+
+  @Column({ type: "text", nullable: true })
+  about!: string | null;
+
+  @CreateDateColumn({ name: "created_at", type: "timestamptz" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
+  updatedAt!: Date;
+}

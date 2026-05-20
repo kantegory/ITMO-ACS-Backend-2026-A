@@ -1,0 +1,570 @@
+openapi: 3.0.3
+info:
+  title: Vacancies API
+  description: REST API для сайта поиска работы (Express + TypeORM)
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local
+
+tags:
+  - name: auth
+  - name: profile
+  - name: vacancies
+  - name: employer
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Вход
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Обновить access token
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Выход
+      responses:
+        "204":
+          description: No Content
+
+  /api/v1/me:
+    get:
+      tags: [profile]
+      summary: Текущий пользователь
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/me/profile:
+    put:
+      tags: [profile]
+      summary: Профиль кандидата
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandidateProfileRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateProfile"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/me/resumes:
+    get:
+      tags: [profile]
+      summary: Список резюме
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Resume"
+    post:
+      tags: [profile]
+      summary: Создать резюме
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resume"
+
+  /api/v1/me/resumes/{id}:
+    put:
+      tags: [profile]
+      summary: Обновить резюме
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resume"
+    delete:
+      tags: [profile]
+      summary: Удалить резюме
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "204":
+          description: No Content
+
+  /api/v1/vacancies:
+    get:
+      tags: [vacancies]
+      summary: Поиск опубликованных вакансий
+      parameters:
+        - name: industry
+          in: query
+          schema:
+            type: string
+        - name: salary_from
+          in: query
+          schema:
+            type: integer
+        - name: salary_to
+          in: query
+          schema:
+            type: integer
+        - name: experience_level
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExperienceLevel"
+        - name: location
+          in: query
+          schema:
+            type: string
+        - name: employment_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/EmploymentType"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Vacancy"
+
+  /api/v1/vacancies/{id}:
+    get:
+      tags: [vacancies]
+      summary: Детали вакансии и компании
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VacancyDetails"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/employer/company:
+    put:
+      tags: [employer]
+      summary: Создать или обновить компанию
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Company"
+
+  /api/v1/employer/vacancies:
+    get:
+      tags: [employer]
+      summary: Вакансии работодателя
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Vacancy"
+    post:
+      tags: [employer]
+      summary: Создать вакансию
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VacancyRequest"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vacancy"
+
+  /api/v1/employer/vacancies/{id}:
+    put:
+      tags: [employer]
+      summary: Обновить вакансию
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VacancyRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vacancy"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UuidPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    UserRole:
+      type: string
+      enum: [candidate, employer, admin]
+
+    ExperienceLevel:
+      type: string
+      enum: [no_experience, junior, middle, senior, lead]
+
+    EmploymentType:
+      type: string
+      enum: [full_time, part_time, contract, internship, remote]
+
+    VacancyStatus:
+      type: string
+      enum: [draft, published, archived]
+
+    RegisterRequest:
+      type: object
+      required: [email, password, full_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        full_name:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        full_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CandidateProfileRequest:
+      type: object
+      properties:
+        city:
+          type: string
+        phone:
+          type: string
+        about:
+          type: string
+
+    CandidateProfile:
+      allOf:
+        - $ref: "#/components/schemas/CandidateProfileRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            user_id:
+              type: string
+              format: uuid
+            updated_at:
+              type: string
+              format: date-time
+
+    ResumeRequest:
+      type: object
+      required: [title, experience_level]
+      properties:
+        title:
+          type: string
+        summary:
+          type: string
+        experience_level:
+          $ref: "#/components/schemas/ExperienceLevel"
+        skills:
+          type: array
+          items:
+            type: string
+
+    Resume:
+      allOf:
+        - $ref: "#/components/schemas/ResumeRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            updated_at:
+              type: string
+              format: date-time
+
+    CompanyRequest:
+      type: object
+      required: [name, industry]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        website:
+          type: string
+        industry:
+          type: string
+
+    Company:
+      allOf:
+        - $ref: "#/components/schemas/CompanyRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    VacancyRequest:
+      type: object
+      required: [title, description, requirements, industry, experience_level, employment_type]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        requirements:
+          type: string
+        industry:
+          type: string
+        salary_from:
+          type: integer
+        salary_to:
+          type: integer
+        experience_level:
+          $ref: "#/components/schemas/ExperienceLevel"
+        location:
+          type: string
+        employment_type:
+          $ref: "#/components/schemas/EmploymentType"
+        status:
+          $ref: "#/components/schemas/VacancyStatus"
+
+    Vacancy:
+      allOf:
+        - $ref: "#/components/schemas/VacancyRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            company_id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    VacancyDetails:
+      type: object
+      properties:
+        vacancy:
+          $ref: "#/components/schemas/Vacancy"
+        company:
+          $ref: "#/components/schemas/Company"
