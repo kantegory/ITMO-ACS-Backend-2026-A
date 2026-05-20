@@ -1,0 +1,700 @@
+openapi: 3.0.3
+info:
+  title: Fitness Platform API
+  version: 1.0.0
+  description: |
+    REST API для платформы фитнес-тренировок и здоровья.
+    Реализованы регистрация/авторизация, личный кабинет, поиск тренировок с
+    фильтрацией, страница тренировки, планы тренировок, трекинг прогресса
+    и блог о здоровье и питании.
+servers:
+  - url: http://localhost:3000/api
+    description: Local dev
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Workouts
+  - name: WorkoutPlans
+  - name: Progress
+  - name: Blog
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        details: {}
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        username: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        birthDate: { type: string, format: date }
+        weightKg: { type: number }
+        heightCm: { type: number }
+        fitnessLevel:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        role:
+          type: string
+          enum: [user, admin, trainer]
+        avatarUrl: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RegisterInput:
+      type: object
+      required: [email, username, password]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string }
+        password: { type: string, minLength: 8 }
+        firstName: { type: string }
+        lastName: { type: string }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    Workout:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        instructions: { type: string }
+        videoUrl: { type: string }
+        thumbnailUrl: { type: string }
+        type:
+          type: string
+          enum: [cardio, strength, yoga, stretching, hiit, mixed]
+        level:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        durationMinutes: { type: integer }
+        caloriesBurned: { type: integer }
+        equipment:
+          type: array
+          items: { type: string }
+        muscleGroups:
+          type: array
+          items: { type: string }
+        category: { $ref: "#/components/schemas/WorkoutCategory" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    WorkoutCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        iconUrl: { type: string }
+    WorkoutPlan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        isActive: { type: boolean }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PlanItem" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PlanItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workout: { $ref: "#/components/schemas/Workout" }
+        dayOffset: { type: integer }
+        orderIndex: { type: integer }
+        completed: { type: boolean }
+        notes: { type: string }
+    ProgressEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        durationMinutes: { type: integer }
+        caloriesBurned: { type: integer }
+        weightKg: { type: number }
+        rating: { type: integer }
+        notes: { type: string }
+        performedAt: { type: string, format: date-time }
+        workout: { $ref: "#/components/schemas/Workout" }
+        createdAt: { type: string, format: date-time }
+    BlogPost:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        summary: { type: string }
+        content: { type: string }
+        coverImageUrl: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        published: { type: boolean }
+        author: { $ref: "#/components/schemas/User" }
+        category: { $ref: "#/components/schemas/BlogCategory" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    BlogCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+    BlogComment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        content: { type: string }
+        author: { $ref: "#/components/schemas/User" }
+        createdAt: { type: string, format: date-time }
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+paths:
+  /health:
+    get:
+      tags: [Auth]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "409": { description: Conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление токенов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Личный кабинет — профиль
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Users]
+      summary: Обновить профиль
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/User" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    delete:
+      tags: [Users]
+      summary: Удалить аккаунт
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: No content }
+
+  /workouts:
+    get:
+      tags: [Workouts]
+      summary: Поиск тренировок с фильтрацией
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string, enum: [cardio, strength, yoga, stretching, hiit, mixed] }
+        - in: query
+          name: level
+          schema: { type: string, enum: [beginner, intermediate, advanced] }
+        - in: query
+          name: minDuration
+          schema: { type: integer }
+        - in: query
+          name: maxDuration
+          schema: { type: integer }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagination"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/Workout" }
+    post:
+      tags: [Workouts]
+      summary: Создать тренировку (admin/trainer)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Workout" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workout" }
+
+  /workouts/{id}:
+    get:
+      tags: [Workouts]
+      summary: Страница тренировки
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workout" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Workouts]
+      summary: Обновить тренировку (admin/trainer)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Workout" }
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags: [Workouts]
+      summary: Удалить тренировку (admin/trainer)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No content }
+
+  /workouts/categories:
+    get:
+      tags: [Workouts]
+      summary: Список категорий
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WorkoutCategory" }
+    post:
+      tags: [Workouts]
+      summary: Создать категорию (admin/trainer)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201":
+          description: Created
+
+  /workout-plans:
+    get:
+      tags: [WorkoutPlans]
+      summary: Список планов пользователя
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WorkoutPlan" }
+    post:
+      tags: [WorkoutPlans]
+      summary: Создать план
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201":
+          description: Created
+
+  /workout-plans/{id}:
+    get:
+      tags: [WorkoutPlans]
+      summary: Получить план
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [WorkoutPlans]
+      summary: Обновить план
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [WorkoutPlans]
+      summary: Удалить план
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No content }
+
+  /workout-plans/{id}/items:
+    post:
+      tags: [WorkoutPlans]
+      summary: Добавить тренировку в план
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201": { description: Created }
+
+  /workout-plans/{id}/items/{itemId}:
+    delete:
+      tags: [WorkoutPlans]
+      summary: Удалить тренировку из плана
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No content }
+
+  /workout-plans/{id}/items/{itemId}/complete:
+    patch:
+      tags: [WorkoutPlans]
+      summary: Отметить тренировку выполненной/невыполненной
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+
+  /progress:
+    get:
+      tags: [Progress]
+      summary: История прогресса пользователя
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Progress]
+      summary: Записать выполненную тренировку
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Created }
+
+  /progress/stats:
+    get:
+      tags: [Progress]
+      summary: Сводная статистика
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalEntries: { type: integer }
+                  totalMinutes: { type: integer }
+                  totalCalories: { type: integer }
+                  averageRating: { type: number }
+
+  /progress/{id}:
+    delete:
+      tags: [Progress]
+      summary: Удалить запись прогресса
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No content }
+
+  /blog:
+    get:
+      tags: [Blog]
+      summary: Список постов блога
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagination"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/BlogPost" }
+    post:
+      tags: [Blog]
+      summary: Создать пост (admin/trainer)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Created }
+
+  /blog/{id}:
+    get:
+      tags: [Blog]
+      summary: Получить пост по id или slug
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlogPost" }
+    patch:
+      tags: [Blog]
+      summary: Обновить пост
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [Blog]
+      summary: Удалить пост
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No content }
+
+  /blog/{id}/comments:
+    get:
+      tags: [Blog]
+      summary: Список комментариев к посту
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BlogComment" }
+    post:
+      tags: [Blog]
+      summary: Добавить комментарий
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201": { description: Created }
+
+  /blog/comments/{commentId}:
+    delete:
+      tags: [Blog]
+      summary: Удалить комментарий
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: commentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No content }
