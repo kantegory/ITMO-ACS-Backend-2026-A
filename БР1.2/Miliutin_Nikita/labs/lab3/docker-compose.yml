@@ -1,0 +1,101 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - restaurant-network
+
+  auth:
+    build:
+      context: .
+      dockerfile: src/services/auth/Dockerfile
+    environment:
+      PORT: 4001
+    networks:
+      - restaurant-network
+
+  restaurants:
+    build:
+      context: .
+      dockerfile: src/services/restaurants/Dockerfile
+    environment:
+      PORT: 4002
+    networks:
+      - restaurant-network
+
+  tables:
+    build:
+      context: .
+      dockerfile: src/services/tables/Dockerfile
+    environment:
+      PORT: 4003
+    networks:
+      - restaurant-network
+
+  reservations:
+    build:
+      context: .
+      dockerfile: src/services/reservations/Dockerfile
+    environment:
+      PORT: 4004
+      RESTAURANT_SERVICE_URL: http://restaurants:4002
+      TABLE_SERVICE_URL: http://tables:4003
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      restaurants:
+        condition: service_started
+      tables:
+        condition: service_started
+    networks:
+      - restaurant-network
+
+  notifications:
+    build:
+      context: .
+      dockerfile: src/services/notifications/Dockerfile
+    environment:
+      PORT: 4005
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - restaurant-network
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/gateway/Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      PORT: 3003
+      AUTH_SERVICE_URL: http://auth:4001
+      RESTAURANT_SERVICE_URL: http://restaurants:4002
+      TABLE_SERVICE_URL: http://tables:4003
+      RESERVATION_SERVICE_URL: http://reservations:4004
+      NOTIFICATION_SERVICE_URL: http://notifications:4005
+    depends_on:
+      - auth
+      - restaurants
+      - tables
+      - reservations
+      - notifications
+    networks:
+      - restaurant-network
+
+networks:
+  restaurant-network:
+    driver: bridge

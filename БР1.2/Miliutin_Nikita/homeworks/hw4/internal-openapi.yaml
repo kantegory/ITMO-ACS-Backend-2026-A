@@ -1,0 +1,287 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking Internal Microservices API
+  version: 1.0.0
+  description: Internal REST contracts for splitting the restaurant booking monolith into microservices.
+servers:
+  - url: http://localhost
+tags:
+  - name: Auth Service
+  - name: Restaurant Service
+  - name: Table Service
+  - name: Reservation Service
+paths:
+  /auth/internal/users/{userId}:
+    get:
+      tags: [Auth Service]
+      summary: Get user by id for internal service calls
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: User exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /restaurants/internal/restaurants/{restaurantId}:
+    get:
+      tags: [Restaurant Service]
+      summary: Get restaurant summary for validation
+      parameters:
+        - $ref: "#/components/parameters/RestaurantId"
+      responses:
+        "200":
+          description: Restaurant exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestaurantSummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /tables/internal/restaurants/{restaurantId}/tables/{tableId}:
+    get:
+      tags: [Table Service]
+      summary: Validate table by restaurant and id
+      parameters:
+        - $ref: "#/components/parameters/RestaurantId"
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          description: Table exists and belongs to the restaurant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /reservations/internal/tables/{tableId}/availability:
+    get:
+      tags: [Reservation Service]
+      summary: Check table availability for a datetime
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+        - name: reservation_datetime
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Availability check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    example: true
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /reservations:
+    post:
+      tags: [Reservation Service]
+      summary: Create reservation through gateway
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservationRequest"
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateReservationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema:
+        type: integer
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema:
+        type: integer
+  schemas:
+    User:
+      type: object
+      required: [id, full_name, email]
+      properties:
+        id:
+          type: integer
+          example: 1
+        full_name:
+          type: string
+          example: Иван Иванов
+        email:
+          type: string
+          example: ivan@example.com
+        phone:
+          type: string
+          nullable: true
+    RestaurantSummary:
+      type: object
+      required: [id, name, city, price_category]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Bella Pasta
+        city:
+          type: string
+          example: Санкт-Петербург
+        price_category:
+          type: string
+          enum: [low, medium, high]
+          example: medium
+    Table:
+      type: object
+      required: [id, restaurant_id, capacity, is_active]
+      properties:
+        id:
+          type: integer
+          example: 2
+        restaurant_id:
+          type: integer
+          example: 1
+        capacity:
+          type: integer
+          example: 4
+        is_active:
+          type: boolean
+          example: true
+    CreateReservationRequest:
+      type: object
+      required: [restaurant_id, table_id, reservation_datetime, guest_count]
+      properties:
+        restaurant_id:
+          type: integer
+          example: 1
+        table_id:
+          type: integer
+          example: 2
+        reservation_datetime:
+          type: string
+          format: date-time
+          example: "2026-04-05T19:00:00.000Z"
+        guest_count:
+          type: integer
+          example: 4
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 10
+        user_id:
+          type: integer
+          example: 1
+        restaurant_id:
+          type: integer
+          example: 1
+        table_id:
+          type: integer
+          example: 2
+        reservation_datetime:
+          type: string
+          format: date-time
+        guest_count:
+          type: integer
+        status:
+          type: string
+          enum: [confirmed, cancelled]
+    CreateReservationResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Бронирование создано
+        reservation:
+          $ref: "#/components/schemas/Reservation"
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              example: 404
+            message:
+              type: string
+              example: Ресурс не найден
+  responses:
+    BadRequest:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Business conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: Dependent service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
