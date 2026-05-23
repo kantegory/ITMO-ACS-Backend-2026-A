@@ -8,30 +8,12 @@ import {
     UseBefore,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
-import { IsOptional, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
 import { Table } from '../models/table.entity';
 import authMiddleware from '../middlewares/auth.middleware';
-
-class CreateTableDto {
-    @IsNumber()
-    @Type(() => Number)
-    restaurant_id!: number;
-
-    @IsNumber()
-    @Type(() => Number)
-    capacity!: number;
-}
-
-class UpdateTableDto {
-    @IsOptional()
-    @IsNumber()
-    @Type(() => Number)
-    capacity?: number;
-}
+import { CreateTableDto, UpdateTableDto } from '../dto/table.dto';
 
 @EntityController({
     baseRoute: '/tables',

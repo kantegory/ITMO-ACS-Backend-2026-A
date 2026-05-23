@@ -6,8 +6,6 @@ import {
     Req,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
-import { IsOptional, IsString } from 'class-validator';
-import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -15,28 +13,7 @@ import { User } from '../models/user.entity';
 import { Reservation } from '../models/reservation.entity';
 import authMiddleware, { RequestWithUser } from '../middlewares/auth.middleware';
 import dataSource from '../config/data-source';
-
-class UpdateUserDto {
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    first_name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    middle_name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    last_name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    phone?: string;
-}
+import { UpdateUserDto } from '../dto/user.dto';
 
 @EntityController({
     baseRoute: '/users',

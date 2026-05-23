@@ -1,7 +1,5 @@
 import { Body, Post, HttpCode } from 'routing-controllers';
 import { OpenAPI, ResponseSchema } from 'routing-controllers-openapi';
-import { IsString, IsEmail, IsOptional } from 'class-validator';
-import { Type } from 'class-transformer';
 import jwt from 'jsonwebtoken';
 
 import SETTINGS from '../config/settings';
@@ -13,58 +11,7 @@ import { RoleName } from '../common/enums';
 import checkPassword from '../utils/check-password';
 import hashPassword from '../utils/hash-password';
 import dataSource from '../config/data-source';
-
-class RegisterDto {
-    @IsEmail()
-    @Type(() => String)
-    email!: string;
-
-    @IsString()
-    @Type(() => String)
-    password!: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    first_name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    middle_name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    last_name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    phone?: string;
-}
-
-class LoginDto {
-    @IsEmail()
-    @Type(() => String)
-    email!: string;
-
-    @IsString()
-    @Type(() => String)
-    password!: string;
-}
-
-class LoginResponseDto {
-    @IsString()
-    @Type(() => String)
-    accessToken!: string;
-}
-
-class ErrorResponseDto {
-    @IsString()
-    @Type(() => String)
-    message!: string;
-}
+import { RegisterDto, LoginDto, LoginResponseDto, ErrorResponseDto } from '../dto/auth.dto';
 
 @EntityController({
     baseRoute: '/auth',

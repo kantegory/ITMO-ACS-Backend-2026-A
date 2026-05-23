@@ -9,48 +9,12 @@ import {
     Req,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
-import { IsOptional, IsString, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
 import { MenuItem } from '../models/menu-item.entity';
-import authMiddleware, { RequestWithUser } from '../middlewares/auth.middleware';
-
-class CreateMenuItemDto {
-    @IsNumber()
-    @Type(() => Number)
-    menu_id!: number;
-
-    @IsString()
-    @Type(() => String)
-    name!: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    description?: string;
-
-    @IsOptional()
-    @Type(() => Number)
-    price?: number;
-}
-
-class UpdateMenuItemDto {
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    name?: string;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    description?: string;
-
-    @IsOptional()
-    @Type(() => Number)
-    price?: number;
-}
+import authMiddleware from '../middlewares/auth.middleware';
+import { CreateMenuItemDto, UpdateMenuItemDto } from '../dto/menu-item.dto';
 
 @EntityController({
     baseRoute: '/menu-items',

@@ -10,8 +10,6 @@ import {
     Req,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
-import { IsOptional, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
@@ -20,40 +18,7 @@ import { Table } from '../models/table.entity';
 import { ReservationStatus } from '../common/enums';
 import authMiddleware, { RequestWithUser } from '../middlewares/auth.middleware';
 import dataSource from '../config/data-source';
-
-class CreateReservationDto {
-    @IsNumber()
-    @Type(() => Number)
-    table_id!: number;
-
-    @Type(() => String)
-    reservation_time!: string;
-
-    @Type(() => String)
-    reservation_date!: string;
-
-    @IsNumber()
-    @Type(() => Number)
-    guest_number!: number;
-}
-
-class UpdateReservationDto {
-    @IsOptional()
-    @Type(() => String)
-    reservation_time?: string;
-
-    @IsOptional()
-    @Type(() => String)
-    reservation_date?: string;
-
-    @IsOptional()
-    @IsNumber()
-    @Type(() => Number)
-    guest_number?: number;
-
-    @IsOptional()
-    status?: ReservationStatus;
-}
+import { CreateReservationDto, UpdateReservationDto } from '../dto/reservation.dto';
 
 @EntityController({
     baseRoute: '/reservations',

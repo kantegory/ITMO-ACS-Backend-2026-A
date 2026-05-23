@@ -7,25 +7,12 @@ import {
     Req,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
-import { IsOptional, IsString, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
 
 import EntityController from '../common/entity-controller';
 import BaseController from '../common/base-controller';
 import { Review } from '../models/review.entity';
 import authMiddleware, { RequestWithUser } from '../middlewares/auth.middleware';
-
-class UpdateReviewDto {
-    @IsOptional()
-    @IsNumber()
-    @Type(() => Number)
-    rating?: number;
-
-    @IsOptional()
-    @IsString()
-    @Type(() => String)
-    comment?: string;
-}
+import { UpdateReviewDto } from '../dto/review.dto';
 
 @EntityController({
     baseRoute: '/reviews',
