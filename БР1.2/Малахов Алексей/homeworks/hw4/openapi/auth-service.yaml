@@ -1,0 +1,84 @@
+openapi: "3.0.3"
+info:
+  title: Auth Service — Internal API
+  version: "1.0.0"
+  description: Внутренние эндпоинты Auth Service. Доступны только через внутреннюю сеть.
+
+paths:
+  /internal/auth/validate:
+    post:
+      summary: Валидация JWT-токена
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        "200":
+          description: Токен действителен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                    example: 42
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                    example: ["landlord", "renter"]
+                  is_active:
+                    type: boolean
+                    example: true
+        "400":
+          description: Токен отсутствует в теле запроса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "Field 'token' is required"
+        "401":
+          description: Токен недействителен или истёк
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "UNAUTHORIZED"
+                message: "Token is invalid or expired"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "NOT_FOUND"
+        message:
+          type: string
+          example: "User with id 42 not found"

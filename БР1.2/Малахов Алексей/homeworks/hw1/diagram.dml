@@ -1,0 +1,282 @@
+Enum user_role {
+  landlord
+  renter
+}
+
+Enum property_type {
+  apartment
+  house
+  room
+  studio
+}
+
+Enum property_status {
+  active
+  rented
+  archived
+}
+
+Enum rental_status {
+  pending
+  active
+  completed
+  cancelled
+}
+
+Enum transaction_status {
+  pending
+  completed
+  failed
+}
+
+Enum payment_method {
+  card
+  cash
+  transfer
+}
+
+Enum currency_type {
+  RUB
+  USD
+  EUR
+}
+
+Enum deposit_status {
+  held
+  returned
+  partially_returned
+  withheld
+}
+
+Enum transaction_type {
+  rent
+  deposit
+  deposit_return
+}
+
+Table USER {
+  id int [pk, increment]
+  first_name varchar [not null]
+  last_name varchar [not null]
+  email varchar [unique, not null]
+  password_hash varchar [not null]
+  phone varchar
+  avatar_url varchar
+  is_active boolean [not null, default: true]
+  is_verified boolean [not null, default: false]
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+  deleted_at datetime [note: 'soft delete']
+
+  indexes {
+    email [unique]
+  }
+}
+
+Table USER_ROLE {
+  id int [pk, increment]
+  user_id int [not null, ref: > USER.id]
+  role user_role [not null]
+  assigned_at datetime [default: `now()`]
+
+  indexes {
+    (user_id, role) [unique, name: 'idx_user_role_unique']
+    user_id
+  }
+
+  note: 'Пользователь может иметь несколько ролей одновременно'
+}
+
+Table PROPERTY {
+  id int [pk, increment]
+  owner_id int [not null, ref: > USER.id]
+  type property_type [not null]
+  title varchar [not null]
+  description text
+  street varchar [not null]
+  building varchar [not null]
+  apartment varchar
+  postal_code varchar
+  city varchar [not null]
+  country varchar [not null]
+  latitude float
+  longitude float
+  rooms int
+  area_sqm decimal(6,2)
+  floor int
+  price_per_month decimal(12,2) [not null]
+  currency currency_type [not null, default: 'RUB']
+  rental_conditions text
+  status property_status [not null, default: 'active']
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+  deleted_at datetime [note: 'soft delete']
+
+  indexes {
+    owner_id
+    city
+    type
+    status
+    price_per_month
+    rooms
+    area_sqm
+    (city, type, price_per_month) [name: 'idx_property_search']
+  }
+}
+
+Table PROPERTY_PHOTO {
+  id int [pk, increment]
+  property_id int [not null, ref: > PROPERTY.id]
+  url varchar [not null]
+  is_main boolean [not null, default: false]
+  sort_order int
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+
+  indexes {
+    property_id
+  }
+
+  note: 'Ограничение: максимум 20 фото на объект (на уровне приложения)'
+}
+
+Table PROPERTY_PRICE_HISTORY {
+  id int [pk, increment]
+  property_id int [not null, ref: > PROPERTY.id]
+  price_per_month decimal(12,2) [not null]
+  currency currency_type [not null]
+  changed_at datetime [default: `now()`]
+
+  indexes {
+    property_id
+    changed_at
+  }
+
+  note: 'Запись создаётся при каждом изменении price_per_month в PROPERTY'
+}
+
+Table FAVORITE {
+  id int [pk, increment]
+  user_id int [not null, ref: > USER.id]
+  property_id int [not null, ref: > PROPERTY.id]
+  created_at datetime [default: `now()`]
+
+  indexes {
+    (user_id, property_id) [unique, name: 'idx_favorite_unique']
+    user_id
+    property_id
+  }
+}
+
+Table LANDLORD_REVIEW {
+  id int [pk, increment]
+  landlord_id int [not null, ref: > USER.id]
+  reviewer_id int [not null, ref: > USER.id]
+  rental_id int [not null, ref: > RENTAL.id]
+  rating int [not null, note: 'от 1 до 5, проверка на уровне приложения']
+  comment text
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+  deleted_at datetime [note: 'soft delete']
+
+  indexes {
+    landlord_id
+    reviewer_id
+    (rental_id, reviewer_id) [unique, name: 'idx_review_unique', note: 'один отзыв на аренду от одного пользователя']
+  }
+
+  note: 'Отзыв можно оставить только после завершённой аренды (проверка на уровне приложения)'
+}
+
+Table CONVERSATION {
+  id int [pk, increment]
+  user_one_id int [not null, ref: > USER.id, note: 'меньший user_id']
+  user_two_id int [not null, ref: > USER.id, note: 'больший user_id']
+  property_id int [ref: > PROPERTY.id, note: 'nullable, для общей переписки']
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+
+  indexes {
+    (user_one_id, user_two_id, property_id) [unique, name: 'idx_conversation_pair_property']
+    property_id
+    user_one_id
+    user_two_id
+  }
+}
+
+Table CONVERSATION_PARTICIPANT {
+  id int [pk, increment]
+  conversation_id int [not null, ref: > CONVERSATION.id]
+  user_id int [not null, ref: > USER.id]
+  joined_at datetime [default: `now()`]
+
+  indexes {
+    (conversation_id, user_id) [unique, name: 'idx_participant_unique']
+    conversation_id
+    user_id
+  }
+}
+
+Table MESSAGE {
+  id int [pk, increment]
+  conversation_id int [not null, ref: > CONVERSATION.id]
+  sender_id int [not null, ref: > USER.id]
+  content text [not null]
+  is_read boolean [not null, default: false]
+  created_at datetime [default: `now()`]
+  deleted_at datetime [note: 'soft delete']
+
+  indexes {
+    conversation_id
+    sender_id
+    created_at
+  }
+}
+
+Table RENTAL {
+  id int [pk, increment]
+  property_id int [not null, ref: > PROPERTY.id]
+  renter_id int [not null, ref: > USER.id]
+  agreed_price decimal(12,2) [not null]
+  currency currency_type [not null, default: 'RUB']
+  deposit_amount decimal(12,2) [note: 'сумма залога']
+  deposit_status deposit_status [note: 'статус залога']
+  deposit_returned_at datetime [note: 'дата возврата залога']
+  start_date date [not null]
+  end_date date [note: 'nullable для бессрочной аренды']
+  status rental_status [not null, default: 'pending']
+  cancelled_at datetime
+  cancel_reason text
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+
+  indexes {
+    property_id
+    renter_id
+    status
+    (property_id, status) [name: 'idx_rental_property_status']
+  }
+}
+
+Table TRANSACTION {
+  id int [pk, increment]
+  rental_id int [not null, ref: > RENTAL.id]
+  external_payment_id varchar [note: 'идентификатор платежа во внешней системе (ЮKassa, Stripe и т.д.)']
+  type transaction_type [not null, note: 'тип транзакции: оплата аренды, залог, возврат залога']
+  amount decimal(12,2) [not null]
+  currency currency_type [not null, default: 'RUB']
+  status transaction_status [not null, default: 'pending']
+  payment_method payment_method [not null]
+  period_start date [note: 'начало оплачиваемого периода, заполняется только для type=rent']
+  period_end date [note: 'конец оплачиваемого периода, заполняется только для type=rent']
+  payment_date datetime
+  created_at datetime [default: `now()`]
+  updated_at datetime [default: `now()`]
+  deleted_at datetime [note: 'soft delete']
+
+  indexes {
+    rental_id
+    status
+    external_payment_id
+  }
+}
