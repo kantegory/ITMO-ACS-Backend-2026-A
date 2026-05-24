@@ -1,0 +1,93 @@
+# Restaurant Booking Microservices
+
+Microservice version of the restaurant table booking backend from lab1.
+
+## Stack
+
+- Java 21
+- Kotlin
+- Spring Boot 3
+- PostgreSQL
+- Liquibase XML
+- Gradle multi-module project
+
+## Services
+
+| Service | Port | Responsibility | Database schema |
+| --- | ---: | --- | --- |
+| `identity-service` | `8081` | registration, login, user profile | `identity` |
+| `catalog-service` | `8082` | restaurants, cuisines, menu, table metadata | `catalog` |
+| `booking-service` | `8083` | availability, booking lifecycle | `booking` |
+| `review-service` | `8084` | restaurant reviews | `review` |
+
+For local development all schemas are placed in the same PostgreSQL database `storage_local`, but the services do not use cross-schema foreign keys. This keeps the lab easy to run while preserving the database-per-service boundary.
+
+## Database
+
+- database: `storage_local`
+- user: `storage`
+- password: `storage`
+- schemas: `identity`, `catalog`, `booking`, `review`
+
+Liquibase creates the required schema and tables on each service startup.
+
+## Build
+
+```powershell
+$env:GRADLE_USER_HOME=(Join-Path (Get-Location) '.gradle-home')
+.\gradlew.bat --console=plain assemble
+```
+
+## Run
+
+Start PostgreSQL first, then run the services in separate terminals:
+
+```powershell
+.\gradlew.bat --console=plain :catalog-service:bootRun
+.\gradlew.bat --console=plain :identity-service:bootRun
+.\gradlew.bat --console=plain :booking-service:bootRun
+.\gradlew.bat --console=plain :review-service:bootRun
+```
+
+Recommended startup order is catalog, identity, booking, review, because booking calls catalog and review calls booking.
+
+## Public API
+
+Identity:
+
+- `POST http://localhost:8081/api/v1/auth/register`
+- `POST http://localhost:8081/api/v1/auth/login`
+- `GET http://localhost:8081/api/v1/users/me`
+- `PATCH http://localhost:8081/api/v1/users/me`
+
+Catalog:
+
+- `GET http://localhost:8082/api/v1/cuisines`
+- `GET http://localhost:8082/api/v1/restaurants`
+- `GET http://localhost:8082/api/v1/restaurants/{restaurantId}`
+- `GET http://localhost:8082/api/v1/restaurants/{restaurantId}/menu`
+
+Booking:
+
+- `GET http://localhost:8083/api/v1/restaurants/{restaurantId}/availability`
+- `POST http://localhost:8083/api/v1/bookings`
+- `GET http://localhost:8083/api/v1/bookings/me`
+- `GET http://localhost:8083/api/v1/bookings/{bookingId}`
+- `PATCH http://localhost:8083/api/v1/bookings/{bookingId}/cancel`
+
+Review:
+
+- `GET http://localhost:8084/api/v1/restaurants/{restaurantId}/reviews`
+- `POST http://localhost:8084/api/v1/restaurants/{restaurantId}/reviews`
+
+Protected endpoints use the `X-User-Id` header in this lab version. The login endpoint still returns an `accessToken` field, but service-to-service and protected request checks are intentionally kept simple until an API Gateway or shared authorization component is introduced.
+
+## Internal API
+
+The services communicate through internal REST endpoints:
+
+- booking-service calls catalog-service for restaurant, table and working-hours context;
+- review-service calls booking-service to verify that the user has a completed booking before creating a review;
+- identity-service exposes a user summary endpoint for future enrichment.
+
+Internal endpoints are under `/internal/v1/...` and are not intended for frontend usage.
