@@ -1,0 +1,1 @@
+Отчет: https://docs.google.com/document/d/1SC6faF4C03y6eFuRvkWMZ0H8RUjaqCMjabFXrbj_k28/edit?usp=sharing
