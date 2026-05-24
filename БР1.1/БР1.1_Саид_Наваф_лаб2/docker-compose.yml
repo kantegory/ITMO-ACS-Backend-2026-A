@@ -1,14 +1,32 @@
-﻿name: lab2-microservices
+﻿version: '3.8'
+name: lab2-microservices
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: main_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   auth-service:
     build: ./src/auth-service
     ports:
       - "8081:8081"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@auth-db:5432/auth_db
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/main_db?sslmode=disable
     depends_on:
-      - auth-db
+      postgres:
+        condition: service_healthy
     networks:
       - backend-network
 
@@ -17,9 +35,10 @@ services:
     ports:
       - "8082:8082"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@job-db:5432/job_db
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/main_db?sslmode=disable
     depends_on:
-      - job-db
+      postgres:
+        condition: service_healthy
     networks:
       - backend-network
 
@@ -28,9 +47,10 @@ services:
     ports:
       - "8083:8083"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@cand-db:5432/cand_db
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/main_db?sslmode=disable
     depends_on:
-      - cand-db
+      postgres:
+        condition: service_healthy
     networks:
       - backend-network
 
@@ -39,43 +59,27 @@ services:
     ports:
       - "8084:8084"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@inter-db:5432/inter_db
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/main_db?sslmode=disable
     depends_on:
-      - inter-db
+      postgres:
+        condition: service_healthy
     networks:
       - backend-network
 
-  auth-db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_PASSWORD: postgres
-    networks:
-      - backend-network
-
-  job-db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: job_db
-      POSTGRES_PASSWORD: postgres
-    networks:
-      - backend-network
-
-  cand-db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: cand_db
-      POSTGRES_PASSWORD: postgres
-    networks:
-      - backend-network
-
-  inter-db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: inter_db
-      POSTGRES_PASSWORD: postgres
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - job-service
+      - candidate-service
+      - interaction-service
     networks:
       - backend-network
 
 networks:
   backend-network:
+    driver: bridge
