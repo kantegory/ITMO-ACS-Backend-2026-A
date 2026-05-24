@@ -22,6 +22,19 @@ Microservice version of the restaurant table booking backend from lab1.
 
 For local development all schemas are placed in the same PostgreSQL database `storage_local`, but the services do not use cross-schema foreign keys. This keeps the lab easy to run while preserving the database-per-service boundary.
 
+## Project layout
+
+Each service is split into the same basic layers:
+
+- `adapter/rest` - public and internal HTTP controllers;
+- `adapter/rest/dto` - request and response models;
+- `adapter/jdbc` - SQL access to the service-owned schema;
+- `adapter/client` - REST clients for calls to other services;
+- `service` - business logic and orchestration;
+- `domain` - internal records/domain objects.
+
+The main application class only starts the service. Controllers, repositories, DTO and clients are intentionally not kept in one large file.
+
 ## Database
 
 - database: `storage_local`
@@ -30,6 +43,28 @@ For local development all schemas are placed in the same PostgreSQL database `st
 - schemas: `identity`, `catalog`, `booking`, `review`
 
 Liquibase creates the required schema and tables on each service startup.
+
+Connection examples:
+
+```powershell
+psql -h localhost -p 5432 -U storage -d storage_local
+```
+
+Then switch schema inside `psql`:
+
+```sql
+set search_path to identity;
+set search_path to catalog;
+set search_path to booking;
+set search_path to review;
+```
+
+JDBC URLs used by services:
+
+- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=identity`
+- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=catalog`
+- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=booking`
+- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=review`
 
 ## Build
 
@@ -50,6 +85,22 @@ Start PostgreSQL first, then run the services in separate terminals:
 ```
 
 Recommended startup order is catalog, identity, booking, review, because booking calls catalog and review calls booking.
+
+## Swagger UI
+
+Open the Swagger UI of each running service:
+
+- identity-service: `http://localhost:8081/swagger-ui/index.html`
+- catalog-service: `http://localhost:8082/swagger-ui/index.html`
+- booking-service: `http://localhost:8083/swagger-ui/index.html`
+- review-service: `http://localhost:8084/swagger-ui/index.html`
+
+Raw OpenAPI JSON:
+
+- identity-service: `http://localhost:8081/v3/api-docs`
+- catalog-service: `http://localhost:8082/v3/api-docs`
+- booking-service: `http://localhost:8083/v3/api-docs`
+- review-service: `http://localhost:8084/v3/api-docs`
 
 ## Public API
 

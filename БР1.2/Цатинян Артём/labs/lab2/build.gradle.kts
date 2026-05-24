@@ -65,6 +65,7 @@ configure(subprojects.filter { it.name != "common" }) {
         add("implementation", "org.springframework.boot:spring-boot-starter-validation")
         add("implementation", "org.springframework.boot:spring-boot-starter-jdbc")
         add("implementation", "com.fasterxml.jackson.module:jackson-module-kotlin")
+        add("implementation", "org.springdoc:springdoc-openapi-starter-webmvc-ui:${rootProject.property("springdocVersion")}")
         add("implementation", "org.liquibase:liquibase-core:${rootProject.property("liquibaseVersion")}")
         add("runtimeOnly", "org.postgresql:postgresql")
     }
