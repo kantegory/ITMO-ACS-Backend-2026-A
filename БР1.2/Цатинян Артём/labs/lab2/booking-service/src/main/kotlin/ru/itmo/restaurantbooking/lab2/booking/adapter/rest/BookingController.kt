@@ -9,13 +9,13 @@ import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import ru.itmo.restaurantbooking.lab2.booking.adapter.rest.dto.CreateBookingRequest
 import ru.itmo.restaurantbooking.lab2.booking.service.BookingService
+import ru.itmo.restaurantbooking.lab2.common.auth.AuthenticatedUser
 import java.time.LocalDate
 
 @RestController
@@ -33,26 +33,26 @@ class BookingController(
     @PostMapping("/bookings")
     @ResponseStatus(HttpStatus.CREATED)
     fun create(
-        @RequestHeader("X-User-Id") userId: Long,
+        currentUser: AuthenticatedUser,
         @Valid @RequestBody request: CreateBookingRequest
-    ) = bookingService.create(userId, request)
+    ) = bookingService.create(currentUser.id, request)
 
     @GetMapping("/bookings/me")
     fun mine(
-        @RequestHeader("X-User-Id") userId: Long,
+        currentUser: AuthenticatedUser,
         @RequestParam(defaultValue = "1") page: Int,
         @RequestParam(defaultValue = "10") size: Int
-    ) = bookingService.mine(userId, page.coerceAtLeast(1), size.coerceIn(1, 100))
+    ) = bookingService.mine(currentUser.id, page.coerceAtLeast(1), size.coerceIn(1, 100))
 
     @GetMapping("/bookings/{bookingId}")
     fun byId(
-        @RequestHeader("X-User-Id") userId: Long,
+        currentUser: AuthenticatedUser,
         @PathVariable bookingId: Long
-    ) = bookingService.byId(userId, bookingId)
+    ) = bookingService.byId(currentUser.id, bookingId)
 
     @PatchMapping("/bookings/{bookingId}/cancel")
     fun cancel(
-        @RequestHeader("X-User-Id") userId: Long,
+        currentUser: AuthenticatedUser,
         @PathVariable bookingId: Long
-    ) = bookingService.cancel(userId, bookingId)
+    ) = bookingService.cancel(currentUser.id, bookingId)
 }

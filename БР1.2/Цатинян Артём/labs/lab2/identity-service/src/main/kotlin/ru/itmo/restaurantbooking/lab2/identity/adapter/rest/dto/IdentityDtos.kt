@@ -4,9 +4,7 @@ import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import ru.itmo.restaurantbooking.lab2.identity.domain.UserRecord
-import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
-import java.util.Base64
 
 data class RegisterRequest(
     @field:Email
@@ -40,14 +38,17 @@ data class AuthResponse(
     val user: UserProfileResponse
 ) {
     companion object {
-        fun from(user: UserRecord) =
+        fun from(user: UserRecord, accessToken: String) =
             AuthResponse(
-                accessToken = Base64.getEncoder()
-                    .encodeToString("${user.id}:${user.email}".toByteArray(StandardCharsets.UTF_8)),
+                accessToken = accessToken,
                 user = user.toProfile()
             )
     }
 }
+
+data class TokenValidationRequest(
+    val accessToken: String
+)
 
 data class UserProfileResponse(
     val id: Long,

@@ -62,6 +62,7 @@ subprojects {
 project(":common") {
     dependencies {
         add("implementation", "org.springframework.boot:spring-boot-starter-web")
+        add("implementation", "org.springdoc:springdoc-openapi-starter-webmvc-ui:${rootProject.property("springdocVersion")}")
     }
 
     tasks.withType<Jar>().configureEach {

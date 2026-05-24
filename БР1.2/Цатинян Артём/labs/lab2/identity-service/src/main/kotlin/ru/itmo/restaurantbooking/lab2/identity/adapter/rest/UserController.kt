@@ -9,20 +9,22 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.UpdateProfileRequest
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.UserProfileResponse
+import ru.itmo.restaurantbooking.lab2.identity.service.AuthService
 import ru.itmo.restaurantbooking.lab2.identity.service.UserService
 
 @RestController
 @RequestMapping("/api/v1/users")
 class UserController(
-    private val userService: UserService
+    private val userService: UserService,
+    private val authService: AuthService
 ) {
     @GetMapping("/me")
-    fun me(@RequestHeader("X-User-Id") userId: Long): UserProfileResponse =
-        userService.profile(userId)
+    fun me(@RequestHeader("Authorization", required = false) authorization: String?): UserProfileResponse =
+        userService.profile(authService.authenticate(authorization).id)
 
     @PatchMapping("/me")
     fun updateMe(
-        @RequestHeader("X-User-Id") userId: Long,
+        @RequestHeader("Authorization", required = false) authorization: String?,
         @Valid @RequestBody request: UpdateProfileRequest
-    ): UserProfileResponse = userService.updateProfile(userId, request)
+    ): UserProfileResponse = userService.updateProfile(authService.authenticate(authorization).id, request)
 }

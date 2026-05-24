@@ -2,6 +2,7 @@ package ru.itmo.restaurantbooking.lab2.review.service
 
 import org.springframework.stereotype.Service
 import ru.itmo.restaurantbooking.lab2.common.dto.PageResponse
+import ru.itmo.restaurantbooking.lab2.common.auth.AuthenticatedUser
 import ru.itmo.restaurantbooking.lab2.common.exception.ConflictException
 import ru.itmo.restaurantbooking.lab2.common.exception.UnprocessableEntityException
 import ru.itmo.restaurantbooking.lab2.review.adapter.client.booking.BookingClient
@@ -26,10 +27,10 @@ class ReviewService(
         )
     }
 
-    fun create(userId: Long, restaurantId: Long, request: CreateReviewRequest): ReviewResponse {
+    fun create(currentUser: AuthenticatedUser, restaurantId: Long, request: CreateReviewRequest): ReviewResponse {
         val context = bookingClient.reviewContext(
             bookingId = request.bookingId,
-            userId = userId,
+            userId = currentUser.id,
             restaurantId = restaurantId
         )
 
@@ -42,10 +43,10 @@ class ReviewService(
         }
 
         return reviewRepository.create(
-            userId = userId,
+            userId = currentUser.id,
             restaurantId = restaurantId,
             request = request,
-            authorNameSnapshot = "User $userId"
+            authorNameSnapshot = currentUser.fullName
         ).toResponse()
     }
 }

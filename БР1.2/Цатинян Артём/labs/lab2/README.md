@@ -69,10 +69,9 @@ set search_path to review;
 
 JDBC URLs used by services:
 
-- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=identity`
-- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=catalog`
-- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=booking`
-- `jdbc:postgresql://localhost:5432/storage_local?currentSchema=review`
+- `jdbc:postgresql://localhost:5432/storage_local`
+
+The runtime connection does not set `currentSchema`: Liquibase changelogs and generated jOOQ table classes use schema-qualified table names.
 
 ## Build
 
@@ -150,14 +149,42 @@ Review:
 - `GET http://localhost:8084/api/v1/restaurants/{restaurantId}/reviews`
 - `POST http://localhost:8084/api/v1/restaurants/{restaurantId}/reviews`
 
-Protected endpoints use the `X-User-Id` header in this lab version. The login endpoint still returns an `accessToken` field, but service-to-service and protected request checks are intentionally kept simple until an API Gateway or shared authorization component is introduced.
+Protected endpoints use a Bearer token issued by `identity-service`.
+
+Login or register through `identity-service`, copy the `accessToken`, then call protected endpoints with:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+`identity-service` signs the token and exposes an internal validation endpoint. `booking-service` and `review-service` validate incoming Bearer tokens by calling `identity-service`, so they no longer trust a user id supplied directly by the client.
 
 ## Internal API
 
 The services communicate through internal REST endpoints:
 
+- booking-service and review-service call identity-service to validate Bearer tokens and resolve the current user;
 - booking-service calls catalog-service for restaurant, table and working-hours context;
 - review-service calls booking-service to verify that the user has a completed booking before creating a review;
 - identity-service exposes a user summary endpoint for future enrichment.
 
 Internal endpoints are under `/internal/v1/...` and are not intended for frontend usage.
+
+Typical request chain for creating a booking:
+
+```text
+client -> identity-service: login/register
+client -> booking-service: POST /api/v1/bookings with Bearer token
+booking-service -> identity-service: validate token
+booking-service -> catalog-service: get restaurant/table booking context
+booking-service -> booking database: create booking
+```
+
+Typical request chain for creating a review:
+
+```text
+client -> review-service: POST /api/v1/restaurants/{id}/reviews with Bearer token
+review-service -> identity-service: validate token and get author name
+review-service -> booking-service: check completed booking
+review-service -> review database: create review
+```
