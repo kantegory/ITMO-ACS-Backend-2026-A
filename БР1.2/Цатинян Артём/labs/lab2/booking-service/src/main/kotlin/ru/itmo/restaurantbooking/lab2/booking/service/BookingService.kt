@@ -2,7 +2,7 @@ package ru.itmo.restaurantbooking.lab2.booking.service
 
 import org.springframework.stereotype.Service
 import ru.itmo.restaurantbooking.lab2.booking.adapter.client.catalog.CatalogClient
-import ru.itmo.restaurantbooking.lab2.booking.adapter.jdbc.BookingRepository
+import ru.itmo.restaurantbooking.lab2.booking.adapter.jooq.BookingRepository
 import ru.itmo.restaurantbooking.lab2.booking.adapter.rest.dto.AvailabilitySlotResponse
 import ru.itmo.restaurantbooking.lab2.booking.adapter.rest.dto.BookingResponse
 import ru.itmo.restaurantbooking.lab2.booking.adapter.rest.dto.BookingReviewContext

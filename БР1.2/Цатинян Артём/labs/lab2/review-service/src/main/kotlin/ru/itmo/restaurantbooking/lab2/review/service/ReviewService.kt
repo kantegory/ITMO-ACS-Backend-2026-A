@@ -5,7 +5,7 @@ import ru.itmo.restaurantbooking.lab2.common.dto.PageResponse
 import ru.itmo.restaurantbooking.lab2.common.exception.ConflictException
 import ru.itmo.restaurantbooking.lab2.common.exception.UnprocessableEntityException
 import ru.itmo.restaurantbooking.lab2.review.adapter.client.booking.BookingClient
-import ru.itmo.restaurantbooking.lab2.review.adapter.jdbc.ReviewRepository
+import ru.itmo.restaurantbooking.lab2.review.adapter.jooq.ReviewRepository
 import ru.itmo.restaurantbooking.lab2.review.adapter.rest.dto.CreateReviewRequest
 import ru.itmo.restaurantbooking.lab2.review.adapter.rest.dto.ReviewResponse
 import ru.itmo.restaurantbooking.lab2.review.adapter.rest.dto.toResponse

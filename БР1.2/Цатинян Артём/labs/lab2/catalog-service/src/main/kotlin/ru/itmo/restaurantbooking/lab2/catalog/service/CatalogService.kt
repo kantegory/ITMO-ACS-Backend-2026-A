@@ -1,7 +1,7 @@
 package ru.itmo.restaurantbooking.lab2.catalog.service
 
 import org.springframework.stereotype.Service
-import ru.itmo.restaurantbooking.lab2.catalog.adapter.jdbc.CatalogRepository
+import ru.itmo.restaurantbooking.lab2.catalog.adapter.jooq.CatalogRepository
 import ru.itmo.restaurantbooking.lab2.catalog.adapter.rest.dto.RestaurantBookingContext
 import ru.itmo.restaurantbooking.lab2.catalog.adapter.rest.dto.RestaurantSearchQuery
 import ru.itmo.restaurantbooking.lab2.common.exception.UnprocessableEntityException

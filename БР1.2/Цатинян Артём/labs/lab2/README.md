@@ -9,6 +9,7 @@ Microservice version of the restaurant table booking backend from lab1.
 - Spring Boot 3
 - PostgreSQL
 - Liquibase XML
+- jOOQ with generated tables, records, POJOs and DAOs
 - Gradle multi-module project
 
 ## Services
@@ -28,12 +29,19 @@ Each service is split into the same basic layers:
 
 - `adapter/rest` - public and internal HTTP controllers;
 - `adapter/rest/dto` - request and response models;
-- `adapter/jdbc` - SQL access to the service-owned schema;
+- `adapter/jooq` - jOOQ-based SQL access to the service-owned schema;
 - `adapter/client` - REST clients for calls to other services;
 - `service` - business logic and orchestration;
 - `domain` - internal records/domain objects.
 
 The main application class only starts the service. Controllers, repositories, DTO and clients are intentionally not kept in one large file.
+
+Repositories use generated jOOQ table classes from each service schema, for example:
+
+- `identity-service/src/generated/jooq/.../identity/jooq/tables/Users.java`;
+- `catalog-service/src/generated/jooq/.../catalog/jooq/tables/Restaurants.java`;
+- `booking-service/src/generated/jooq/.../booking/jooq/tables/Bookings.java`;
+- `review-service/src/generated/jooq/.../review/jooq/tables/Reviews.java`.
 
 ## Database
 
@@ -71,6 +79,17 @@ JDBC URLs used by services:
 ```powershell
 $env:GRADLE_USER_HOME=(Join-Path (Get-Location) '.gradle-home')
 .\gradlew.bat --console=plain assemble
+```
+
+The build applies Liquibase migrations and runs jOOQ code generation for every service before Kotlin compilation. PostgreSQL must be running for `assemble`, because jOOQ reads table metadata from the local database.
+
+Useful database/codegen commands:
+
+```powershell
+.\gradlew.bat --console=plain :identity-service:liquibaseUpdate :identity-service:generateJooq
+.\gradlew.bat --console=plain :catalog-service:liquibaseUpdate :catalog-service:generateJooq
+.\gradlew.bat --console=plain :booking-service:liquibaseUpdate :booking-service:generateJooq
+.\gradlew.bat --console=plain :review-service:liquibaseUpdate :review-service:generateJooq
 ```
 
 ## Run

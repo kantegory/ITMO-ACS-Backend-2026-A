@@ -3,7 +3,7 @@ package ru.itmo.restaurantbooking.lab2.identity.service
 import org.springframework.stereotype.Service
 import ru.itmo.restaurantbooking.lab2.common.exception.ConflictException
 import ru.itmo.restaurantbooking.lab2.common.exception.UnauthorizedException
-import ru.itmo.restaurantbooking.lab2.identity.adapter.jdbc.UserRepository
+import ru.itmo.restaurantbooking.lab2.identity.adapter.jooq.UserRepository
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.AuthResponse
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.LoginRequest
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.RegisterRequest

@@ -2,7 +2,7 @@ package ru.itmo.restaurantbooking.lab2.identity.service
 
 import org.springframework.stereotype.Service
 import ru.itmo.restaurantbooking.lab2.common.exception.NotFoundException
-import ru.itmo.restaurantbooking.lab2.identity.adapter.jdbc.UserRepository
+import ru.itmo.restaurantbooking.lab2.identity.adapter.jooq.UserRepository
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.UpdateProfileRequest
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.UserProfileResponse
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.UserSummaryResponse
