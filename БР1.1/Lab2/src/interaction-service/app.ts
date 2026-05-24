@@ -12,8 +12,10 @@ import {
     notFound,
     notFoundHandler,
 } from '../shared/errors';
+import { RecipeDeletedEvent } from '../shared/domain-events';
 import { serviceRequest } from '../shared/http-client';
 import { paginated, parseId, parsePagination } from '../shared/pagination';
+import { subscribeToQueue } from '../shared/rabbitmq';
 import SETTINGS from '../shared/settings';
 import { mountInternalSwagger } from '../shared/swagger';
 import interactionDataSource from './data-source';
@@ -45,6 +47,14 @@ mountInternalSwagger(app);
 const commentRepository = () => interactionDataSource.getRepository(Comment);
 const likeRepository = () => interactionDataSource.getRepository(RecipeLike);
 const favoriteRepository = () => interactionDataSource.getRepository(Favorite);
+
+const deleteRecipeInteractions = async (recipeId: number): Promise<void> => {
+    await Promise.all([
+        commentRepository().delete({ recipeId }),
+        likeRepository().delete({ recipeId }),
+        favoriteRepository().delete({ recipeId }),
+    ]);
+};
 
 const assertRecipeExists = async (recipeId: number): Promise<RecipeExistsResponse> =>
     serviceRequest<RecipeExistsResponse>(
@@ -141,11 +151,7 @@ app.delete(
     asyncHandler(async (request, response) => {
         const recipeId = parseId(request.params.recipeId, 'recipeId');
 
-        await Promise.all([
-            commentRepository().delete({ recipeId }),
-            likeRepository().delete({ recipeId }),
-            favoriteRepository().delete({ recipeId }),
-        ]);
+        await deleteRecipeInteractions(recipeId);
 
         response.status(204).send();
     }),
@@ -315,6 +321,13 @@ app.use(errorHandler);
 
 const start = async (): Promise<void> => {
     await interactionDataSource.initialize();
+    await subscribeToQueue<RecipeDeletedEvent>(
+        SETTINGS.RABBITMQ_RECIPE_DELETED_QUEUE,
+        SETTINGS.RABBITMQ_RECIPE_DELETED_ROUTING_KEY,
+        async ({ recipeId }) => {
+            await deleteRecipeInteractions(recipeId);
+        },
+    );
 
     app.listen(SETTINGS.INTERACTION_SERVICE_PORT, SETTINGS.APP_HOST, () => {
         console.log(

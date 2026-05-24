@@ -89,6 +89,10 @@ services:
       JWT_ACCESS_TOKEN_LIFETIME: 86400
       SERVICE_JWT_SECRET: change-me-service-jwt-secret
       SERVICE_TOKEN_LIFETIME: 300
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipe-platform.events
+      RABBITMQ_RECIPE_DELETED_QUEUE: interaction.recipe-deleted
+      RABBITMQ_RECIPE_DELETED_ROUTING_KEY: recipe.deleted
       RECIPE_DB_HOST: recipe-db
       RECIPE_DB_PORT: 5432
       RECIPE_DB_NAME: recipe_db
@@ -97,6 +101,8 @@ services:
     ports:
       - "8002:8002"
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       recipe-db:
         condition: service_healthy
     healthcheck:
@@ -126,6 +132,10 @@ services:
       JWT_ACCESS_TOKEN_LIFETIME: 86400
       SERVICE_JWT_SECRET: change-me-service-jwt-secret
       SERVICE_TOKEN_LIFETIME: 300
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipe-platform.events
+      RABBITMQ_RECIPE_DELETED_QUEUE: interaction.recipe-deleted
+      RABBITMQ_RECIPE_DELETED_ROUTING_KEY: recipe.deleted
       INTERACTION_DB_HOST: interaction-db
       INTERACTION_DB_PORT: 5432
       INTERACTION_DB_NAME: interaction_db
@@ -134,6 +144,8 @@ services:
     ports:
       - "8003:8003"
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       interaction-db:
         condition: service_healthy
     healthcheck:
@@ -205,6 +217,25 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    networks:
+      - recipe-platform
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: lab2-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     networks:
       - recipe-platform
 

@@ -38,6 +38,13 @@ class Settings {
     SERVICE_JWT_SECRET = env.SERVICE_JWT_SECRET || 'service-secret';
     SERVICE_TOKEN_LIFETIME = toNumber(env.SERVICE_TOKEN_LIFETIME, 5 * 60);
 
+    RABBITMQ_URL = env.RABBITMQ_URL || 'amqp://localhost:5672';
+    RABBITMQ_EXCHANGE = env.RABBITMQ_EXCHANGE || 'recipe-platform.events';
+    RABBITMQ_RECIPE_DELETED_QUEUE =
+        env.RABBITMQ_RECIPE_DELETED_QUEUE || 'interaction.recipe-deleted';
+    RABBITMQ_RECIPE_DELETED_ROUTING_KEY =
+        env.RABBITMQ_RECIPE_DELETED_ROUTING_KEY || 'recipe.deleted';
+
     AUTH_DB: DatabaseConfig = {
         host: env.AUTH_DB_HOST || 'localhost',
         port: toNumber(env.AUTH_DB_PORT, 15433),

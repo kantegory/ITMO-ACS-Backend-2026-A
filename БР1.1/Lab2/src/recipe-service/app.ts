@@ -15,6 +15,8 @@ import {
 } from '../shared/errors';
 import { serviceRequest } from '../shared/http-client';
 import { paginated, parseId, parsePagination } from '../shared/pagination';
+import { RecipeDeletedEvent } from '../shared/domain-events';
+import { publishDomainEvent } from '../shared/rabbitmq';
 import SETTINGS from '../shared/settings';
 import { mountInternalSwagger } from '../shared/swagger';
 import recipeDataSource from './data-source';
@@ -335,6 +337,13 @@ const cleanupInteractions = async (recipeId: number): Promise<void> => {
             method: 'DELETE',
         },
     );
+};
+
+const publishRecipeDeletedEvent = async (recipeId: number): Promise<void> => {
+    await publishDomainEvent<RecipeDeletedEvent>(SETTINGS.RABBITMQ_RECIPE_DELETED_ROUTING_KEY, {
+        recipeId,
+        deletedAt: new Date().toISOString(),
+    });
 };
 
 const getRecipeOrThrow = async (recipeId: number): Promise<Recipe> => {
@@ -879,8 +888,14 @@ app.delete(
             throw forbidden('You are not allowed to delete this recipe');
         }
 
-        await cleanupInteractions(recipe.id);
         await recipeRepository().delete({ id: recipe.id });
+
+        try {
+            await publishRecipeDeletedEvent(recipe.id);
+        } catch (error) {
+            console.error('Failed to publish recipe.deleted event, using HTTP cleanup fallback:', error);
+            await cleanupInteractions(recipe.id);
+        }
 
         response.status(204).send();
     }),
