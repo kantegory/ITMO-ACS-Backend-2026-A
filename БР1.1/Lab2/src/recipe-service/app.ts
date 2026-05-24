@@ -603,8 +603,8 @@ app.get(
                 : 'DESC';
 
         const sortMap: Record<string, string> = {
-            createdAt: 'recipe.created_at',
-            cookingTimeMinutes: 'recipe.cooking_time_minutes',
+            createdAt: 'recipe.createdAt',
+            cookingTimeMinutes: 'recipe.cookingTimeMinutes',
             title: 'recipe.title',
         };
 

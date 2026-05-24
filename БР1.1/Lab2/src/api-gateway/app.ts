@@ -4,13 +4,14 @@ import express from 'express';
 import { asyncHandler } from '../shared/async-handler';
 import { errorHandler, notFoundHandler, serviceUnavailable } from '../shared/errors';
 import SETTINGS from '../shared/settings';
-import { mountInternalSwagger } from '../shared/swagger';
+import { mountInternalSwagger, mountPublicSwagger } from '../shared/swagger';
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+mountPublicSwagger(app);
 mountInternalSwagger(app);
 
 const proxyTo =
