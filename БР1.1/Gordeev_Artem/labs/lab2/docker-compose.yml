@@ -1,0 +1,171 @@
+version: '3.8'
+
+services:
+  # Databases
+  auth-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: auth_db
+    ports:
+      - "15432:5432"
+    volumes:
+      - auth_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  profile-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: profile_db
+    ports:
+      - "15433:5432"
+    volumes:
+      - profile_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d profile_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  resume-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: resume_db
+    ports:
+      - "15434:5432"
+    volumes:
+      - resume_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d resume_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  job-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: job_db
+    ports:
+      - "15435:5432"
+    volumes:
+      - job_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d job_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Microservices
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=auth-db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - DB_NAME=auth_db
+      - DB_PORT=5432
+      - PORT=8081
+      - JWT_SECRET=supersecretkey
+    ports:
+      - "8081:8081"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+  profile-service:
+    build:
+      context: ./profile-service
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=profile-db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - DB_NAME=profile_db
+      - DB_PORT=5432
+      - PORT=8082
+      - AUTH_SERVICE_URL=http://auth-service:8081
+    ports:
+      - "8082:8082"
+    depends_on:
+      profile-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  resume-service:
+    build:
+      context: ./resume-service
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=resume-db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - DB_NAME=resume_db
+      - DB_PORT=5432
+      - PORT=8083
+    ports:
+      - "8083:8083"
+    depends_on:
+      resume-db:
+        condition: service_healthy
+
+  job-service:
+    build:
+      context: ./job-service
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=job-db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - DB_NAME=job_db
+      - DB_PORT=5432
+      - PORT=8084
+      - PROFILE_SERVICE_URL=http://profile-service:8082
+      - RESUME_SERVICE_URL=http://resume-service:8083
+    ports:
+      - "8084:8084"
+    depends_on:
+      job-db:
+        condition: service_healthy
+      profile-service:
+        condition: service_started
+      resume-service:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+      - JWT_SECRET=supersecretkey
+      - AUTH_SERVICE_URL=http://auth-service:8081
+      - PROFILE_SERVICE_URL=http://profile-service:8082
+      - RESUME_SERVICE_URL=http://resume-service:8083
+      - JOB_SERVICE_URL=http://job-service:8084
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - profile-service
+      - resume-service
+      - job-service
+
+volumes:
+  auth_data:
+  profile_data:
+  resume_data:
+  job_data:
