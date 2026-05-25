@@ -1,6 +1,7 @@
 package ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
@@ -8,21 +9,28 @@ import ru.itmo.restaurantbooking.lab2.identity.domain.UserRecord
 import java.time.LocalDateTime
 
 data class RegisterRequest(
+    @field:Schema(example = "emily.carter.lab2@example.com")
     @field:Email
     val email: String,
+    @field:Schema(example = "storageAdmin123", minLength = 8, maxLength = 64)
     @field:Size(min = 8, max = 64)
     val password: String,
+    @field:Schema(example = "Emily")
     @field:NotBlank
     val firstName: String,
+    @field:Schema(example = "Carter")
     @field:NotBlank
     val lastName: String,
+    @field:Schema(example = "+79990000001")
     @field:NotBlank
     val phone: String
 )
 
 data class LoginRequest(
+    @field:Schema(example = "emily.carter.lab2@example.com")
     @field:Email
     val email: String,
+    @field:Schema(example = "storageAdmin123", minLength = 8, maxLength = 64)
     @field:Size(min = 8, max = 64)
     val password: String
 )
@@ -37,8 +45,11 @@ data class OAuthTokenResponse(
 )
 
 data class UpdateProfileRequest(
+    @field:Schema(example = "Emily")
     val firstName: String?,
+    @field:Schema(example = "Carter")
     val lastName: String?,
+    @field:Schema(example = "+79990000009")
     val phone: String?
 )
 

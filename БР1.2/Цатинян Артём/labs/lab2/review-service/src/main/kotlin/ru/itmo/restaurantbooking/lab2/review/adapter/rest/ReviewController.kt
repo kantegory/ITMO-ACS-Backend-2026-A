@@ -22,8 +22,11 @@ class ReviewController(
 ) {
     @GetMapping
     fun list(
+        @Parameter(example = "1")
         @PathVariable restaurantId: Long,
+        @Parameter(example = "1")
         @RequestParam(defaultValue = "1") page: Int,
+        @Parameter(example = "10")
         @RequestParam(defaultValue = "10") size: Int
     ) = reviewService.list(restaurantId, page.coerceAtLeast(1), size.coerceIn(1, 100))
 
@@ -32,6 +35,7 @@ class ReviewController(
     fun create(
         @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
+        @Parameter(example = "1")
         @PathVariable restaurantId: Long,
         @Valid @RequestBody request: CreateReviewRequest
     ) = reviewService.create(currentUser, restaurantId, request)

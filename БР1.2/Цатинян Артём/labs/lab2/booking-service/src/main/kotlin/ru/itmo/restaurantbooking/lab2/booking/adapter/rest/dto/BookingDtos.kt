@@ -1,18 +1,25 @@
 package ru.itmo.restaurantbooking.lab2.booking.adapter.rest.dto
 
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import ru.itmo.restaurantbooking.lab2.booking.domain.BookingRecord
 import java.time.LocalDateTime
 
 data class CreateBookingRequest(
+    @field:Schema(example = "1")
     val restaurantId: Long,
+    @field:Schema(example = "2")
     val tableId: Long,
+    @field:Schema(example = "2026-06-12T19:00:00")
     val startsAt: LocalDateTime,
+    @field:Schema(example = "2026-06-12T21:00:00")
     val endsAt: LocalDateTime,
+    @field:Schema(example = "4", minimum = "1", maximum = "20")
     @field:Min(1)
     @field:Max(20)
     val guestsCount: Int,
+    @field:Schema(example = "Window table if available")
     val specialRequests: String?
 )
 

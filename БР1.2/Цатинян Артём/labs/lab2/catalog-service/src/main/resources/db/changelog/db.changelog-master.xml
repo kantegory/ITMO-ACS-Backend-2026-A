@@ -253,4 +253,73 @@
             cross join generate_series(1, 7) days(week_day)
         </sql>
     </changeSet>
+
+    <changeSet id="003-catalog-more-demo-data" author="codex">
+        <sql><![CDATA[
+            insert into catalog.restaurants(id, name, description, phone, city, street, building, price_segment, is_active)
+            values
+                (3, 'Sakura Room', 'Japanese restaurant with sushi, ramen and quiet private tables.', '+78120000003', 'Saint Petersburg', 'Liteyny Avenue', '31', 'HIGH', true),
+                (4, 'Green Bowl', 'Casual vegetarian cafe with soups, salads and grain bowls.', '+78120000004', 'Saint Petersburg', 'Vosstaniya Street', '22', 'LOW', true)
+            on conflict (id) do nothing;
+
+            insert into catalog.cuisines(id, name)
+            values
+                (3, 'Japanese'),
+                (4, 'Vegetarian')
+            on conflict (name) do nothing;
+
+            insert into catalog.restaurant_cuisines(restaurant_id, cuisine_id)
+            values
+                (3, 3),
+                (4, 4),
+                (4, 1);
+
+            insert into catalog.restaurant_tables(id, restaurant_id, table_number, seats_count, zone_name, is_active)
+            values
+                (4, 3, 'S-01', 2, 'Sushi bar', true),
+                (5, 3, 'S-02', 6, 'Private room', true),
+                (6, 4, 'G-01', 2, 'Main hall', true),
+                (7, 4, 'G-02', 4, 'Window', true)
+            on conflict (id) do nothing;
+
+            insert into catalog.menu_categories(id, restaurant_id, name, sort_order)
+            values
+                (4, 3, 'Sushi', 1),
+                (5, 3, 'Ramen', 2),
+                (6, 4, 'Bowls', 1),
+                (7, 4, 'Drinks', 2)
+            on conflict (id) do nothing;
+
+            insert into catalog.menu_items(id, restaurant_id, menu_category_id, name, description, price_minor, currency_code, is_available)
+            values
+                (4, 3, 4, 'Salmon Nigiri Set', 'Six pieces of salmon nigiri with wasabi and ginger.', 115000, 'RUB', true),
+                (5, 3, 5, 'Tonkotsu Ramen', 'Pork broth, noodles, egg, chashu and spring onion.', 89000, 'RUB', true),
+                (6, 4, 6, 'Falafel Bowl', 'Falafel, hummus, vegetables and tahini sauce.', 64000, 'RUB', true),
+                (7, 4, 7, 'Homemade Lemonade', 'Lemon, mint and sparkling water.', 29000, 'RUB', true)
+            on conflict (id) do nothing;
+
+            insert into catalog.restaurant_rating_stats(restaurant_id, average_rating, review_count)
+            values
+                (3, 4.6, 7),
+                (4, 4.4, 5)
+            on conflict (restaurant_id) do nothing;
+
+            insert into catalog.restaurant_working_hours(restaurant_id, week_day, opens_at, closes_at, is_closed)
+            select restaurant_id, week_day, '11:00'::time, '22:00'::time, false
+            from (values (3), (4)) restaurants(restaurant_id)
+            cross join generate_series(1, 7) days(week_day)
+            where not exists (
+                select 1
+                from catalog.restaurant_working_hours hours
+                where hours.restaurant_id = restaurants.restaurant_id
+                  and hours.week_day = days.week_day
+            );
+
+            select setval(pg_get_serial_sequence('catalog.restaurants', 'id'), greatest((select coalesce(max(id), 1) from catalog.restaurants), 1));
+            select setval(pg_get_serial_sequence('catalog.cuisines', 'id'), greatest((select coalesce(max(id), 1) from catalog.cuisines), 1));
+            select setval(pg_get_serial_sequence('catalog.restaurant_tables', 'id'), greatest((select coalesce(max(id), 1) from catalog.restaurant_tables), 1));
+            select setval(pg_get_serial_sequence('catalog.menu_categories', 'id'), greatest((select coalesce(max(id), 1) from catalog.menu_categories), 1));
+            select setval(pg_get_serial_sequence('catalog.menu_items', 'id'), greatest((select coalesce(max(id), 1) from catalog.menu_items), 1));
+        ]]></sql>
+    </changeSet>
 </databaseChangeLog>

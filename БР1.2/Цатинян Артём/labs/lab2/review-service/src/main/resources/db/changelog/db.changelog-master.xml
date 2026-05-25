@@ -56,4 +56,21 @@
             </column>
         </createTable>
     </changeSet>
+
+    <changeSet id="002-review-demo-data" author="codex">
+        <sql><![CDATA[
+            insert into review.reviews(id, booking_id, restaurant_id, user_id, rating, comment, author_name_snapshot)
+            values
+                (1001, 1002, 2, 1001, 5, 'Excellent pasta and friendly service. The booking flow worked perfectly.', 'Emily Carter')
+            on conflict do nothing;
+
+            insert into review.review_outbox(id, event_type, aggregate_id, payload, processed)
+            values
+                (1001, 'REVIEW_CREATED', 1001, '{"restaurantId":2,"rating":5}', false)
+            on conflict (id) do nothing;
+
+            select setval(pg_get_serial_sequence('review.reviews', 'id'), greatest((select coalesce(max(id), 1) from review.reviews), 1));
+            select setval(pg_get_serial_sequence('review.review_outbox', 'id'), greatest((select coalesce(max(id), 1) from review.review_outbox), 1));
+        ]]></sql>
+    </changeSet>
 </databaseChangeLog>

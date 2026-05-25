@@ -26,8 +26,11 @@ class BookingController(
 ) {
     @GetMapping("/restaurants/{restaurantId}/availability")
     fun availability(
+        @Parameter(example = "1")
         @PathVariable restaurantId: Long,
+        @Parameter(example = "2026-06-12")
         @RequestParam date: LocalDate,
+        @Parameter(example = "4")
         @RequestParam(defaultValue = "2") @Min(1) @Max(20) guestsCount: Int
     ) = bookingService.availability(restaurantId, date, guestsCount)
 
@@ -43,7 +46,9 @@ class BookingController(
     fun mine(
         @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
+        @Parameter(example = "1")
         @RequestParam(defaultValue = "1") page: Int,
+        @Parameter(example = "10")
         @RequestParam(defaultValue = "10") size: Int
     ) = bookingService.mine(currentUser.id, page.coerceAtLeast(1), size.coerceIn(1, 100))
 
@@ -51,6 +56,7 @@ class BookingController(
     fun byId(
         @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
+        @Parameter(example = "3")
         @PathVariable bookingId: Long
     ) = bookingService.byId(currentUser.id, bookingId)
 
@@ -58,6 +64,7 @@ class BookingController(
     fun cancel(
         @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
+        @Parameter(example = "3")
         @PathVariable bookingId: Long
     ) = bookingService.cancel(currentUser.id, bookingId)
 }

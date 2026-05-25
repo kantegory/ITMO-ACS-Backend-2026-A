@@ -52,6 +52,27 @@ Repositories use generated jOOQ table classes from each service schema, for exam
 
 Liquibase creates the required schema and tables on each service startup.
 
+Demo data is loaded by Liquibase when the services start.
+
+Demo application users:
+
+| Email | Password | Purpose |
+| --- | --- | --- |
+| `emily.carter.lab2@example.com` | `storageAdmin123` | main Swagger/manual testing user |
+| `mark.taylor.lab2@example.com` | `storageAdmin123` | second user for ownership checks |
+
+Important demo ids:
+
+| Entity | Id | Notes |
+| --- | ---: | --- |
+| North Garden restaurant | `1` | European restaurant |
+| Pasta Lane restaurant | `2` | Italian restaurant |
+| Sakura Room restaurant | `3` | Japanese restaurant |
+| North Garden table T-02 | `2` | free table for booking examples |
+| Completed booking without review | `1001` | use it to create a review |
+| Completed booking with existing review | `1002` | use it to show duplicate-review error |
+| Future confirmed booking | `1003` | use it to cancel a booking |
+
 Connection examples:
 
 ```powershell
@@ -170,6 +191,65 @@ Authorization: Bearer <accessToken>
 ```
 
 `identity-service` signs the token and exposes an internal validation endpoint. `booking-service` and `review-service` validate incoming Bearer tokens by calling `identity-service`, so they no longer trust a user id supplied directly by the client.
+
+## Manual Check Scenarios
+
+Run all services first. In Swagger, click `Authorize` and log in with:
+
+- username: `emily.carter.lab2@example.com`
+- password: `storageAdmin123`
+
+Scenario 1 - browse catalog:
+
+1. `GET http://localhost:8082/api/v1/cuisines?search=Italian`
+2. `GET http://localhost:8082/api/v1/restaurants?city=Saint%20Petersburg&cuisine=European&priceSegment=MEDIUM&page=1&size=10`
+3. `GET http://localhost:8082/api/v1/restaurants/1`
+4. `GET http://localhost:8082/api/v1/restaurants/1/menu?category=Main%20Courses&search=Duck`
+
+Scenario 2 - create and read a booking:
+
+1. `GET http://localhost:8083/api/v1/restaurants/1/availability?date=2026-06-12&guestsCount=4`
+2. `POST http://localhost:8083/api/v1/bookings`
+
+```json
+{
+  "restaurantId": 1,
+  "tableId": 2,
+  "startsAt": "2026-06-12T19:00:00",
+  "endsAt": "2026-06-12T21:00:00",
+  "guestsCount": 4,
+  "specialRequests": "Window table if available"
+}
+```
+
+3. `GET http://localhost:8083/api/v1/bookings/me?page=1&size=10`
+4. `GET http://localhost:8083/api/v1/bookings/{bookingId}` with the id returned by create.
+
+Scenario 3 - cancel prepared future booking:
+
+1. `GET http://localhost:8083/api/v1/bookings/1003`
+2. `PATCH http://localhost:8083/api/v1/bookings/1003/cancel`
+
+Scenario 4 - reviews:
+
+1. `GET http://localhost:8084/api/v1/restaurants/2/reviews?page=1&size=10`
+2. `POST http://localhost:8084/api/v1/restaurants/1/reviews`
+
+```json
+{
+  "bookingId": 1001,
+  "rating": 5,
+  "comment": "Great dinner, fast service and a very comfortable table."
+}
+```
+
+3. Repeat the same request and expect `409 Conflict`, because a booking can have only one review.
+
+Scenario 5 - ownership/authentication check:
+
+1. Open `Authorize`, log out, then log in as `mark.taylor.lab2@example.com`.
+2. `GET http://localhost:8083/api/v1/bookings/1003`
+3. Expected result: `404 Not Found`, because booking `1003` belongs to Emily.
 
 ## Internal API
 

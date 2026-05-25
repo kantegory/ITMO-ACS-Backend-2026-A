@@ -1,5 +1,6 @@
 package ru.itmo.restaurantbooking.lab2.identity.adapter.rest
 
+import io.swagger.v3.oas.annotations.Parameter
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -31,8 +32,11 @@ class AuthController(
 
     @PostMapping("/token", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
     fun token(
+        @Parameter(example = "emily.carter.lab2@example.com")
         @RequestParam("username") username: String,
+        @Parameter(example = "storageAdmin123")
         @RequestParam("password") password: String,
+        @Parameter(example = "password")
         @RequestParam("grant_type", required = false) grantType: String?
     ): OAuthTokenResponse =
         authService.token(username, password)
