@@ -1,0 +1,875 @@
+openapi: 3.0.3
+info:
+  title: Job Search API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Reference
+  - name: Vacancies
+  - name: Applicant
+  - name: Employer
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Refresh tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /industries:
+    get:
+      tags: [Reference]
+      security: []
+      summary: List industries
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Industry'
+
+  /companies/{companyId}:
+    get:
+      tags: [Reference]
+      security: []
+      summary: Company by id
+      parameters:
+        - $ref: '#/components/parameters/companyId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /vacancies:
+    get:
+      tags: [Vacancies]
+      security: []
+      summary: Search vacancies
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - name: industry_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: salary_from
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: salary_to
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: experience_level
+          in: query
+          schema: { $ref: '#/components/schemas/ExperienceLevel' }
+        - name: employment_type
+          in: query
+          schema: { $ref: '#/components/schemas/EmploymentType' }
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyListResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /vacancies/{vacancyId}:
+    get:
+      tags: [Vacancies]
+      security: []
+      summary: Vacancy details
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacancy'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /vacancies/{vacancyId}/applications:
+    post:
+      tags: [Vacancies]
+      summary: Apply to vacancy (applicant)
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /applicant/profile:
+    get:
+      tags: [Applicant]
+      summary: Get applicant profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicantProfile'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Applicant]
+      summary: Update applicant profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicantProfileUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicantProfile'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /applicant/resumes:
+    get:
+      tags: [Applicant]
+      summary: List own resumes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Resume'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Applicant]
+      summary: Create resume
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeUpsertRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /applicant/resumes/{resumeId}:
+    put:
+      tags: [Applicant]
+      summary: Update resume
+      parameters:
+        - $ref: '#/components/parameters/resumeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeUpsertRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Applicant]
+      summary: Delete resume
+      parameters:
+        - $ref: '#/components/parameters/resumeId'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /applicant/applications:
+    get:
+      tags: [Applicant]
+      summary: List own applications
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ApplicationStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /employer/profile:
+    get:
+      tags: [Employer]
+      summary: Get employer profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Employer]
+      summary: Update employer profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                position: { type: string }
+                phone: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /employer/company:
+    get:
+      tags: [Employer]
+      summary: Get own company
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Employer]
+      summary: Update company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyUpsertRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /employer/vacancies:
+    get:
+      tags: [Employer]
+      summary: List own vacancies
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Employer]
+      summary: Create vacancy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancyUpsertRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacancy'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /employer/vacancies/{vacancyId}:
+    get:
+      tags: [Employer]
+      summary: Get own vacancy by id
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacancy'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Employer]
+      summary: Update own vacancy
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancyUpsertRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacancy'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Employer]
+      summary: Deactivate vacancy
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /employer/vacancies/{vacancyId}/applications:
+    get:
+      tags: [Employer]
+      summary: List applications for own vacancy
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ApplicationStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /employer/applications/{applicationId}/status:
+    patch:
+      tags: [Employer]
+      summary: Update application status
+      parameters:
+        - $ref: '#/components/parameters/applicationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationStatusUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    companyId:
+      name: companyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    vacancyId:
+      name: vacancyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    resumeId:
+      name: resumeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    applicationId:
+      name: applicationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    UserRole:
+      type: string
+      enum: [applicant, employer]
+
+    ExperienceLevel:
+      type: string
+      enum: [intern, junior, middle, senior, lead]
+
+    EmploymentType:
+      type: string
+      enum: [full_time, part_time, contract, internship, project]
+
+    ApplicationStatus:
+      type: string
+      enum: [submitted, reviewing, invited, rejected, hired, withdrawn]
+
+    User:
+      type: object
+      required: [id, email, role]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/UserRole' }
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [user]
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    RegisterRequest:
+      oneOf:
+        - $ref: '#/components/schemas/RegisterApplicantRequest'
+        - $ref: '#/components/schemas/RegisterEmployerRequest'
+      discriminator:
+        propertyName: role
+
+    RegisterApplicantRequest:
+      type: object
+      required: [role, email, password, first_name, last_name]
+      properties:
+        role: { type: string, enum: [applicant] }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        first_name: { type: string }
+        last_name: { type: string }
+        phone: { type: string }
+        city: { type: string }
+        about: { type: string }
+
+    RegisterEmployerRequest:
+      type: object
+      required: [role, email, password, company]
+      properties:
+        role: { type: string, enum: [employer] }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        position: { type: string }
+        phone: { type: string }
+        company:
+          $ref: '#/components/schemas/CompanyUpsertRequest'
+
+    Industry:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+
+    Company:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+
+    CompanyUpsertRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        website: { type: string }
+        city: { type: string }
+
+    ApplicantProfile:
+      type: object
+      required: [id, user_id, first_name, last_name]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        first_name: { type: string }
+        last_name: { type: string }
+        phone: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        about: { type: string, nullable: true }
+
+    ApplicantProfileUpdateRequest:
+      type: object
+      required: [first_name, last_name]
+      properties:
+        first_name: { type: string }
+        last_name: { type: string }
+        phone: { type: string }
+        city: { type: string }
+        about: { type: string }
+
+    EmployerProfile:
+      type: object
+      required: [id, user_id, company_id]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        position: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        company:
+          $ref: '#/components/schemas/Company'
+
+    Resume:
+      type: object
+      required: [id, applicant_id, title, experience_years, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        applicant_id: { type: string, format: uuid }
+        title: { type: string }
+        experience_years: { type: integer, minimum: 0 }
+        skills: { type: string, nullable: true }
+        education: { type: string, nullable: true }
+        work_experience: { type: string, nullable: true }
+        expected_salary: { type: integer, nullable: true }
+        is_active: { type: boolean }
+
+    ResumeUpsertRequest:
+      type: object
+      required: [title, experience_years]
+      properties:
+        title: { type: string }
+        experience_years: { type: integer, minimum: 0 }
+        skills: { type: string }
+        education: { type: string }
+        work_experience: { type: string }
+        expected_salary: { type: integer, minimum: 0 }
+        is_active: { type: boolean }
+
+    Vacancy:
+      type: object
+      required: [id, title, company_id, employer_id, industry_id, experience_level, employment_type, is_active]
+      properties:
+        id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        employer_id: { type: string, format: uuid }
+        industry_id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        requirements: { type: string }
+        salary_from: { type: integer, nullable: true }
+        salary_to: { type: integer, nullable: true }
+        experience_level: { $ref: '#/components/schemas/ExperienceLevel' }
+        employment_type: { $ref: '#/components/schemas/EmploymentType' }
+        city: { type: string, nullable: true }
+        is_active: { type: boolean }
+        company:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        industry:
+          $ref: '#/components/schemas/Industry'
+
+    VacancyUpsertRequest:
+      type: object
+      required: [industry_id, title, description, requirements, experience_level, employment_type]
+      properties:
+        industry_id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        requirements: { type: string }
+        salary_from: { type: integer, minimum: 0 }
+        salary_to: { type: integer, minimum: 0 }
+        experience_level: { $ref: '#/components/schemas/ExperienceLevel' }
+        employment_type: { $ref: '#/components/schemas/EmploymentType' }
+        city: { type: string }
+        is_active: { type: boolean }
+
+    Application:
+      type: object
+      required: [id, vacancy_id, applicant_id, resume_id, status]
+      properties:
+        id: { type: string, format: uuid }
+        vacancy_id: { type: string, format: uuid }
+        applicant_id: { type: string, format: uuid }
+        resume_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/ApplicationStatus' }
+        cover_letter: { type: string, nullable: true }
+
+    ApplicationCreateRequest:
+      type: object
+      required: [resume_id]
+      properties:
+        resume_id: { type: string, format: uuid }
+        cover_letter: { type: string }
+
+    ApplicationStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/ApplicationStatus'
+
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1 }
+        total: { type: integer, minimum: 0 }
+
+    VacancyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Vacancy'
+        meta:
+          $ref: '#/components/schemas/Pagination'
+
+    ApplicationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        meta:
+          $ref: '#/components/schemas/Pagination'
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  issue: { type: string }
