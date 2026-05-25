@@ -26,6 +26,8 @@
 
 HTTP + `X-Internal-Key`. Примеры: catalog дергает auth за владельцем; deals и messaging — catalog; gateway собирает history и owning из нескольких сервисов. Описание internal путей — в openapi из ДЗ4.
 
+Асинхронно (ДЗ5, ветка `lab3`): deals → RabbitMQ → messaging.
+
 ### 4. Gateway
 
 Проксирует те же маршруты, что в ЛР1. Отдельно реализованы `GET /history` и `GET /me/owning` (в монолите это были join-запросы).

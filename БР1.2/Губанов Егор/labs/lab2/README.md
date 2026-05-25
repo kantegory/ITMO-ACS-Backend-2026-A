@@ -32,7 +32,13 @@ Postman: `homeworks/hw3`, `baseUrl` = `http://127.0.0.1:3000` (если порт
 3. В пяти терминалах из `services/*`: `npm install && npm run dev`.
 4. Gateway последним.
 
+## Очереди (ДЗ5, ветка `lab3`)
+
+**deals** публикует в RabbitMQ (`rent.deal.events`), **messaging** пишет автоуведомления.
+
 ## Отчёты
 
 - ДЗ4: `homeworks/hw4/ДЗ4_Губанов Егор_БР1.2.pdf`
+- ДЗ5: `homeworks/hw5/ДЗ5_Губанов Егор_БР1.2.pdf`
 - ЛР2: `ЛР2_Губанов Егор_БР1.2.pdf`
+- ЛР3: `../lab3/ЛР3_Губанов Егор_БР1.2.pdf`

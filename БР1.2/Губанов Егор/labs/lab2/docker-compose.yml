@@ -1,4 +1,15 @@
 services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   auth-db:
     image: postgres:16-alpine
     environment:
@@ -114,6 +125,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
       INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
       CATALOG_URL: http://catalog:3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       DEALS_PORT: "3003"
       DEALS_DB_HOST: deals-db
       DEALS_DB_PORT: "5432"
@@ -121,6 +133,8 @@ services:
       DEALS_DB_PASS: rent
       DEALS_DB_NAME: deals_db
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       deals-db:
         condition: service_healthy
       catalog:
@@ -138,6 +152,7 @@ services:
       INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
       AUTH_URL: http://auth:3001
       CATALOG_URL: http://catalog:3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       MESSAGING_PORT: "3004"
       MESSAGING_DB_HOST: messaging-db
       MESSAGING_DB_PORT: "5432"
@@ -145,6 +160,8 @@ services:
       MESSAGING_DB_PASS: rent
       MESSAGING_DB_NAME: messaging_db
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       messaging-db:
         condition: service_healthy
       auth:

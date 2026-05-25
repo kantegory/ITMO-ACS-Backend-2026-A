@@ -7,6 +7,15 @@ import { AuthUser } from "../../../../packages/shared/src/types";
 import { getPropertySnapshot } from "../../../../packages/shared/src/clients";
 import { enrichDeal, ownerPropertyIds } from "../catalogHelper";
 import { dealOut } from "../serializers";
+import { publishDealEvent } from "../../../../packages/shared/src/mq";
+
+async function emitDealEvent(event: Parameters<typeof publishDealEvent>[0]) {
+  try {
+    await publishDealEvent(event);
+  } catch (e) {
+    console.error("rabbitmq publish failed", e);
+  }
+}
 
 function computeTotal(
   propertyPrice: number,
@@ -71,6 +80,16 @@ export async function create(req: Request, res: Response) {
     totalPrice: total.toFixed(2),
   });
   await dealRepo.save(d);
+  await emitDealEvent({
+    type: "deal.created",
+    deal_id: d.id,
+    property_id: property_id,
+    tenant_id: user.id,
+    owner_id: property.owner_id,
+    start_date: start_date.toISOString(),
+    end_date: end_date.toISOString(),
+    total_price: d.totalPrice,
+  });
   res.json(dealOut(d, property));
 }
 
@@ -117,8 +136,18 @@ export async function patch(req: Request, res: Response) {
       }
     }
   }
+  const previous_status = d.status;
   d.status = status;
   await dealRepo.save(d);
+  await emitDealEvent({
+    type: "deal.status_changed",
+    deal_id: d.id,
+    property_id: d.propertyId,
+    tenant_id: d.tenantId,
+    owner_id: property.owner_id,
+    status,
+    previous_status,
+  });
   res.json(dealOut(d, property));
 }
 

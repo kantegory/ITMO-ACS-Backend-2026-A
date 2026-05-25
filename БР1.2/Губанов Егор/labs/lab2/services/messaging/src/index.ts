@@ -6,6 +6,7 @@ import cors from "cors";
 import { AppDataSource } from "./data-source";
 import { buildRoutes } from "./routes";
 import { errorHandler } from "../../../packages/shared/src/errorHandler";
+import { startDealEventsConsumer } from "./dealEventsConsumer";
 
 dotenv.config({ path: path.join(__dirname, "../../../.env") });
 
@@ -18,7 +19,8 @@ app.use(errorHandler);
 const port = parseInt(process.env.MESSAGING_PORT || "3004", 10);
 
 AppDataSource.initialize()
-  .then(() => {
+  .then(async () => {
+    await startDealEventsConsumer();
     app.listen(port, () => {
       console.log("messaging http://localhost:" + port + "/api/v1");
     });
