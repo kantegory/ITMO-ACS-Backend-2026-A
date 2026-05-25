@@ -5,6 +5,7 @@ import (
 
 	"auth-service/internal/config"
 	"auth-service/internal/database"
+	"auth-service/internal/kafka"
 	"auth-service/internal/models"
 	"auth-service/internal/utils"
 
@@ -60,6 +61,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось создать пользователя"})
 		return
 	}
+
+	go kafka.PublishUserRegistered(user.ID.String(), user.Email, string(user.Role))
 
 	token, err := utils.GenerateToken(&user, h.cfg.JWTSecret)
 	if err != nil {

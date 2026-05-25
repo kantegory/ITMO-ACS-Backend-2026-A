@@ -5,12 +5,16 @@ import (
 
 	"job-service/internal/config"
 	"job-service/internal/database"
+	"job-service/internal/kafka"
 	"job-service/internal/routes"
 )
 
 func main() {
 	cfg := config.LoadConfig()
 	database.InitDB(cfg)
+
+	kafka.InitKafka()
+	defer kafka.Close()
 
 	r := routes.SetupRouter(cfg)
 

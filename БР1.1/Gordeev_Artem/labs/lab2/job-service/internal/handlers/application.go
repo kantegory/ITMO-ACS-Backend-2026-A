@@ -5,6 +5,7 @@ import (
 
 	"job-service/internal/clients"
 	"job-service/internal/database"
+	"job-service/internal/kafka"
 	"job-service/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -85,6 +86,12 @@ func (h *ApplicationHandler) Apply(c *gin.Context) {
 		return
 	}
 
+	var job models.Job
+	if err := database.DB.Where("id = ?", jobID).First(&job).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Вакансия не найдена"})
+		return
+	}
+
 	valid, err := h.resumeClient.CheckOwner(userIDStr, req.ResumeID.String())
 	if err != nil || !valid {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Резюме не найдено или доступ запрещен"})
@@ -103,6 +110,8 @@ func (h *ApplicationHandler) Apply(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "Заявка уже существует или не удалось создать"})
 		return
 	}
+
+	go kafka.PublishApplicationSubmitted(jobID.String(), req.ResumeID.String(), job.EmployerID.String())
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Успешно откликнулись", "id": application.ID})
 }
@@ -144,6 +153,8 @@ func (h *ApplicationHandler) UpdateStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось обновить статус"})
 		return
 	}
+
+	go kafka.PublishApplicationStatusChanged(app.ID.String(), string(app.Status), app.JobSeekerID.String())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Статус успешно обновлен"})
 }
