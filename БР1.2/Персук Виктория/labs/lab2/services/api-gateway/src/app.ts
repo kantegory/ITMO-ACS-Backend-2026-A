@@ -15,7 +15,15 @@ const app = express();
 app.use(cors());
 
 const proxy = (target: string) =>
-    createProxyMiddleware({ target, changeOrigin: true });
+    createProxyMiddleware({
+        target,
+        changeOrigin: true,
+        on: {
+            proxyReq: (proxyReq, req) => {
+                proxyReq.path = (req as any).originalUrl;
+            },
+        },
+    });
 
 app.use('/api/v1/auth', proxy(AUTH_SERVICE_URL));
 app.use('/api/v1/users', proxy(AUTH_SERVICE_URL));
