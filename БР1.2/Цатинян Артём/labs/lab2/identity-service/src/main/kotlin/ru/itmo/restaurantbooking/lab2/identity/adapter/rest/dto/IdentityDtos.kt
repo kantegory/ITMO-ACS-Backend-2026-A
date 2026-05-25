@@ -1,5 +1,6 @@
 package ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
@@ -24,6 +25,15 @@ data class LoginRequest(
     val email: String,
     @field:Size(min = 8, max = 64)
     val password: String
+)
+
+data class OAuthTokenResponse(
+    @JsonProperty("access_token")
+    val accessToken: String,
+    @JsonProperty("token_type")
+    val tokenType: String = "Bearer",
+    @JsonProperty("expires_in")
+    val expiresIn: Long
 )
 
 data class UpdateProfileRequest(

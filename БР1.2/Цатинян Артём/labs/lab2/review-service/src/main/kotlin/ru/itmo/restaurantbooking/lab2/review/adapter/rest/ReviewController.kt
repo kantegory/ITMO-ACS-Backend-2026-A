@@ -1,5 +1,6 @@
 package ru.itmo.restaurantbooking.lab2.review.adapter.rest
 
+import io.swagger.v3.oas.annotations.Parameter
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
@@ -29,6 +30,7 @@ class ReviewController(
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun create(
+        @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
         @PathVariable restaurantId: Long,
         @Valid @RequestBody request: CreateReviewRequest

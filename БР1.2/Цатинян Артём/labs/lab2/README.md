@@ -151,6 +151,18 @@ Review:
 
 Protected endpoints use a Bearer token issued by `identity-service`.
 
+There are two ways to authenticate in Swagger.
+
+Recommended Swagger flow:
+
+1. Open any service Swagger UI.
+2. Click `Authorize`.
+3. Choose the OAuth2 password flow.
+4. Enter the user email as `username` and the password as `password`.
+5. Swagger sends the credentials to `identity-service` at `http://localhost:8081/api/v1/auth/token`, receives a JWT and automatically attaches it to protected requests.
+
+Manual flow:
+
 Login or register through `identity-service`, copy the `accessToken`, then call protected endpoints with:
 
 ```http

@@ -1,5 +1,6 @@
 package ru.itmo.restaurantbooking.lab2.booking.adapter.rest
 
+import io.swagger.v3.oas.annotations.Parameter
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -33,12 +34,14 @@ class BookingController(
     @PostMapping("/bookings")
     @ResponseStatus(HttpStatus.CREATED)
     fun create(
+        @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
         @Valid @RequestBody request: CreateBookingRequest
     ) = bookingService.create(currentUser.id, request)
 
     @GetMapping("/bookings/me")
     fun mine(
+        @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
         @RequestParam(defaultValue = "1") page: Int,
         @RequestParam(defaultValue = "10") size: Int
@@ -46,12 +49,14 @@ class BookingController(
 
     @GetMapping("/bookings/{bookingId}")
     fun byId(
+        @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
         @PathVariable bookingId: Long
     ) = bookingService.byId(currentUser.id, bookingId)
 
     @PatchMapping("/bookings/{bookingId}/cancel")
     fun cancel(
+        @Parameter(hidden = true)
         currentUser: AuthenticatedUser,
         @PathVariable bookingId: Long
     ) = bookingService.cancel(currentUser.id, bookingId)

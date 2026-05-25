@@ -1,5 +1,6 @@
 package ru.itmo.restaurantbooking.lab2.identity.adapter.rest
 
+import io.swagger.v3.oas.annotations.Parameter
 import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -19,11 +20,15 @@ class UserController(
     private val authService: AuthService
 ) {
     @GetMapping("/me")
-    fun me(@RequestHeader("Authorization", required = false) authorization: String?): UserProfileResponse =
+    fun me(
+        @Parameter(hidden = true)
+        @RequestHeader("Authorization", required = false) authorization: String?
+    ): UserProfileResponse =
         userService.profile(authService.authenticate(authorization).id)
 
     @PatchMapping("/me")
     fun updateMe(
+        @Parameter(hidden = true)
         @RequestHeader("Authorization", required = false) authorization: String?,
         @Valid @RequestBody request: UpdateProfileRequest
     ): UserProfileResponse = userService.updateProfile(authService.authenticate(authorization).id, request)

@@ -7,14 +7,17 @@ import ru.itmo.restaurantbooking.lab2.common.exception.UnauthorizedException
 import ru.itmo.restaurantbooking.lab2.identity.adapter.jooq.UserRepository
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.AuthResponse
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.LoginRequest
+import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.OAuthTokenResponse
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.RegisterRequest
+import ru.itmo.restaurantbooking.lab2.identity.config.JwtProperties
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 @Service
 class AuthService(
     private val userRepository: UserRepository,
-    private val jwtTokenService: JwtTokenService
+    private val jwtTokenService: JwtTokenService,
+    private val jwtProperties: JwtProperties
 ) {
     fun register(request: RegisterRequest): AuthResponse {
         if (userRepository.existsByEmail(request.email)) {
@@ -26,14 +29,27 @@ class AuthService(
     }
 
     fun login(request: LoginRequest): AuthResponse {
-        val user = userRepository.findByEmail(request.email)
+        val user = authenticateCredentials(request.email, request.password)
+        return AuthResponse.from(user, jwtTokenService.issue(user))
+    }
+
+    fun token(username: String, password: String): OAuthTokenResponse {
+        val user = authenticateCredentials(username, password)
+        return OAuthTokenResponse(
+            accessToken = jwtTokenService.issue(user),
+            expiresIn = jwtProperties.ttlSeconds
+        )
+    }
+
+    private fun authenticateCredentials(email: String, password: String): ru.itmo.restaurantbooking.lab2.identity.domain.UserRecord {
+        val user = userRepository.findByEmail(email)
             ?: throw UnauthorizedException("Invalid credentials")
 
-        if (user.passwordHash != hashPassword(request.password)) {
+        if (user.passwordHash != hashPassword(password)) {
             throw UnauthorizedException("Invalid credentials")
         }
 
-        return AuthResponse.from(user, jwtTokenService.issue(user))
+        return user
     }
 
     fun authenticate(authorizationHeader: String?): AuthenticatedUser {

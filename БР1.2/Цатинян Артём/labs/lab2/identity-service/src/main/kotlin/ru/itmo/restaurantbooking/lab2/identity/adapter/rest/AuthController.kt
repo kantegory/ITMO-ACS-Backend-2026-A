@@ -2,13 +2,16 @@ package ru.itmo.restaurantbooking.lab2.identity.adapter.rest
 
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.AuthResponse
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.LoginRequest
+import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.OAuthTokenResponse
 import ru.itmo.restaurantbooking.lab2.identity.adapter.rest.dto.RegisterRequest
 import ru.itmo.restaurantbooking.lab2.identity.service.AuthService
 
@@ -25,4 +28,12 @@ class AuthController(
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LoginRequest): AuthResponse =
         authService.login(request)
+
+    @PostMapping("/token", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
+    fun token(
+        @RequestParam("username") username: String,
+        @RequestParam("password") password: String,
+        @RequestParam("grant_type", required = false) grantType: String?
+    ): OAuthTokenResponse =
+        authService.token(username, password)
 }
