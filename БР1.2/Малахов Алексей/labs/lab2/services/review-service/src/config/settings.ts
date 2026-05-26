@@ -1,0 +1,25 @@
+import { env } from 'process';
+
+class Settings {
+    APP_HOST: string = env.APP_HOST || '0.0.0.0';
+    APP_PORT: number = parseInt(env.APP_PORT) || 3006;
+    APP_PROTOCOL: string = env.APP_PROTOCOL || 'http';
+    APP_API_PREFIX: string = env.APP_API_PREFIX || '/api/v1';
+
+    DB_HOST = env.DB_HOST || 'localhost';
+    DB_PORT = parseInt(env.DB_PORT) || 5438;
+    DB_NAME = env.DB_NAME || 'review_db';
+    DB_USER = env.DB_USER || 'review_db';
+    DB_PASSWORD = env.DB_PASSWORD || 'review_db';
+
+    JWT_SECRET_KEY = env.JWT_SECRET_KEY || 'supersecret';
+
+    SERVICE_TOKEN = env.SERVICE_TOKEN || 'internal-service-token';
+    RENTAL_SERVICE_URL = env.RENTAL_SERVICE_URL || 'http://rental-service:3004';
+    PROPERTY_SERVICE_URL = env.PROPERTY_SERVICE_URL || 'http://property-service:3003';
+    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002';
+    RABBITMQ_URL = env.RABBITMQ_URL || 'amqp://guest:guest@rabbitmq:5672';
+}
+
+const SETTINGS = new Settings();
+export default SETTINGS;
