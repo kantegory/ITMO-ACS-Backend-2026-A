@@ -70,6 +70,12 @@ project(":common") {
     }
 }
 
+project(":identity-service") {
+    dependencies {
+        add("implementation", "org.springframework.security:spring-security-oauth2-jose")
+    }
+}
+
 configure(subprojects.filter { it.name != "common" }) {
     apply(plugin = "org.springframework.boot")
     apply(plugin = "nu.studer.jooq")

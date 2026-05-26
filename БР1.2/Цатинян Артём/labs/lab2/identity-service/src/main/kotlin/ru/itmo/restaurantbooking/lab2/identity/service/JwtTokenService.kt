@@ -1,78 +1,66 @@
 package ru.itmo.restaurantbooking.lab2.identity.service
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import com.nimbusds.jose.jwk.source.ImmutableSecret
 import org.springframework.stereotype.Service
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm
+import org.springframework.security.oauth2.jwt.JwtClaimsSet
+import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.oauth2.jwt.JwtEncoder
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters
+import org.springframework.security.oauth2.jwt.JwtException
+import org.springframework.security.oauth2.jwt.JwsHeader
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder
 import ru.itmo.restaurantbooking.lab2.common.exception.UnauthorizedException
 import ru.itmo.restaurantbooking.lab2.identity.config.JwtProperties
 import ru.itmo.restaurantbooking.lab2.identity.domain.UserRecord
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-import java.util.Base64
-import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 @Service
 class JwtTokenService(
-    private val jwtProperties: JwtProperties,
-    private val objectMapper: ObjectMapper
+    private val jwtProperties: JwtProperties
 ) {
-    private val encoder = Base64.getUrlEncoder().withoutPadding()
-    private val decoder = Base64.getUrlDecoder()
+    private val secretKey = SecretKeySpec(
+        jwtProperties.secret.toByteArray(StandardCharsets.UTF_8),
+        "HmacSHA256"
+    )
+    private val jwtEncoder: JwtEncoder = NimbusJwtEncoder(ImmutableSecret(secretKey))
+    private val jwtDecoder: JwtDecoder = NimbusJwtDecoder
+        .withSecretKey(secretKey)
+        .macAlgorithm(MacAlgorithm.HS256)
+        .build()
 
     fun issue(user: UserRecord): String {
-        val now = Instant.now().epochSecond
-        val header = mapOf("alg" to "HS256", "typ" to "JWT")
-        val payload = mapOf(
-            "sub" to user.id.toString(),
-            "email" to user.email,
-            "role" to user.role,
-            "iat" to now,
-            "exp" to now + jwtProperties.ttlSeconds
-        )
+        val now = Instant.now()
+        val header = JwsHeader.with(MacAlgorithm.HS256).build()
+        val claims = JwtClaimsSet.builder()
+            .subject(user.id.toString())
+            .claim("email", user.email)
+            .claim("role", user.role)
+            .issuedAt(now)
+            .expiresAt(now.plusSeconds(jwtProperties.ttlSeconds))
+            .build()
 
-        val headerPart = encodeJson(header)
-        val payloadPart = encodeJson(payload)
-        val signaturePart = sign("$headerPart.$payloadPart")
-
-        return "$headerPart.$payloadPart.$signaturePart"
+        return jwtEncoder.encode(
+            JwtEncoderParameters.from(header, claims)
+        ).tokenValue
     }
 
-    fun validate(token: String): TokenClaims {
-        val parts = token.split(".")
-        if (parts.size != 3) {
+    fun validate(token: String): TokenClaims =
+        try {
+            val jwt = jwtDecoder.decode(token)
+            TokenClaims(
+                userId = jwt.subject.toLong(),
+                email = jwt.getClaimAsString("email"),
+                role = jwt.getClaimAsString("role")
+            )
+        } catch (exception: JwtException) {
+            throw UnauthorizedException("Invalid access token")
+        } catch (exception: IllegalArgumentException) {
             throw UnauthorizedException("Invalid access token")
         }
-
-        val unsignedToken = "${parts[0]}.${parts[1]}"
-        if (sign(unsignedToken) != parts[2]) {
-            throw UnauthorizedException("Invalid access token")
-        }
-
-        val payload = objectMapper.readValue(
-            decoder.decode(parts[1]).toString(StandardCharsets.UTF_8),
-            Map::class.java
-        )
-
-        val expiresAt = (payload["exp"] as Number).toLong()
-        if (expiresAt < Instant.now().epochSecond) {
-            throw UnauthorizedException("Access token expired")
-        }
-
-        return TokenClaims(
-            userId = payload["sub"].toString().toLong(),
-            email = payload["email"].toString(),
-            role = payload["role"].toString()
-        )
-    }
-
-    private fun encodeJson(value: Map<String, Any>): String =
-        encoder.encodeToString(objectMapper.writeValueAsBytes(value))
-
-    private fun sign(value: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(jwtProperties.secret.toByteArray(StandardCharsets.UTF_8), "HmacSHA256"))
-        return encoder.encodeToString(mac.doFinal(value.toByteArray(StandardCharsets.UTF_8)))
-    }
 }
 
 data class TokenClaims(
