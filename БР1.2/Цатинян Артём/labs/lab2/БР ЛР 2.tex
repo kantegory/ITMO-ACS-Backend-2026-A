@@ -1,0 +1,506 @@
+\documentclass[14pt,a4paper]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{cmap}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{seqsplit}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+
+\geometry{
+    left=30mm,
+    right=15mm,
+    top=20mm,
+    bottom=20mm
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue
+}
+
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2em}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{4pt}
+\sloppy
+
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+
+\lstdefinestyle{jsonstyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\lstdefinestyle{textstyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\pathcode}[1]{{\footnotesize\nolinkurl{#1}}}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        САНКТ-ПЕТЕРБУРГСКИЙ НАЦИОНАЛЬНЫЙ\\
+        ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО
+
+        \vspace{1.5cm}
+
+        Дисциплина: Бэк-энд разработка
+
+        \vspace{1.5cm}
+
+        \textbf{Отчет}
+
+        \vspace{0.5cm}
+
+        Лабораторная работа 2
+
+        \vspace{0.5cm}
+
+        \textbf{Реализация микросервисной архитектуры}
+
+        \vfill
+
+        \begin{flushright}
+            Выполнил:\\
+            Цатинян Артём\\
+            Группа БР1.2
+
+            \vspace{0.8cm}
+
+            Проверил:\\
+            Добряков Д. И.
+        \end{flushright}
+
+        \vfill
+
+        Санкт-Петербург\\
+        2026 г.
+    \end{center}
+\end{titlepage}
+
+\section{Задача}
+
+Тема проекта: приложение для бронирования столиков в ресторанах.
+
+В рамках лабораторной работы требовалось перейти от монолитного backend-приложения из первой лабораторной работы к практической микросервисной реализации. Необходимо было разделить систему на несколько сервисов, обеспечить принцип \code{database-per-service}, реализовать межсервисное взаимодействие, сохранить основные пользовательские сценарии бронирования и подготовить демонстрационный набор данных для ручной проверки через Swagger.
+
+\section{Ход работы}
+
+Исходное приложение из ЛР1 было реализовано как монолитный REST API на Kotlin и Spring Boot. В нем в одной схеме хранились пользователи, рестораны, меню, столики, бронирования и отзывы. Для второй лабораторной работы приложение было вынесено в Gradle multi-module проект, где каждый бизнес-сервис запускается как отдельное Spring Boot приложение.
+
+Реализация сделана на том же технологическом стеке, что и первая лабораторная работа: Kotlin, Spring Boot 3, PostgreSQL, Liquibase XML, jOOQ и Gradle. Для каждого сервиса используется собственная схема базы данных. В локальном окружении все схемы находятся в одной базе \code{storage_local}, чтобы проект было проще запускать и показывать на защите, но сервисы не используют внешние ключи и SQL-запросы к чужим схемам.
+
+\subsection{Состав микросервисов}
+
+\begin{longtable}{|L{0.24\textwidth}|L{0.13\textwidth}|L{0.43\textwidth}|L{0.12\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Порт} & \textbf{Ответственность} & \textbf{Схема} \\
+\hline
+\code{identity-service} & \code{8081} & Регистрация, логин, профиль пользователя, выпуск и проверка JWT & \code{identity} \\
+\hline
+\code{catalog-service} & \code{8082} & Каталог ресторанов, кухни, меню, столики, рабочие часы & \code{catalog} \\
+\hline
+\code{booking-service} & \code{8083} & Расчет доступности, создание, просмотр и отмена бронирований & \code{booking} \\
+\hline
+\code{review-service} & \code{8084} & Просмотр и создание отзывов, проверка права оставить отзыв & \code{review} \\
+\hline
+\end{longtable}
+
+В проекте из ДЗ4 целевой архитектурой был также предусмотрен API Gateway. В лабораторной работе отдельный gateway не реализовывался, чтобы не раздувать инфраструктурную часть. Вместо этого каждый сервис имеет свой Swagger UI и публичные REST endpoint-ы, а авторизация и межсервисные проверки реализованы напрямую между сервисами.
+
+\subsection{Структура проекта}
+
+Проект расположен в каталоге \code{labs/lab2}. Общий код вынесен в модуль \code{common}. В каждом сервисе используется одинаковый подход к структуре:
+
+\begin{longtable}{|L{0.30\textwidth}|L{0.60\textwidth}|}
+\hline
+\textbf{Пакет} & \textbf{Назначение} \\
+\hline
+\code{adapter/rest} & Публичные и внутренние HTTP-контроллеры \\
+\hline
+\code{adapter/rest/dto} & DTO запросов и ответов \\
+\hline
+\code{adapter/jooq} & Репозитории на jOOQ для доступа к собственной схеме сервиса \\
+\hline
+\code{adapter/client} & REST-клиенты для обращения к другим сервисам \\
+\hline
+\code{service} & Бизнес-логика и orchestration сценариев \\
+\hline
+\code{domain} & Доменные записи и enum-ы сервиса \\
+\hline
+\code{src/generated/jooq} & Сгенерированные jOOQ таблицы, records, POJO и DAO \\
+\hline
+\end{longtable}
+
+Контроллеры, сервисы, репозитории и клиенты разделены по файлам. Это отличает итоговую реализацию от простого каркаса, где весь сервис мог быть собран в одном классе.
+
+\subsection{Архитектурная схема}
+
+\begin{center}
+\begin{tikzpicture}[
+    service/.style={rectangle, draw, rounded corners, align=center, text width=3.2cm, minimum height=1.0cm, font=\small},
+    db/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, text width=2.2cm, minimum height=0.9cm, font=\small},
+    arrow/.style={-{Latex}, thick},
+    dashedarrow/.style={-{Latex}, thick, dashed}
+]
+    \node[service] (client) at (0, 0) {Swagger / клиент};
+
+    \node[service] (identity) at (4.6, 1.8) {Identity\\Service};
+    \node[service] (catalog) at (4.6, 0.2) {Catalog\\Service};
+    \node[service] (booking) at (4.6, -1.4) {Booking\\Service};
+    \node[service] (review) at (4.6, -3.0) {Review\\Service};
+
+    \node[db] (identitydb) at (8.8, 1.8) {\code{identity}};
+    \node[db] (catalogdb) at (8.8, 0.2) {\code{catalog}};
+    \node[db] (bookingdb) at (8.8, -1.4) {\code{booking}};
+    \node[db] (reviewdb) at (8.8, -3.0) {\code{review}};
+
+    \draw[arrow] (client.east) -- (identity.west);
+    \draw[arrow] (client.east) -- (catalog.west);
+    \draw[arrow] (client.east) -- (booking.west);
+    \draw[arrow] (client.east) -- (review.west);
+
+    \draw[arrow] (identity) -- (identitydb);
+    \draw[arrow] (catalog) -- (catalogdb);
+    \draw[arrow] (booking) -- (bookingdb);
+    \draw[arrow] (review) -- (reviewdb);
+
+    \draw[dashedarrow] (booking.north) to[bend left=10] node[midway, right, font=\scriptsize] {token validate} (identity.south);
+    \draw[dashedarrow] (review.north) to[bend right=16] node[midway, left, font=\scriptsize] {token validate} (identity.south);
+    \draw[dashedarrow] (booking.east) to[bend right=18] node[midway, right, font=\scriptsize] {restaurant/table context} (catalog.east);
+    \draw[dashedarrow] (review.west) to[bend right=12] node[midway, left, font=\scriptsize] {review context} (booking.west);
+\end{tikzpicture}
+\end{center}
+
+Сплошные стрелки показывают публичные запросы и работу сервиса со своей базой. Пунктирные стрелки показывают внутренние REST-вызовы между сервисами. Прямых SQL-запросов из одного сервиса в таблицы другого сервиса нет.
+
+\subsection{Разделение базы данных}
+
+Для локального запуска используется одна PostgreSQL база:
+
+\begin{lstlisting}[style=textstyle]
+database: storage_local
+user: storage
+password: storage
+host: localhost
+port: 5432
+\end{lstlisting}
+
+Внутри базы созданы четыре независимые схемы:
+
+\begin{longtable}{|L{0.20\textwidth}|L{0.70\textwidth}|}
+\hline
+\textbf{Схема} & \textbf{Основные таблицы} \\
+\hline
+\code{identity} & \code{users} \\
+\hline
+\code{catalog} & \code{restaurants}, \code{cuisines}, \code{restaurant_cuisines}, \code{restaurant_tables}, \code{restaurant_working_hours}, \code{menu_categories}, \code{menu_items}, \code{restaurant_photos} \\
+\hline
+\code{booking} & \code{bookings} \\
+\hline
+\code{review} & \code{reviews}, \code{review_outbox} \\
+\hline
+\end{longtable}
+
+Liquibase changelog-и лежат отдельно в каждом сервисе. При запуске сервис применяет только свои миграции. jOOQ генерирует классы также отдельно для каждой схемы, например таблицы \code{Users}, \code{Restaurants}, \code{Bookings} и \code{Reviews} находятся в разных пакетах соответствующих сервисов.
+
+\subsection{Авторизация}
+
+Авторизация реализована через \code{identity-service}. Сервис предоставляет endpoint-ы регистрации, логина и OAuth2 password token endpoint:
+
+\begin{lstlisting}[style=textstyle]
+POST http://localhost:8081/api/v1/auth/register
+POST http://localhost:8081/api/v1/auth/login
+POST http://localhost:8081/api/v1/auth/token
+\end{lstlisting}
+
+Swagger UI в остальных сервисах настроен на OAuth2 password flow. Пользователь нажимает \code{Authorize}, вводит email и пароль, после чего Swagger отправляет запрос в \code{identity-service}, получает JWT и автоматически прикладывает его как \code{Authorization: Bearer <token>}.
+
+Проверка токена в сервисах сделана не через передачу объекта пользователя в body запроса, а через общий argument resolver из модуля \code{common}. Он читает Bearer token из заголовка и вызывает внутренний endpoint \code{identity-service} для проверки токена и получения текущего пользователя. Для выпуска и проверки JWT используется стандартный механизм Spring Security OAuth2 JOSE: \code{NimbusJwtEncoder} и \code{NimbusJwtDecoder}.
+
+\subsection{Межсервисные взаимодействия}
+
+\begin{longtable}{|L{0.25\textwidth}|L{0.25\textwidth}|L{0.40\textwidth}|}
+\hline
+\textbf{Кто вызывает} & \textbf{Кого вызывает} & \textbf{Зачем} \\
+\hline
+\code{booking-service} & \code{identity-service} & Проверить Bearer token и получить текущего пользователя для защищенных ручек бронирований \\
+\hline
+\code{review-service} & \code{identity-service} & Проверить Bearer token и получить автора отзыва \\
+\hline
+\code{booking-service} & \code{catalog-service} & Получить restaurant/table context: существует ли ресторан, активен ли столик, подходит ли вместимость, какие рабочие часы \\
+\hline
+\code{review-service} & \code{booking-service} & Проверить, что бронирование принадлежит пользователю, относится к ресторану и завершено \\
+\hline
+\end{longtable}
+
+Таким образом, сервисы не являются четырьмя независимыми CRUD-приложениями. Основные пользовательские операции проходят через цепочки межсервисных вызовов.
+
+\subsubsection{Создание бронирования}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент авторизуется через Swagger и получает JWT от \code{identity-service}.
+    \item Клиент вызывает \pathcode{POST /api/v1/bookings} в \code{booking-service}.
+    \item \code{booking-service} через общий resolver обращается в \code{identity-service} и определяет текущего пользователя.
+    \item Затем \code{booking-service} вызывает \code{catalog-service}, чтобы получить информацию о ресторане и столике.
+    \item \code{catalog-service} возвращает название ресторана, номер столика, вместимость, статус и рабочие часы.
+    \item \code{booking-service} проверяет пересечения с уже существующими бронированиями в своей БД.
+    \item Если конфликтов нет, создается запись в схеме \code{booking}.
+\end{enumerate}
+
+В этом сценарии Catalog нужен не для проверки занятости, а для проверки справочной части: ресторан существует, столик принадлежит этому ресторану, столик активен, его вместимость подходит под количество гостей, а выбранное время попадает в рабочие часы. Занятые интервалы проверяются в Booking, потому что только Booking владеет бронированиями.
+
+\subsubsection{Получение доступности}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент вызывает \pathcode{GET /api/v1/restaurants/{restaurantId}/availability} в \code{booking-service}.
+    \item \code{booking-service} вызывает \code{catalog-service} и получает список активных столиков и рабочие часы ресторана.
+    \item Затем \code{booking-service} читает свои бронирования и исключает занятые интервалы.
+    \item Клиент получает список доступных столиков и временных интервалов.
+\end{enumerate}
+
+\subsubsection{Создание отзыва}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Клиент авторизуется и вызывает \pathcode{POST /api/v1/restaurants/{restaurantId}/reviews} в \code{review-service}.
+    \item \code{review-service} проверяет токен через \code{identity-service}.
+    \item \code{review-service} вызывает \code{booking-service} по внутреннему endpoint-у review context.
+    \item \code{booking-service} проверяет, что бронирование принадлежит пользователю, относится к нужному ресторану и имеет статус \code{COMPLETED}.
+    \item \code{review-service} проверяет, что по этому бронированию еще нет отзыва.
+    \item Если все проверки пройдены, отзыв сохраняется в схему \code{review}.
+\end{enumerate}
+
+Если пользователь пытается оставить отзыв по будущему или чужому бронированию, сервис возвращает ошибку. Это демонстрирует, что бизнес-правило находится не только внутри Review, а проверяется через владельца бронирований.
+
+\subsection{Публичные endpoint-ы}
+
+\begin{longtable}{|L{0.44\textwidth}|L{0.18\textwidth}|L{0.28\textwidth}|}
+\hline
+\textbf{Endpoint} & \textbf{Сервис} & \textbf{Назначение} \\
+\hline
+\pathcode{POST /api/v1/auth/register} & Identity & Регистрация пользователя \\
+\hline
+\pathcode{POST /api/v1/auth/login} & Identity & Логин и получение токена \\
+\hline
+\pathcode{GET /api/v1/users/me} & Identity & Получение профиля текущего пользователя \\
+\hline
+\pathcode{PATCH /api/v1/users/me} & Identity & Обновление профиля \\
+\hline
+\pathcode{GET /api/v1/cuisines} & Catalog & Список кухонь \\
+\hline
+\pathcode{GET /api/v1/restaurants} & Catalog & Поиск ресторанов с фильтрацией, сортировкой и пагинацией \\
+\hline
+\pathcode{GET /api/v1/restaurants/{restaurantId}} & Catalog & Детали ресторана \\
+\hline
+\pathcode{GET /api/v1/restaurants/{restaurantId}/menu} & Catalog & Меню ресторана с фильтрацией \\
+\hline
+\pathcode{GET /api/v1/restaurants/{restaurantId}/availability} & Booking & Доступность столиков \\
+\hline
+\pathcode{POST /api/v1/bookings} & Booking & Создание бронирования \\
+\hline
+\pathcode{GET /api/v1/bookings/me} & Booking & Мои бронирования \\
+\hline
+\pathcode{GET /api/v1/bookings/{bookingId}} & Booking & Детали бронирования \\
+\hline
+\pathcode{PATCH /api/v1/bookings/{bookingId}/cancel} & Booking & Отмена бронирования \\
+\hline
+\pathcode{GET /api/v1/restaurants/{restaurantId}/reviews} & Review & Список отзывов ресторана \\
+\hline
+\pathcode{POST /api/v1/restaurants/{restaurantId}/reviews} & Review & Создание отзыва \\
+\hline
+\end{longtable}
+
+\subsection{Swagger и ручная проверка}
+
+После запуска сервисов Swagger UI доступен по адресам:
+
+\begin{lstlisting}[style=textstyle]
+http://localhost:8081/swagger-ui/index.html
+http://localhost:8082/swagger-ui/index.html
+http://localhost:8083/swagger-ui/index.html
+http://localhost:8084/swagger-ui/index.html
+\end{lstlisting}
+
+Для демонстрации используются подготовленные пользователи:
+
+\begin{longtable}{|L{0.42\textwidth}|L{0.25\textwidth}|L{0.23\textwidth}|}
+\hline
+\textbf{Email} & \textbf{Пароль} & \textbf{Назначение} \\
+\hline
+\pathcode{emily.carter.lab2@example.com} & \code{storageAdmin123} & Основной пользователь для проверки \\
+\hline
+\pathcode{mark.taylor.lab2@example.com} & \code{storageAdmin123} & Второй пользователь для проверки ownership \\
+\hline
+\end{longtable}
+
+Важные id тестовых данных:
+
+\begin{longtable}{|L{0.34\textwidth}|L{0.16\textwidth}|L{0.40\textwidth}|}
+\hline
+\textbf{Сущность} & \textbf{Id} & \textbf{Как используется} \\
+\hline
+North Garden restaurant & \code{1} & Ресторан для availability, booking и review сценариев \\
+\hline
+Pasta Lane restaurant & \code{2} & Ресторан для проверки поиска и отзывов \\
+\hline
+North Garden table T-02 & \code{2} & Столик для создания новой брони \\
+\hline
+Completed booking without review & \code{1001} & Успешное создание отзыва \\
+\hline
+Completed booking with existing review & \code{1002} & Ошибка повторного отзыва \\
+\hline
+Future confirmed booking & \code{1003} & Отмена бронирования и ошибка отзыва по незавершенной брони \\
+\hline
+\end{longtable}
+
+\subsection{Сценарии демонстрации}
+
+\subsubsection{Сценарий 1. Авторизация через Identity из другого сервиса}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item Открыть Swagger \code{booking-service}: \pathcode{http://localhost:8083/swagger-ui/index.html}.
+    \item Нажать \code{Authorize}.
+    \item Ввести username \code{emily.carter.lab2@example.com} и password \code{storageAdmin123}.
+    \item Swagger отправит запрос на \pathcode{http://localhost:8081/api/v1/auth/token}.
+    \item Вызвать \pathcode{GET /api/v1/bookings/me?page=1&size=10}.
+\end{enumerate}
+
+Ожидаемый результат: \code{booking-service} вернет бронирования Emily. При этом сам сервис бронирований не принимал пользователя в теле запроса, а достал его из JWT через \code{identity-service}.
+
+\subsubsection{Сценарий 2. Создание бронирования через Booking и Catalog}
+
+Перед созданием бронирования можно вызвать:
+
+\begin{lstlisting}[style=textstyle]
+GET /api/v1/restaurants/1/availability?date=2026-06-12&guestsCount=4
+\end{lstlisting}
+
+Затем выполнить:
+
+\begin{lstlisting}[style=jsonstyle]
+{
+  "restaurantId": 1,
+  "tableId": 2,
+  "startsAt": "2026-06-12T19:00:00",
+  "endsAt": "2026-06-12T21:00:00",
+  "guestsCount": 4,
+  "specialRequests": "Window table if available"
+}
+\end{lstlisting}
+
+Ожидаемый результат: \code{booking-service} создаст бронирование. Внутри он обратится в \code{catalog-service}, получит restaurant/table context и только после этого проверит занятость в своей БД.
+
+\subsubsection{Сценарий 3. Успешное создание отзыва}
+
+В Swagger \code{review-service} авторизоваться как Emily и вызвать:
+
+\begin{lstlisting}[style=textstyle]
+POST /api/v1/restaurants/1/reviews
+\end{lstlisting}
+
+\begin{lstlisting}[style=jsonstyle]
+{
+  "bookingId": 1001,
+  "rating": 5,
+  "comment": "Great dinner, fast service and a very comfortable table."
+}
+\end{lstlisting}
+
+Ожидаемый результат: \code{201 Created}. \code{review-service} проверит пользователя через \code{identity-service}, затем спросит у \code{booking-service}, можно ли по booking \code{1001} оставить отзыв.
+
+\subsubsection{Сценарий 4. Ошибка при создании отзыва}
+
+Для проверки запрета нужно вызвать тот же endpoint, но с незавершенным бронированием:
+
+\begin{lstlisting}[style=jsonstyle]
+{
+  "bookingId": 1003,
+  "rating": 4,
+  "comment": "Trying to review a future booking."
+}
+\end{lstlisting}
+
+Ожидаемый результат: ошибка \code{422 Unprocessable Entity}, потому что booking \code{1003} еще не завершен. Это правило проверяется в \code{booking-service}, а не локально в Review.
+
+\subsubsection{Сценарий 5. Проверка ownership}
+
+\begin{enumerate}[leftmargin=1.7cm]
+    \item В Swagger выйти из авторизации.
+    \item Авторизоваться как \code{mark.taylor.lab2@example.com}.
+    \item Вызвать \pathcode{GET /api/v1/bookings/1003} в \code{booking-service}.
+\end{enumerate}
+
+Ожидаемый результат: \code{404 Not Found}, потому что booking \code{1003} принадлежит Emily. Сервис не раскрывает чужие бронирования другому пользователю.
+
+\subsection{Сборка и запуск}
+
+Сборка проекта:
+
+\begin{lstlisting}[style=textstyle]
+$env:GRADLE_USER_HOME=(Join-Path (Get-Location) '.gradle-home')
+.\gradlew.bat --console=plain assemble
+\end{lstlisting}
+
+Команда применяет Liquibase миграции, запускает jOOQ code generation и компилирует сервисы. PostgreSQL должен быть запущен, потому что jOOQ читает метаданные из базы.
+
+Запуск сервисов:
+
+\begin{lstlisting}[style=textstyle]
+.\gradlew.bat --console=plain :catalog-service:bootRun
+.\gradlew.bat --console=plain :identity-service:bootRun
+.\gradlew.bat --console=plain :booking-service:bootRun
+.\gradlew.bat --console=plain :review-service:bootRun
+\end{lstlisting}
+
+Рекомендуемый порядок запуска: \code{catalog-service}, \code{identity-service}, \code{booking-service}, \code{review-service}. Это связано с тем, что Booking зависит от Catalog и Identity, а Review зависит от Booking и Identity.
+
+\subsection{Подключение к базе данных}
+
+Для подключения через \code{psql}:
+
+\begin{lstlisting}[style=textstyle]
+psql -h localhost -p 5432 -U storage -d storage_local
+\end{lstlisting}
+
+После подключения можно переключаться между схемами:
+
+\begin{lstlisting}[style=textstyle]
+set search_path to identity;
+set search_path to catalog;
+set search_path to booking;
+set search_path to review;
+\end{lstlisting}
+
+\section{Вывод}
+
+В результате лабораторной работы монолитное приложение бронирования ресторанов было преобразовано в набор микросервисов: Identity, Catalog, Booking и Review. Каждый сервис получил собственную зону ответственности, собственную схему БД, Liquibase changelog-и и jOOQ-слой доступа к данным.
+
+Основные пользовательские сценарии были сохранены, но теперь выполняются через реальные межсервисные взаимодействия. Booking Service обращается к Catalog Service для получения данных о ресторане и столиках, Review Service обращается к Booking Service для проверки права оставить отзыв, а защищенные endpoint-ы используют Identity Service для проверки JWT. Для демонстрации подготовлены Swagger UI, OAuth2 авторизация, тестовые данные и ручные сценарии проверки.
+
+\end{document}
