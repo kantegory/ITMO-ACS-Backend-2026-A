@@ -1,0 +1,159 @@
+x-service-env: &service-env
+  APP_PROTOCOL: http
+  DB_HOST: db
+  DB_PORT: 5432
+  DB_USER: maindb
+  DB_PASSWORD: maindb
+  IDENTITY_DB_NAME: identity_db
+  CATALOG_DB_NAME: catalog_db
+  MENU_DB_NAME: menu_db
+  RESERVATION_DB_NAME: reservation_db
+  REVIEW_DB_NAME: review_db
+  JWT_SECRET_KEY: super-secret-key
+  JWT_REFRESH_SECRET_KEY: super-refresh-secret-key
+  JWT_ACCESS_TOKEN_LIFETIME: 3600
+  JWT_REFRESH_TOKEN_LIFETIME: 604800
+  ADMIN_EMAIL: admin@restaurant-booking.local
+  ADMIN_PASSWORD: admin12345
+  ADMIN_FIRST_NAME: Admin
+  ADMIN_LAST_NAME: User
+  ADMIN_PHONE: "+79990000000"
+  IDENTITY_SERVICE_URL: http://identity-service:8201
+  CATALOG_SERVICE_URL: http://catalog-service:8202
+  MENU_SERVICE_URL: http://menu-service:8203
+  RESERVATION_SERVICE_URL: http://reservation-service:8204
+  REVIEW_SERVICE_URL: http://review-service:8205
+  RABBITMQ_URL: amqp://maindb:maindb@rabbitmq:5672
+  RABBITMQ_EVENTS_EXCHANGE: restaurant.events
+  RABBITMQ_CATALOG_RATING_QUEUE: catalog.restaurant-rating
+
+x-service-depends-on: &service-depends-on
+  db:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    ports:
+      - 25432:5432
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: maindb
+      POSTGRES_PASSWORD: maindb
+    volumes:
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - ./dbs/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - 5672:5672
+      - 15672:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: maindb
+      RABBITMQ_DEFAULT_PASS: maindb
+    volumes:
+      - ./dbs/rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.identity
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8201:8201
+    environment:
+      <<: *service-env
+      IDENTITY_HOST: 0.0.0.0
+      IDENTITY_PORT: 8201
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.catalog
+    restart: unless-stopped
+    depends_on: *service-depends-on
+    ports:
+      - 8202:8202
+    environment:
+      <<: *service-env
+      CATALOG_HOST: 0.0.0.0
+      CATALOG_PORT: 8202
+
+  menu-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.menu
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8203:8203
+    environment:
+      <<: *service-env
+      MENU_HOST: 0.0.0.0
+      MENU_PORT: 8203
+
+  reservation-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.reservation
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8204:8204
+    environment:
+      <<: *service-env
+      RESERVATION_HOST: 0.0.0.0
+      RESERVATION_PORT: 8204
+
+  review-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.review
+    restart: unless-stopped
+    depends_on: *service-depends-on
+    ports:
+      - 8205:8205
+    environment:
+      <<: *service-env
+      REVIEW_HOST: 0.0.0.0
+      REVIEW_PORT: 8205
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gateway
+    restart: unless-stopped
+    depends_on:
+      - identity-service
+      - catalog-service
+      - menu-service
+      - reservation-service
+      - review-service
+    ports:
+      - 8200:8200
+    environment:
+      <<: *service-env
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_PORT: 8200
