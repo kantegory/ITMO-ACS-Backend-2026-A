@@ -13,8 +13,8 @@ class Settings {
 
     JWT_SECRET_KEY = env.JWT_SECRET_KEY || 'supersecret';
     SERVICE_TOKEN = env.SERVICE_TOKEN || 'internal-service-token';
-    PROPERTY_SERVICE_URL = env.PROPERTY_SERVICE_URL || 'http://property-service:3003';
-    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002';
+    PROPERTY_SERVICE_URL = env.PROPERTY_SERVICE_URL || 'http://property-service:3003/api/v1';
+    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002/api/v1';
     RABBITMQ_URL = env.RABBITMQ_URL || 'amqp://guest:guest@rabbitmq:5672';
 }
 

@@ -13,7 +13,7 @@ class Settings {
 
     JWT_SECRET_KEY = env.JWT_SECRET_KEY || 'supersecret';
     SERVICE_TOKEN = env.SERVICE_TOKEN || 'internal-service-token';
-    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002';
+    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002/api/v1';
 }
 
 const SETTINGS = new Settings();

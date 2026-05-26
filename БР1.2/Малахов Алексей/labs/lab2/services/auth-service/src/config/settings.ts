@@ -17,7 +17,7 @@ class Settings {
     JWT_REFRESH_TOKEN_LIFETIME: number = parseInt(env.JWT_REFRESH_TOKEN_LIFETIME) || 604800;
 
     SERVICE_TOKEN = env.SERVICE_TOKEN || 'internal-service-token';
-    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002';
+    USER_SERVICE_URL = env.USER_SERVICE_URL || 'http://user-service:3002/api/v1';
 }
 
 const SETTINGS = new Settings();
