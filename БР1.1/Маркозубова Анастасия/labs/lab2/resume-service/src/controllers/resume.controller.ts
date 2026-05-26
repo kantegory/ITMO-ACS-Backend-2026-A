@@ -162,7 +162,7 @@ class ResumeController extends BaseController {
         };
     }
 
-    @Post('')
+    @Post('/')
     @AuthOpenAPI('Создать резюме', ['resumes'])
     @UseBefore(authMiddleware)
     async create(

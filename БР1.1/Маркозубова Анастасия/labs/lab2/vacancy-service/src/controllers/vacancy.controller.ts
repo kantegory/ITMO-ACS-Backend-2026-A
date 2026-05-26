@@ -169,7 +169,7 @@ class VacancyController extends BaseController {
         });
     }
 
-    @Get('')
+    @Get('/')
     @PublicOpenAPI('Поиск вакансий', ['vacancies'])
     async getAll(
         @QueryParam('specialization_id') specialization_id?: number,
@@ -246,7 +246,7 @@ class VacancyController extends BaseController {
         );
     }
 
-    @Post('')
+    @Post('/')
     @AuthOpenAPI('Создать вакансию', ['vacancies'])
     @UseBefore(authMiddleware)
     async create(
