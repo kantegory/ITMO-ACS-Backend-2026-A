@@ -1,0 +1,329 @@
+services:
+  # ── Databases ──────────────────────────────────────────────────────────────
+
+  db-auth:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_db
+      POSTGRES_PASSWORD: auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-auth-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_db -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  db-user:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user_db
+      POSTGRES_PASSWORD: user_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - db-user-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_db -d user_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  db-property:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: property_db
+      POSTGRES_USER: property_db
+      POSTGRES_PASSWORD: property_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - db-property-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U property_db -d property_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  db-rental:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: rental_db
+      POSTGRES_USER: rental_db
+      POSTGRES_PASSWORD: rental_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - db-rental-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rental_db -d rental_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  db-messaging:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: messaging_db
+      POSTGRES_USER: messaging_db
+      POSTGRES_PASSWORD: messaging_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - db-messaging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U messaging_db -d messaging_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  db-review:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: review_db
+      POSTGRES_USER: review_db
+      POSTGRES_PASSWORD: review_db
+    ports:
+      - "5438:5432"
+    volumes:
+      - db-review-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U review_db -d review_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # ── Message Broker ─────────────────────────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app-network
+
+  # ── Services ───────────────────────────────────────────────────────────────
+
+  auth-service:
+    build: ./services/auth-service
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      APP_PORT: 3001
+      APP_HOST: 0.0.0.0
+      APP_API_PREFIX: /api/v1
+      DB_HOST: db-auth
+      DB_PORT: 5432
+      DB_NAME: auth_db
+      DB_USER: auth_db
+      DB_PASSWORD: auth_db
+      JWT_SECRET_KEY: supersecret
+      JWT_ACCESS_TOKEN_LIFETIME: 300
+      JWT_REFRESH_TOKEN_LIFETIME: 604800
+      SERVICE_TOKEN: internal-service-token
+      USER_SERVICE_URL: http://user-service:3002/api/v1
+    depends_on:
+      db-auth:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  user-service:
+    build: ./services/user-service
+    restart: always
+    ports:
+      - "3002:3002"
+    environment:
+      APP_PORT: 3002
+      APP_HOST: 0.0.0.0
+      APP_API_PREFIX: /api/v1
+      DB_HOST: db-user
+      DB_PORT: 5432
+      DB_NAME: user_db
+      DB_USER: user_db
+      DB_PASSWORD: user_db
+      JWT_SECRET_KEY: supersecret
+      SERVICE_TOKEN: internal-service-token
+      REVIEW_SERVICE_URL: http://review-service:3006/api/v1
+    depends_on:
+      db-user:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  property-service:
+    build: ./services/property-service
+    restart: always
+    ports:
+      - "3003:3003"
+    environment:
+      APP_PORT: 3003
+      APP_HOST: 0.0.0.0
+      APP_API_PREFIX: /api/v1
+      DB_HOST: db-property
+      DB_PORT: 5432
+      DB_NAME: property_db
+      DB_USER: property_db
+      DB_PASSWORD: property_db
+      JWT_SECRET_KEY: supersecret
+      SERVICE_TOKEN: internal-service-token
+      USER_SERVICE_URL: http://user-service:3002/api/v1
+      REVIEW_SERVICE_URL: http://review-service:3006/api/v1
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      db-property:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  rental-service:
+    build: ./services/rental-service
+    restart: always
+    ports:
+      - "3004:3004"
+    environment:
+      APP_PORT: 3004
+      APP_HOST: 0.0.0.0
+      APP_API_PREFIX: /api/v1
+      DB_HOST: db-rental
+      DB_PORT: 5432
+      DB_NAME: rental_db
+      DB_USER: rental_db
+      DB_PASSWORD: rental_db
+      JWT_SECRET_KEY: supersecret
+      SERVICE_TOKEN: internal-service-token
+      USER_SERVICE_URL: http://user-service:3002/api/v1
+      PROPERTY_SERVICE_URL: http://property-service:3003/api/v1
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      db-rental:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  messaging-service:
+    build: ./services/messaging-service
+    restart: always
+    ports:
+      - "3005:3005"
+    environment:
+      APP_PORT: 3005
+      APP_HOST: 0.0.0.0
+      APP_API_PREFIX: /api/v1
+      DB_HOST: db-messaging
+      DB_PORT: 5432
+      DB_NAME: messaging_db
+      DB_USER: messaging_db
+      DB_PASSWORD: messaging_db
+      JWT_SECRET_KEY: supersecret
+      SERVICE_TOKEN: internal-service-token
+      USER_SERVICE_URL: http://user-service:3002/api/v1
+    depends_on:
+      db-messaging:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  review-service:
+    build: ./services/review-service
+    restart: always
+    ports:
+      - "3006:3006"
+    environment:
+      APP_PORT: 3006
+      APP_HOST: 0.0.0.0
+      APP_API_PREFIX: /api/v1
+      DB_HOST: db-review
+      DB_PORT: 5432
+      DB_NAME: review_db
+      DB_USER: review_db
+      DB_PASSWORD: review_db
+      JWT_SECRET_KEY: supersecret
+      SERVICE_TOKEN: internal-service-token
+      RENTAL_SERVICE_URL: http://rental-service:3004/api/v1
+      PROPERTY_SERVICE_URL: http://property-service:3003/api/v1
+      USER_SERVICE_URL: http://user-service:3002/api/v1
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      db-review:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  api-gateway:
+    build: ./services/api-gateway
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      APP_PORT: 8000
+      APP_HOST: 0.0.0.0
+      AUTH_SERVICE_URL: http://auth-service:3001
+      USER_SERVICE_URL: http://user-service:3002/api/v1
+      PROPERTY_SERVICE_URL: http://property-service:3003/api/v1
+      RENTAL_SERVICE_URL: http://rental-service:3004/api/v1
+      MESSAGING_SERVICE_URL: http://messaging-service:3005
+      REVIEW_SERVICE_URL: http://review-service:3006/api/v1
+    depends_on:
+      - auth-service
+      - user-service
+      - property-service
+      - rental-service
+      - messaging-service
+      - review-service
+    networks:
+      - app-network
+
+volumes:
+  db-auth-data:
+  db-user-data:
+  db-property-data:
+  db-rental-data:
+  db-messaging-data:
+  db-review-data:
+  rabbitmq-data:
+
+networks:
+  app-network:
+    driver: bridge
