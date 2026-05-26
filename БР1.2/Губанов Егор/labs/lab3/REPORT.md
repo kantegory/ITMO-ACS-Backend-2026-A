@@ -1,7 +1,16 @@
 # Отчёт: ЛР3 — контейнеризация приложения (Docker)
 
 **Выполнил:** Губанов Егор, группа БР1.2  
-**Приложение:** микросервисы аренды (`labs/lab2`)
+**Приложение:** микросервисы аренды (`labs/lab2`)  
+**Ветка Git:** `lab3`
+
+## Где лабораторная
+
+| Элемент ЛР3 | Расположение |
+|-------------|--------------|
+| `docker-compose.yml` (общий) | `labs/lab3/docker-compose.yml` |
+| Dockerfile каждого сервиса | `labs/lab2/services/auth|catalog|deals|messaging|gateway/Dockerfile` |
+| Исходники сервисов | `labs/lab2` (ЛР2) |
 
 ---
 
@@ -64,7 +73,7 @@
 ## 5. Запуск
 
 ```bash
-cd labs/lab2
+cd labs/lab3
 cp .env.example .env
 docker compose up --build
 ```
