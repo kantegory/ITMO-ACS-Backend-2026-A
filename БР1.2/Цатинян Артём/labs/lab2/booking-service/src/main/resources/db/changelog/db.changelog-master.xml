@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-booking-schema" author="codex">
+        <sql>create schema if not exists booking</sql>
+
+        <createTable schemaName="booking" tableName="bookings">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="restaurant_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="table_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(30)" defaultValue="CONFIRMED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="guests_count" type="integer">
+                <constraints nullable="false"/>
+            </column>
+            <column name="starts_at" type="timestamp">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ends_at" type="timestamp">
+                <constraints nullable="false"/>
+            </column>
+            <column name="special_requests" type="text"/>
+            <column name="restaurant_name_snapshot" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="table_number_snapshot" type="varchar(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="table_seats_snapshot" type="integer">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="booking" tableName="bookings" indexName="idx_bookings_table_time">
+            <column name="table_id"/>
+            <column name="starts_at"/>
+            <column name="ends_at"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="002-booking-demo-data" author="codex">
+        <sql><![CDATA[
+            insert into booking.bookings(
+                id,
+                user_id,
+                restaurant_id,
+                table_id,
+                status,
+                guests_count,
+                starts_at,
+                ends_at,
+                special_requests,
+                restaurant_name_snapshot,
+                table_number_snapshot,
+                table_seats_snapshot
+            )
+            values
+                (1001, 1001, 1, 1, 'COMPLETED', 2, '2026-05-20 19:00:00', '2026-05-20 21:00:00', 'Quiet table for dinner', 'North Garden', 'T-01', 2),
+                (1002, 1001, 2, 3, 'COMPLETED', 4, '2026-05-21 18:00:00', '2026-05-21 20:00:00', 'Birthday dessert if possible', 'Pasta Lane', 'A-01', 4),
+                (1003, 1001, 1, 2, 'CONFIRMED', 4, '2026-06-10 19:00:00', '2026-06-10 21:00:00', 'Window table', 'North Garden', 'T-02', 4),
+                (1004, 1002, 3, 5, 'CONFIRMED', 6, '2026-06-11 20:00:00', '2026-06-11 22:00:00', 'Private room', 'Sakura Room', 'S-02', 6)
+            on conflict (id) do nothing;
+
+            select setval(pg_get_serial_sequence('booking.bookings', 'id'), greatest((select coalesce(max(id), 1) from booking.bookings), 1));
+        ]]></sql>
+    </changeSet>
+</databaseChangeLog>
