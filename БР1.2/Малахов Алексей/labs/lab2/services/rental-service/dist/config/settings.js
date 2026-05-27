@@ -7,10 +7,10 @@ class Settings {
         this.APP_PORT = parseInt(process_1.env.APP_PORT) || 3004;
         this.APP_API_PREFIX = process_1.env.APP_API_PREFIX || '/api/v1';
         this.DB_HOST = process_1.env.DB_HOST || 'localhost';
-        this.DB_PORT = parseInt(process_1.env.DB_PORT) || 5436;
-        this.DB_NAME = process_1.env.DB_NAME || 'rental_db';
-        this.DB_USER = process_1.env.DB_USER || 'rental_db';
-        this.DB_PASSWORD = process_1.env.DB_PASSWORD || 'rental_db';
+        this.DB_PORT = parseInt(process_1.env.DB_PORT) || 5432;
+        this.DB_NAME = process_1.env.DB_NAME || 'app_db';
+        this.DB_USER = process_1.env.DB_USER || 'app_db';
+        this.DB_PASSWORD = process_1.env.DB_PASSWORD || 'app_db';
         this.JWT_SECRET_KEY = process_1.env.JWT_SECRET_KEY || 'supersecret';
         this.SERVICE_TOKEN = process_1.env.SERVICE_TOKEN || 'internal-service-token';
         this.PROPERTY_SERVICE_URL = process_1.env.PROPERTY_SERVICE_URL || 'http://property-service:3003/api/v1';

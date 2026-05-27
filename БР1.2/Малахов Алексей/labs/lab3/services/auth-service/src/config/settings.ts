@@ -7,10 +7,10 @@ class Settings {
     APP_API_PREFIX: string = env.APP_API_PREFIX || '/api/v1';
 
     DB_HOST = env.DB_HOST || 'localhost';
-    DB_PORT = parseInt(env.DB_PORT) || 5433;
-    DB_NAME = env.DB_NAME || 'auth_db';
-    DB_USER = env.DB_USER || 'auth_db';
-    DB_PASSWORD = env.DB_PASSWORD || 'auth_db';
+    DB_PORT = parseInt(env.DB_PORT) || 5432;
+    DB_NAME = env.DB_NAME || 'app_db';
+    DB_USER = env.DB_USER || 'app_db';
+    DB_PASSWORD = env.DB_PASSWORD || 'app_db';
 
     JWT_SECRET_KEY = env.JWT_SECRET_KEY || 'supersecret';
     JWT_ACCESS_TOKEN_LIFETIME: number = parseInt(env.JWT_ACCESS_TOKEN_LIFETIME) || 300;

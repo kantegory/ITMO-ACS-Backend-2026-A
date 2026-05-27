@@ -15,7 +15,13 @@ const REVIEW_SERVICE_URL = process.env.REVIEW_SERVICE_URL || 'http://review-serv
 const app = express();
 app.use(cors());
 
-const proxy = (target) => createProxyMiddleware({ target, changeOrigin: true });
+// Express strips the mount prefix from req.url — restore the original path so
+// services receive the full /api/v1/... path they actually expect.
+const proxy = (target) => createProxyMiddleware({
+    target,
+    changeOrigin: true,
+    pathRewrite: (_path, req) => req.originalUrl,
+});
 
 app.use('/api/v1/auth', proxy(AUTH_SERVICE_URL));
 app.use('/api/v1/profile', proxy(USER_SERVICE_URL));

@@ -8,10 +8,10 @@ class Settings {
         this.APP_PROTOCOL = process_1.env.APP_PROTOCOL || 'http';
         this.APP_API_PREFIX = process_1.env.APP_API_PREFIX || '/api/v1';
         this.DB_HOST = process_1.env.DB_HOST || 'localhost';
-        this.DB_PORT = parseInt(process_1.env.DB_PORT) || 5438;
-        this.DB_NAME = process_1.env.DB_NAME || 'review_db';
-        this.DB_USER = process_1.env.DB_USER || 'review_db';
-        this.DB_PASSWORD = process_1.env.DB_PASSWORD || 'review_db';
+        this.DB_PORT = parseInt(process_1.env.DB_PORT) || 5432;
+        this.DB_NAME = process_1.env.DB_NAME || 'app_db';
+        this.DB_USER = process_1.env.DB_USER || 'app_db';
+        this.DB_PASSWORD = process_1.env.DB_PASSWORD || 'app_db';
         this.JWT_SECRET_KEY = process_1.env.JWT_SECRET_KEY || 'supersecret';
         this.SERVICE_TOKEN = process_1.env.SERVICE_TOKEN || 'internal-service-token';
         this.RENTAL_SERVICE_URL = process_1.env.RENTAL_SERVICE_URL || 'http://rental-service:3004/api/v1';
