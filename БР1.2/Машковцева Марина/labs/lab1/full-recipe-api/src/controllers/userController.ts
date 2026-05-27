@@ -139,14 +139,19 @@ export const getSavedRecipes = async (req: Request, res: Response) => {
 export const getUserRecipes = async (req: Request, res: Response) => {
     try {
         const userId = parseInt(req.params.id as string);
-        const recipes = await AppDataSource.getRepository(Recipe).find({
-            where: { author_id: userId },
-            relations: ["author"]
-        });
         
-        const result = await Promise.all(recipes.map(async (recipe) => {
-            const likesCount = await AppDataSource.getRepository(Like).count({ where: { recipe_id: recipe.id } });
-            return { ...recipe, likes_count: likesCount };
+        const recipes = await AppDataSource.getRepository(Recipe)
+            .createQueryBuilder("recipe")
+            .leftJoin("recipe.likes", "like")
+            .leftJoinAndSelect("recipe.author", "author")
+            .addSelect("COUNT(DISTINCT like.id)", "likes_count")
+            .where("recipe.author_id = :userId", { userId })
+            .groupBy("recipe.id")
+            .getRawAndEntities();
+        
+        const result = recipes.entities.map((entity, index) => ({
+            ...entity,
+            likes_count: parseInt(recipes.raw[index].likes_count)
         }));
         
         res.json(result);

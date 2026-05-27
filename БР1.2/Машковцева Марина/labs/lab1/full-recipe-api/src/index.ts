@@ -42,7 +42,7 @@ app.post("/api/users/:id/subscribe", subscribe);
 app.delete("/api/users/:id/subscribe", unsubscribe);
 app.get("/api/users/me/subscriptions", getSubscriptions);
 
-// Recipes (защищённые действия)
+// Recipes 
 app.post("/api/recipes", createRecipe);
 app.put("/api/recipes/:id", updateRecipe);
 app.delete("/api/recipes/:id", deleteRecipe);

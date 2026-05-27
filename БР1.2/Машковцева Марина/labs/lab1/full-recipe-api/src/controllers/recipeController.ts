@@ -9,29 +9,32 @@ export const getRecipes = async (req: Request, res: Response) => {
     try {
         const { sortBy, category, author, difficulty } = req.query;
         
-        const recipeRepo = AppDataSource.getRepository(Recipe);
-        let recipes = await recipeRepo.find({ relations: ["author", "steps"] });
+        // Один запрос с JOIN и GROUP BY
+        const recipes = await AppDataSource.getRepository(Recipe)
+            .createQueryBuilder("recipe")
+            .leftJoin("recipe.likes", "like")
+            .leftJoin("recipe.comments", "comment")
+            .addSelect("COUNT(DISTINCT like.id)", "likes_count")
+            .addSelect("COUNT(DISTINCT comment.id)", "comments_count")
+            .groupBy("recipe.id")
+            .getRawAndEntities();
         
-        // Добавляем количество лайков и комментариев
-        let result = await Promise.all(recipes.map(async (recipe) => {
-            const likesCount = await AppDataSource.getRepository(Like).count({ where: { recipe_id: recipe.id } });
-            const commentsCount = await AppDataSource.getRepository(Comment).count({ where: { recipe_id: recipe.id } });
-            return { ...recipe, likes_count: likesCount, comments_count: commentsCount };
+        // Собираем результат
+        let result = recipes.entities.map((entity, index) => ({
+            ...entity,
+            likes_count: parseInt(recipes.raw[index].likes_count),
+            comments_count: parseInt(recipes.raw[index].comments_count)
         }));
         
-        // Фильтрация по категории (типу блюда)
+        // Фильтрация
         if (category) {
             result = result.filter(r => r.category === category);
         }
-        
-        // Фильтрация по автору
-        if (author) {
-            result = result.filter(r => r.author_id === parseInt(author as string));
-        }
-        
-        // Фильтрация по сложности
         if (difficulty) {
             result = result.filter(r => r.difficulty === difficulty);
+        }
+        if (author) {
+            result = result.filter(r => r.author_id === parseInt(author as string));
         }
         
         // Сортировка
@@ -39,9 +42,6 @@ export const getRecipes = async (req: Request, res: Response) => {
             result.sort((a, b) => b.likes_count - a.likes_count);
         } else if (sortBy === "date") {
             result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        } else if (sortBy === "difficulty") {
-            const order: { [key: string]: number } = { easy: 1, medium: 2, hard: 3 };
-            result.sort((a, b) => order[a.difficulty] - order[b.difficulty]);
         }
         
         res.json(result);
@@ -53,21 +53,29 @@ export const getRecipes = async (req: Request, res: Response) => {
 export const getRecipe = async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id as string);
-        const recipe = await AppDataSource.getRepository(Recipe).findOne({
-            where: { id },
-            relations: ["author", "comments", "comments.user"]
-        });
         
-        if (!recipe) {
+        // Один запрос с JOIN
+        const recipe = await AppDataSource.getRepository(Recipe)
+            .createQueryBuilder("recipe")
+            .leftJoin("recipe.likes", "like")
+            .leftJoin("recipe.comments", "comment")
+            .leftJoinAndSelect("recipe.author", "author")
+            .leftJoinAndSelect("recipe.comments", "comments")
+            .leftJoinAndSelect("comments.user", "commentUser")
+            .addSelect("COUNT(DISTINCT like.id)", "likes_count")
+            .addSelect("COUNT(DISTINCT comment.id)", "comments_count")
+            .where("recipe.id = :id", { id })
+            .groupBy("recipe.id")
+            .getRawAndEntity();
+        
+        if (!recipe.entity) {
             return res.status(404).json({ message: "Recipe not found" });
         }
         
-        const likesCount = await AppDataSource.getRepository(Like).count({ where: { recipe_id: recipe.id } });
-        
         res.json({
-            ...recipe,
-            likes_count: likesCount,
-            comments_count: recipe.comments?.length || 0
+            ...recipe.entity,
+            likes_count: parseInt(recipe.raw.likes_count),
+            comments_count: parseInt(recipe.raw.comments_count),
         });
     } catch (error) {
         res.status(500).json({ message: "Failed to get recipe", error });
