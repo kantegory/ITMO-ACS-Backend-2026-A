@@ -6,6 +6,8 @@ import { Booking } from "./models/booking.entity"
 import { Review } from "./models/review.entity"
 import jwt from "jsonwebtoken"
 
+import amqplib from "amqplib"
+
 const app = express()
 app.use(cors())
 app.use(express.json())
@@ -18,6 +20,26 @@ const auth = (req: any, res: any, next: any) => {
     req.user = jwt.verify(header.split(" ")[1], JWT_SECRET) as any
     next()
   } catch { return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "токен невалиден", status: 401 } }) }
+}
+
+let channel: any
+
+async function connectRabbit() {
+  try {
+    const conn = await amqplib.connect("amqp://localhost:5672")
+    channel = await conn.createChannel()
+    await channel.assertQueue("review.created")
+    await channel.assertQueue("booking.cancelled")
+    console.log("booking-service: rabbitmq подключён")
+  } catch (e) {
+    console.log("rabbitmq не доступен:", e.message)
+  }
+}
+
+function publish(queue: string, msg: object) {
+  if (channel) {
+    channel.sendToQueue(queue, Buffer.from(JSON.stringify(msg)))
+  }
 }
 
 // проверка через другие сервисы
@@ -68,6 +90,7 @@ app.patch("/api/v1/reservations/:reservation_id/cancel", auth, async (req: any, 
   if (b.user_id !== req.user.user_id) return res.status(403).json({ error: { code: "FORBIDDEN", message: "чужая бронь", status: 403 } })
   b.state = "cancelled"
   await AppDataSource.getRepository(Booking).save(b)
+  publish("booking.cancelled", { booking_id: b.booking_id, table_id: b.table_id, restaurant_id: b.restaurant_id })
   return res.json({ reservation_id: b.booking_id, status: b.state, updated_at: b.updated_at })
 })
 
@@ -83,6 +106,7 @@ app.post("/api/v1/restaurants/:restaurant_id/reviews", auth, async (req: any, re
 
   const r = AppDataSource.getRepository(Review).create({ user_id: req.user.user_id, restaurant_id: Number(req.params.restaurant_id), score: Number(req.body.score), comment: req.body.comment })
   await AppDataSource.getRepository(Review).save(r)
+  publish("review.created", { review_id: r.review_id, restaurant_id: Number(req.params.restaurant_id), score: r.score })
   return res.status(201).json({ review_id: r.review_id, user_id: r.user_id, restaurant_id: r.restaurant_id, score: r.score, comment: r.comment, created_at: r.created_at })
 })
 
@@ -112,6 +136,8 @@ app.get("/api/internal/restaurants/:restaurant_id/stats", async (req: any, res: 
   return res.json({ rating_avg: avg, reviews_count: reviews.length })
 })
 
-AppDataSource.initialize()
-  .then(() => { console.log("booking-service: бд подключена"); app.listen(8003, () => console.log("booking-service: http://localhost:8003")) })
-  .catch(e => console.error("ошибка:", e.message))
+connectRabbit().then(() => {
+  AppDataSource.initialize()
+    .then(() => { console.log("booking-service: бд подключена"); app.listen(8003, () => console.log("booking-service: http://localhost:8003")) })
+    .catch(e => console.error("ошибка:", e.message))
+})

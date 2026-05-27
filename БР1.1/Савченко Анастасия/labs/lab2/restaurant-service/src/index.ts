@@ -8,9 +8,40 @@ import { Table } from "./models/table.entity"
 import { MenuItem } from "./models/menu-item.entity"
 import { RestaurantPhoto } from "./models/restaurant-photo.entity"
 
+import amqplib from "amqplib"
+
 const app = express()
 app.use(cors())
 app.use(express.json())
+
+
+let channel: any
+
+async function connectRabbit() {
+  try {
+    const conn = await amqplib.connect("amqp://localhost:5672")
+    channel = await conn.createChannel()
+    await channel.assertQueue("review.created")
+    await channel.consume("review.created", (msg: any) => {
+      if (msg) {
+        const data = JSON.parse(msg.content.toString())
+        console.log(`Новый отзыв: ресторан ${data.restaurant_id}, оценка ${data.score}`)
+        channel.ack(msg)
+      }
+    })
+    await channel.assertQueue("booking.cancelled")
+    await channel.consume("booking.cancelled", (msg: any) => {
+      if (msg) {
+        const data = JSON.parse(msg.content.toString())
+        console.log(`Бронь отменена: ${data.booking_id}, столик ${data.table_id}`)
+        channel.ack(msg)
+      }
+    })
+    console.log("restaurant-service: rabbitmq подключён")
+  } catch (e) {
+    console.log("rabbitmq не доступен:", e.message)
+  }
+}
 
 // === CUISINES ===
 app.get("/api/v1/cuisines", async (req: any, res: any) => {
@@ -129,6 +160,8 @@ app.get("/api/internal/tables/:table_id/exists", async (req: any, res: any) => {
   return res.json({ exists: true, table: { table_id: t.table_id, table_num: t.table_num, capacity: t.capacity, restaurant_id: t.restaurant_id } })
 })
 
-AppDataSource.initialize()
-  .then(() => { console.log("restaurant-service: бд подключена"); app.listen(8002, () => console.log("restaurant-service: http://localhost:8002")) })
-  .catch(e => console.error("ошибка:", e.message))
+connectRabbit().then(() => {
+  AppDataSource.initialize()
+    .then(() => { console.log("restaurant-service: бд подключена"); app.listen(8002, () => console.log("restaurant-service: http://localhost:8002")) })
+    .catch(e => console.error("ошибка:", e.message))
+})
