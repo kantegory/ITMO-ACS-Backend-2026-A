@@ -140,6 +140,15 @@ Smoke-тест создает отзыв и затем несколько раз
 gateway. Если `avgRating` и `reviewsCount` обновились, значит сообщение прошло
 через RabbitMQ от `review-service` к `catalog-service`.
 
+Postman-проверка:
+
+```text
+postman/restaurant-booking-lab3-rabbitmq-flow.postman_collection.json
+postman/restaurant-booking-lab3-local.postman_environment.json
+```
+
+Инструкция по запуску находится в `postman/README.md`.
+
 Health-check каждого сервиса:
 
 ```text
