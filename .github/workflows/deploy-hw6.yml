@@ -1,0 +1,137 @@
+name: Deploy HW6
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "БР1.2/Васильев Артём/homeworks/hw6/**"
+      - ".github/workflows/deploy-hw6.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hw6-main
+  cancel-in-progress: false
+
+env:
+  BRANCH: main
+  HW6_SUBDIR: "БР1.2/Васильев Артём/homeworks/hw6"
+  DEPLOY_PATH: ${{ secrets.HW6_DEPLOY_PATH || '/opt/job-platform-hw6' }}
+  REPO_URL: ${{ secrets.HW6_REPO_URL || format('{0}/{1}.git', github.server_url, github.repository) }}
+
+jobs:
+  deploy:
+    name: Deploy HW6 with Docker Compose
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository so GitHub Actions records the exact revision being deployed.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Print non-secret deployment context for easier troubleshooting in Actions logs.
+      - name: Log deployment context
+        run: |
+          echo "Deploying branch: ${BRANCH}"
+          echo "Commit: ${GITHUB_SHA}"
+          echo "HW6 path inside repository: ${HW6_SUBDIR}"
+
+      # Step 3: Connect to the remote server over SSH and run an idempotent Docker Compose deployment.
+      - name: Deploy on remote server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BRANCH: ${{ env.BRANCH }}
+          COMMIT_SHA: ${{ github.sha }}
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          HW6_SUBDIR: ${{ env.HW6_SUBDIR }}
+          REPO_URL: ${{ env.REPO_URL }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER || 'root' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: BRANCH,COMMIT_SHA,DEPLOY_PATH,HW6_SUBDIR,REPO_URL,JWT_SECRET_KEY,SERVICE_TOKEN,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD
+          script: |
+            set -Eeuo pipefail
+
+            log() {
+              printf '[deploy-hw6] %s\n' "$1"
+            }
+
+            fail() {
+              printf '[deploy-hw6][error] %s\n' "$1" >&2
+              exit 1
+            }
+
+            trap 'fail "Deployment failed at line ${LINENO}. Check the command output above."' ERR
+
+            # Step 3.1: Validate required deployment secrets before touching the running stack.
+            : "${JWT_SECRET_KEY:?JWT_SECRET_KEY secret is required}"
+            : "${SERVICE_TOKEN:?SERVICE_TOKEN secret is required}"
+            : "${DB_PASSWORD:?DB_PASSWORD secret is required}"
+            : "${RABBITMQ_USER:?RABBITMQ_USER secret is required}"
+            : "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD secret is required}"
+
+            REPO_DIR="${DEPLOY_PATH}/repo"
+            APP_DIR="${REPO_DIR}/${HW6_SUBDIR}"
+
+            # Step 3.2: Create the deployment directory if this is the first deployment.
+            log "Preparing deployment directory: ${DEPLOY_PATH}"
+            mkdir -p "${DEPLOY_PATH}"
+
+            # Step 3.3: Clone the repository on first run, otherwise fetch and reset to the latest main commit.
+            if [ ! -d "${REPO_DIR}/.git" ]; then
+              log "Repository not found on server. Cloning ${BRANCH}."
+              git clone --branch "${BRANCH}" --single-branch "${REPO_URL}" "${REPO_DIR}"
+            else
+              log "Repository exists. Fetching and resetting to origin/${BRANCH}."
+              git -C "${REPO_DIR}" remote set-url origin "${REPO_URL}"
+              git -C "${REPO_DIR}" fetch --prune origin "${BRANCH}"
+              git -C "${REPO_DIR}" reset --hard "origin/${BRANCH}"
+              git -C "${REPO_DIR}" clean -fd
+            fi
+
+            # Step 3.4: Ensure the HW6 Docker Compose project exists after checkout.
+            test -f "${APP_DIR}/docker-compose.yml"
+            log "HW6 application directory: ${APP_DIR}"
+
+            # Step 3.5: Write the runtime .env from GitHub Secrets on every deploy so secrets stay current.
+            log "Writing runtime .env from GitHub Secrets."
+            cat > "${APP_DIR}/.env" <<EOF
+            JWT_SECRET_KEY=${JWT_SECRET_KEY}
+            SERVICE_TOKEN=${SERVICE_TOKEN}
+            DB_PASSWORD=${DB_PASSWORD}
+            RABBITMQ_USER=${RABBITMQ_USER}
+            RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
+            EOF
+            chmod 600 "${APP_DIR}/.env"
+
+            # Step 3.6: Validate Docker Compose before stopping the old containers.
+            log "Validating Docker Compose configuration."
+            docker compose --project-directory "${APP_DIR}" -f "${APP_DIR}/docker-compose.yml" config --quiet
+
+            # Step 3.7: Stop the previous stack; this is safe to run even when no containers exist yet.
+            log "Stopping previous HW6 stack."
+            docker compose --project-directory "${APP_DIR}" -f "${APP_DIR}/docker-compose.yml" down --remove-orphans
+
+            # Step 3.8: Rebuild and start the stack in detached mode.
+            log "Building and starting HW6 stack."
+            docker compose --project-directory "${APP_DIR}" -f "${APP_DIR}/docker-compose.yml" up -d --build
+
+            # Step 3.9: Run database migrations for each service that exposes an npm migrate script.
+            log "Running service migrations."
+            for service in auth-user-service company-service dictionary-service vacancy-service resume-service application-service interaction-service; do
+              log "Running migrations for ${service}."
+              docker compose --project-directory "${APP_DIR}" -f "${APP_DIR}/docker-compose.yml" exec -T "${service}" npm run migrate
+            done
+
+            # Step 3.10: Show final container status and finish with a success marker.
+            log "Final container status:"
+            docker compose --project-directory "${APP_DIR}" -f "${APP_DIR}/docker-compose.yml" ps
+            log "HW6 deployment completed successfully for commit ${COMMIT_SHA}."

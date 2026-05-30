@@ -1,0 +1,70 @@
+name: HW6 CI
+
+on:
+  push:
+    paths:
+      - "БР1.2/Васильев Артём/homeworks/hw6/**"
+  pull_request:
+    paths:
+      - "БР1.2/Васильев Артём/homeworks/hw6/**"
+  workflow_dispatch:
+
+env:
+  HW6_DIR: "БР1.2/Васильев Артём/homeworks/hw6"
+
+jobs:
+  service-ci:
+    name: Check ${{ matrix.service_name }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service_name: application-service
+            service_path: services/application-service
+          - service_name: auth-user-service
+            service_path: services/auth-user-service
+          - service_name: company-service
+            service_path: services/company-service
+          - service_name: dictionary-service
+            service_path: services/dictionary-service
+          - service_name: interaction-service
+            service_path: services/interaction-service
+          - service_name: resume-service
+            service_path: services/resume-service
+          - service_name: vacancy-service
+            service_path: services/vacancy-service
+
+    steps:
+      # Step 1: Checkout repository sources so the service code is available to the runner.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Install Node.js with npm cache scoped to the current microservice lock file.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ env.HW6_DIR }}/${{ matrix.service_path }}/package-lock.json
+
+      # Step 3: Install exact dependencies from package-lock.json; this fails on lock/package mismatch.
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ env.HW6_DIR }}/${{ matrix.service_path }}
+
+      # Step 4: Build the TypeScript service using its package.json build script.
+      - name: Build service
+        run: npm run build
+        working-directory: ${{ env.HW6_DIR }}/${{ matrix.service_path }}
+
+      # Step 5: Run TypeScript type checking without writing compiled files.
+      - name: TypeScript no-emit check
+        run: npx tsc --noEmit
+        working-directory: ${{ env.HW6_DIR }}/${{ matrix.service_path }}
+
+      # Step 6: Verify that the service Dockerfile can build a container image.
+      - name: Build Docker image
+        run: docker build --file Dockerfile --tag hw6-${{ matrix.service_name }}:ci .
+        working-directory: ${{ env.HW6_DIR }}/${{ matrix.service_path }}
