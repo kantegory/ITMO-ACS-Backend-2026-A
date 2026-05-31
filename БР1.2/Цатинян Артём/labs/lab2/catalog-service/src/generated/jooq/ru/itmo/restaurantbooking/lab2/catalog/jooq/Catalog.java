@@ -13,6 +13,7 @@ import org.jooq.impl.SchemaImpl;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.Cuisines;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.MenuCategories;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.MenuItems;
+import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.ProcessedReviewEvents;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantCuisines;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantRatingStats;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantTables;
@@ -47,6 +48,11 @@ public class Catalog extends SchemaImpl {
      * The table <code>catalog.menu_items</code>.
      */
     public final MenuItems MENU_ITEMS = MenuItems.MENU_ITEMS;
+
+    /**
+     * The table <code>catalog.processed_review_events</code>.
+     */
+    public final ProcessedReviewEvents PROCESSED_REVIEW_EVENTS = ProcessedReviewEvents.PROCESSED_REVIEW_EVENTS;
 
     /**
      * The table <code>catalog.restaurant_cuisines</code>.
@@ -92,6 +98,7 @@ public class Catalog extends SchemaImpl {
             Cuisines.CUISINES,
             MenuCategories.MENU_CATEGORIES,
             MenuItems.MENU_ITEMS,
+            ProcessedReviewEvents.PROCESSED_REVIEW_EVENTS,
             RestaurantCuisines.RESTAURANT_CUISINES,
             RestaurantRatingStats.RESTAURANT_RATING_STATS,
             RestaurantTables.RESTAURANT_TABLES,

@@ -76,6 +76,12 @@ project(":identity-service") {
     }
 }
 
+configure(listOf(project(":catalog-service"), project(":review-service"))) {
+    dependencies {
+        add("implementation", "org.springframework.boot:spring-boot-starter-amqp")
+    }
+}
+
 configure(subprojects.filter { it.name != "common" }) {
     apply(plugin = "org.springframework.boot")
     apply(plugin = "nu.studer.jooq")

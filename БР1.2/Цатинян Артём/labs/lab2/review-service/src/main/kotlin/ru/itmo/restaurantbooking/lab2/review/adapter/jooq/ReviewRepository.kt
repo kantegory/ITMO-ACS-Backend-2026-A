@@ -2,11 +2,13 @@ package ru.itmo.restaurantbooking.lab2.review.adapter.jooq
 
 import org.jooq.DSLContext
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 import ru.itmo.restaurantbooking.lab2.review.adapter.rest.dto.CreateReviewRequest
 import ru.itmo.restaurantbooking.lab2.review.domain.PageResult
 import ru.itmo.restaurantbooking.lab2.review.domain.ReviewRecord
 import ru.itmo.restaurantbooking.lab2.review.jooq.tables.ReviewOutbox.REVIEW_OUTBOX
 import ru.itmo.restaurantbooking.lab2.review.jooq.tables.Reviews.REVIEWS
+import ru.itmo.restaurantbooking.lab2.review.jooq.tables.records.ReviewOutboxRecord
 import ru.itmo.restaurantbooking.lab2.review.jooq.tables.records.ReviewsRecord
 import java.time.LocalDateTime
 
@@ -33,6 +35,7 @@ class ReviewRepository(
                 .where(REVIEWS.BOOKING_ID.eq(bookingId))
         )
 
+    @Transactional
     fun create(
         userId: Long,
         restaurantId: Long,
@@ -58,7 +61,7 @@ class ReviewRepository(
             .set(REVIEW_OUTBOX.AGGREGATE_ID, id)
             .set(
                 REVIEW_OUTBOX.PAYLOAD,
-                """{"reviewId":$id,"restaurantId":$restaurantId,"userId":$userId,"rating":${request.rating}}"""
+                """{"reviewId":$id,"bookingId":${request.bookingId},"restaurantId":$restaurantId,"userId":$userId,"rating":${request.rating}}"""
             )
             .set(REVIEW_OUTBOX.CREATED_AT, now)
             .set(REVIEW_OUTBOX.PROCESSED, false)
@@ -67,11 +70,33 @@ class ReviewRepository(
         return findById(id) ?: error("Created review not found")
     }
 
+    fun findPendingOutbox(limit: Int): List<ReviewOutboxEvent> =
+        dsl.selectFrom(REVIEW_OUTBOX)
+            .where(REVIEW_OUTBOX.EVENT_TYPE.eq("ReviewCreated"))
+            .and(REVIEW_OUTBOX.PROCESSED.eq(false))
+            .orderBy(REVIEW_OUTBOX.CREATED_AT.asc(), REVIEW_OUTBOX.ID.asc())
+            .limit(limit)
+            .fetch { it.toReviewOutboxEvent() }
+
+    fun markOutboxProcessed(id: Long) {
+        dsl.update(REVIEW_OUTBOX)
+            .set(REVIEW_OUTBOX.PROCESSED, true)
+            .where(REVIEW_OUTBOX.ID.eq(id))
+            .execute()
+    }
+
     private fun findById(id: Long): ReviewRecord? =
         dsl.selectFrom(REVIEWS)
             .where(REVIEWS.ID.eq(id))
             .fetchOne { it.toReviewRecord() }
 }
+
+data class ReviewOutboxEvent(
+    val id: Long,
+    val aggregateId: Long,
+    val payload: String,
+    val createdAt: LocalDateTime
+)
 
 private fun ReviewsRecord.toReviewRecord() =
     ReviewRecord(
@@ -82,5 +107,13 @@ private fun ReviewsRecord.toReviewRecord() =
         rating = rating,
         comment = comment,
         authorNameSnapshot = authorNameSnapshot,
+        createdAt = createdAt
+    )
+
+private fun ReviewOutboxRecord.toReviewOutboxEvent() =
+    ReviewOutboxEvent(
+        id = id,
+        aggregateId = aggregateId,
+        payload = payload,
         createdAt = createdAt
     )

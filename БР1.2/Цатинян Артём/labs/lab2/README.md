@@ -10,6 +10,7 @@ Microservice version of the restaurant table booking backend from lab1.
 - PostgreSQL
 - Liquibase XML
 - jOOQ with generated tables, records, POJOs and DAOs
+- RabbitMQ for asynchronous review events
 - Gradle multi-module project
 
 ## Services
@@ -93,6 +94,44 @@ JDBC URLs used by services:
 - `jdbc:postgresql://localhost:5432/storage_local`
 
 The runtime connection does not set `currentSchema`: Liquibase changelogs and generated jOOQ table classes use schema-qualified table names.
+
+## RabbitMQ
+
+Homework 5 adds asynchronous interservice communication through RabbitMQ.
+
+Local broker can be started with:
+
+```powershell
+docker compose -f docker-compose.rabbitmq.yml up -d
+```
+
+RabbitMQ credentials:
+
+- host: `localhost`
+- AMQP port: `5672`
+- management UI: `http://localhost:15672`
+- username: `storage`
+- password: `storage`
+
+Used topology:
+
+| Name | Type | Purpose |
+| --- | --- | --- |
+| `restaurant.review.events` | direct exchange | review domain events |
+| `catalog.review-created` | durable queue | events consumed by catalog-service |
+| `review.created` | routing key | ReviewCreated routing key |
+
+Implemented asynchronous flow:
+
+```text
+client -> review-service: POST /api/v1/restaurants/{restaurantId}/reviews
+review-service -> review database: save review and outbox row
+review-service -> RabbitMQ: publish ReviewCreated from outbox
+catalog-service <- RabbitMQ: consume ReviewCreated
+catalog-service -> catalog database: update restaurant_rating_stats
+```
+
+The catalog consumer stores processed event ids in `catalog.processed_review_events`, so repeated delivery of the same RabbitMQ message does not update rating statistics twice.
 
 ## Build
 
@@ -244,6 +283,14 @@ Scenario 4 - reviews:
 ```
 
 3. Repeat the same request and expect `409 Conflict`, because a booking can have only one review.
+
+After a successful review creation, wait a few seconds and call:
+
+```text
+GET http://localhost:8082/api/v1/restaurants/1
+```
+
+The restaurant `rating` and `reviewCount` are updated by `catalog-service` after it consumes the `ReviewCreated` message from RabbitMQ.
 
 Scenario 5 - ownership/authentication check:
 

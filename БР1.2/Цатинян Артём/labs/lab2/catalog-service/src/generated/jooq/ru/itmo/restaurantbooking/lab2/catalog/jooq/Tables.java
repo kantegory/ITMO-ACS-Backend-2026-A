@@ -7,6 +7,7 @@ package ru.itmo.restaurantbooking.lab2.catalog.jooq;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.Cuisines;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.MenuCategories;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.MenuItems;
+import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.ProcessedReviewEvents;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantCuisines;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantRatingStats;
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantTables;
@@ -34,6 +35,11 @@ public class Tables {
      * The table <code>catalog.menu_items</code>.
      */
     public static final MenuItems MENU_ITEMS = MenuItems.MENU_ITEMS;
+
+    /**
+     * The table <code>catalog.processed_review_events</code>.
+     */
+    public static final ProcessedReviewEvents PROCESSED_REVIEW_EVENTS = ProcessedReviewEvents.PROCESSED_REVIEW_EVENTS;
 
     /**
      * The table <code>catalog.restaurant_cuisines</code>.

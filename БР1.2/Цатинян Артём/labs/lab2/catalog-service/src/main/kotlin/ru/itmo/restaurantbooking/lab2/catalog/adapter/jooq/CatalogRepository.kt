@@ -6,6 +6,7 @@ import org.jooq.Record
 import org.jooq.impl.DSL.coalesce
 import org.jooq.impl.DSL.exists
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 import ru.itmo.restaurantbooking.lab2.catalog.adapter.rest.dto.AvailabilityContextResponse
 import ru.itmo.restaurantbooking.lab2.catalog.adapter.rest.dto.CuisineResponse
 import ru.itmo.restaurantbooking.lab2.catalog.adapter.rest.dto.MenuCategoryResponse
@@ -19,6 +20,7 @@ import ru.itmo.restaurantbooking.lab2.catalog.adapter.rest.dto.WorkingHoursRespo
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.Cuisines.CUISINES
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.MenuCategories.MENU_CATEGORIES
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.MenuItems.MENU_ITEMS
+import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.ProcessedReviewEvents.PROCESSED_REVIEW_EVENTS
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantCuisines.RESTAURANT_CUISINES
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantRatingStats.RESTAURANT_RATING_STATS
 import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.RestaurantTables.RESTAURANT_TABLES
@@ -27,7 +29,9 @@ import ru.itmo.restaurantbooking.lab2.catalog.jooq.tables.Restaurants.RESTAURANT
 import ru.itmo.restaurantbooking.lab2.common.dto.PageResponse
 import ru.itmo.restaurantbooking.lab2.common.exception.NotFoundException
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 @Repository
 class CatalogRepository(
@@ -235,6 +239,49 @@ class CatalogRepository(
                     closed = it.isClosed
                 )
             }
+
+    @Transactional
+    fun applyReviewCreatedEvent(eventId: String, reviewId: Long, restaurantId: Long, rating: Int): Boolean {
+        val inserted = dsl.insertInto(PROCESSED_REVIEW_EVENTS)
+            .set(PROCESSED_REVIEW_EVENTS.EVENT_ID, eventId)
+            .set(PROCESSED_REVIEW_EVENTS.REVIEW_ID, reviewId)
+            .set(PROCESSED_REVIEW_EVENTS.PROCESSED_AT, LocalDateTime.now())
+            .onConflictDoNothing()
+            .execute()
+
+        if (inserted == 0) {
+            return false
+        }
+
+        val currentStats = dsl.selectFrom(RESTAURANT_RATING_STATS)
+            .where(RESTAURANT_RATING_STATS.RESTAURANT_ID.eq(restaurantId))
+            .forUpdate()
+            .fetchOne()
+
+        if (currentStats == null) {
+            dsl.insertInto(RESTAURANT_RATING_STATS)
+                .set(RESTAURANT_RATING_STATS.RESTAURANT_ID, restaurantId)
+                .set(RESTAURANT_RATING_STATS.AVERAGE_RATING, BigDecimal.valueOf(rating.toLong()).setScale(1))
+                .set(RESTAURANT_RATING_STATS.REVIEW_COUNT, 1)
+                .execute()
+            return true
+        }
+
+        val oldCount = currentStats.reviewCount
+        val newCount = oldCount + 1
+        val newAverage = currentStats.averageRating
+            .multiply(BigDecimal.valueOf(oldCount.toLong()))
+            .add(BigDecimal.valueOf(rating.toLong()))
+            .divide(BigDecimal.valueOf(newCount.toLong()), 1, RoundingMode.HALF_UP)
+
+        dsl.update(RESTAURANT_RATING_STATS)
+            .set(RESTAURANT_RATING_STATS.AVERAGE_RATING, newAverage)
+            .set(RESTAURANT_RATING_STATS.REVIEW_COUNT, newCount)
+            .where(RESTAURANT_RATING_STATS.RESTAURANT_ID.eq(restaurantId))
+            .execute()
+
+        return true
+    }
 }
 
 private fun Record.toRestaurantSummary() =
