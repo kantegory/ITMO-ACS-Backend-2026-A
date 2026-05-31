@@ -1,0 +1,40 @@
+services:
+  user-db:
+    image: postgres:17
+    container_name: lab23-user-db
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user_service
+      POSTGRES_PASSWORD: user_service
+    ports:
+      - "54323:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_service -d user_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - lab23-network
+
+  user-service:
+    build: .
+    container_name: lab23-user-service
+    entrypoint: ["java", "-Xms32m", "-Xmx256m", "-jar", "/app/app.jar"]
+    environment:
+      SERVER_PORT: 8082
+      DB_URL: jdbc:postgresql://user-db:5432/user_db
+      DB_USERNAME: user_service
+      DB_PASSWORD: user_service
+      JWT_SECRET: 5d425331c66b17a28480fd38d2128e8350a24d535f23061c8d86bce66bdbcc44
+      SERVICE_TOKEN: df0670418aa48ee9017ad05da2a1367b04e96686e5fb1bb0
+    depends_on:
+      user-db:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    networks:
+      - lab23-network
+
+networks:
+  lab23-network:
+    name: lab23-network

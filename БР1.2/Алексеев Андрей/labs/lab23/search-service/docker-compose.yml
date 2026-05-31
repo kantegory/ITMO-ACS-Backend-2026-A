@@ -1,0 +1,52 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: lab23-elasticsearch
+    environment:
+      discovery.type: single-node
+      node.roles: master,data,ingest
+      node.store.allow_mmap: "false"
+      xpack.security.enabled: "false"
+      xpack.ml.enabled: "false"
+      xpack.watcher.enabled: "false"
+      xpack.profiling.enabled: "false"
+      xpack.apm_data.enabled: "false"
+      xpack.monitoring.collection.enabled: "false"
+      ingest.geoip.downloader.enabled: "false"
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      bootstrap.memory_lock: "false"
+      ES_JAVA_OPTS: -Xms192m -Xmx192m -XX:MaxDirectMemorySize=64m -Dorg.elasticsearch.nativeaccess.enableVectorLibrary=false
+    mem_limit: 768m
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - lab23-network
+
+  search-service:
+    build: .
+    container_name: lab23-search-service
+    entrypoint: ["java", "-Xms32m", "-Xmx192m", "-jar", "/app/app.jar"]
+    environment:
+      SERVER_PORT: 8085
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_SECRET: 5d425331c66b17a28480fd38d2128e8350a24d535f23061c8d86bce66bdbcc44
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    networks:
+      - lab23-network
+
+networks:
+  lab23-network:
+    name: lab23-network
