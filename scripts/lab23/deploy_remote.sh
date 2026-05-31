@@ -37,7 +37,7 @@ fi
 
 git -C "$APP_ROOT" fetch origin "$BRANCH"
 git -C "$APP_ROOT" checkout "$BRANCH"
-git -C "$APP_ROOT" pull --ff-only origin "$BRANCH"
+git -C "$APP_ROOT" reset --hard "origin/$BRANCH"
 
 cd "$LAB23_DIR"
 docker compose down --remove-orphans || true
