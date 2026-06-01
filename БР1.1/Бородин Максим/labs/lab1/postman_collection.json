@@ -1,0 +1,271 @@
+{
+  "info": {
+    "name": "Lab1 Restaurant Booking Monolith",
+    "description": "End-to-end scenario for lab1: register, login, create restaurant and table, browse, book, review, cancel.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "jwtSecret", "value": "change_me_in_production", "type": "string" },
+    { "key": "userEmail", "value": "", "type": "string" },
+    { "key": "userToken", "value": "", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "restaurantId", "value": "", "type": "string" },
+    { "key": "tableId", "value": "", "type": "string" },
+    { "key": "bookingId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "00. Prepare admin token",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "function base64url(input) {",
+              "  return CryptoJS.enc.Base64.stringify(input).replace(/=+$/, '').replace(/\\+/g, '-').replace(/\\//g, '_');",
+              "}",
+              "const header = { alg: 'HS256', typ: 'JWT' };",
+              "const payload = { user_id: '00000000-0000-0000-0000-000000000001', role: 'admin', exp: Math.floor(Date.now() / 1000) + 86400 };",
+              "const unsigned = base64url(CryptoJS.enc.Utf8.parse(JSON.stringify(header))) + '.' + base64url(CryptoJS.enc.Utf8.parse(JSON.stringify(payload)));",
+              "const signature = base64url(CryptoJS.HmacSHA256(unsigned, pm.collectionVariables.get('jwtSecret')));",
+              "pm.collectionVariables.set('adminToken', unsigned + '.' + signature);",
+              "pm.collectionVariables.set('userEmail', 'lab1-user-' + Date.now() + '@example.com');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Admin token prepared', () => pm.expect(pm.collectionVariables.get('adminToken')).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/restaurants?limit=1" }
+    },
+    {
+      "name": "01. Register user",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 201', () => pm.response.to.have.status(201));",
+          "const json = pm.response.json();",
+          "pm.test('Created user', () => { pm.expect(json.id).to.be.a('string'); pm.expect(json.role).to.eql('user'); });"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/register",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"password123\"\n}" }
+      }
+    },
+    {
+      "name": "02. Login user",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "const json = pm.response.json();",
+          "pm.test('Token returned', () => pm.expect(json.token).to.be.a('string').and.not.empty);",
+          "pm.collectionVariables.set('userToken', json.token);"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"password123\"\n}" }
+      }
+    },
+    {
+      "name": "03. Get profile",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Profile email matches', () => pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('userEmail')));"
+        ] } }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/profile",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+      }
+    },
+    {
+      "name": "04. Admin create restaurant",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 201', () => pm.response.to.have.status(201));",
+          "const json = pm.response.json();",
+          "pm.test('Restaurant created', () => pm.expect(json.id).to.be.a('string'));",
+          "pm.collectionVariables.set('restaurantId', json.id);"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/admin/restaurants",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Bistro\",\n  \"description\": \"Scenario test restaurant\",\n  \"cuisine_type\": \"Italian\",\n  \"location\": \"Saint Petersburg\",\n  \"price_range\": 2\n}" }
+      }
+    },
+    {
+      "name": "05. Admin create table",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 201', () => pm.response.to.have.status(201));",
+          "const json = pm.response.json();",
+          "pm.test('Table created', () => pm.expect(json.id).to.be.a('string'));",
+          "pm.collectionVariables.set('tableId', json.id);"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/admin/restaurants/{{restaurantId}}/tables",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"table_number\": 1,\n  \"capacity\": 4\n}" }
+      }
+    },
+    {
+      "name": "06. Browse restaurants with filters",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "const json = pm.response.json();",
+          "pm.test('Items returned', () => { pm.expect(json.items).to.be.an('array'); pm.expect(json.total).to.be.a('number'); });"
+        ] } }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/restaurants?cuisine=Italian&location=Saint%20Petersburg&price_range=2&limit=10&offset=0"
+      }
+    },
+    {
+      "name": "07. Get restaurant details",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Correct restaurant', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('restaurantId')));"
+        ] } }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/restaurants/{{restaurantId}}" }
+    },
+    {
+      "name": "08. Get menu",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Items array exists', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+        ] } }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/restaurants/{{restaurantId}}/menu" }
+    },
+    {
+      "name": "09. Check table availability",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "const json = pm.response.json();",
+          "pm.test('Availability items exist', () => pm.expect(json.items).to.be.an('array'));"
+        ] } }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/restaurants/{{restaurantId}}/tables/availability?date=2026-06-01&time_from=18:00&time_to=20:00&guests=2" }
+    },
+    {
+      "name": "10. Create booking",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 201', () => pm.response.to.have.status(201));",
+          "const json = pm.response.json();",
+          "pm.test('Booking created', () => pm.expect(json.id).to.be.a('string'));",
+          "pm.collectionVariables.set('bookingId', json.id);"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/bookings",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{userToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"table_id\": \"{{tableId}}\",\n  \"booked_date\": \"2026-06-01\",\n  \"time_from\": \"18:00\",\n  \"time_to\": \"20:00\",\n  \"guests_count\": 2\n}" }
+      }
+    },
+    {
+      "name": "11. My bookings",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Items returned', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+        ] } }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/bookings/my?limit=10&offset=0",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+      }
+    },
+    {
+      "name": "12. Add review",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 201', () => pm.response.to.have.status(201));",
+          "pm.test('Review created', () => pm.expect(pm.response.json().rating).to.eql(5));"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/restaurants/{{restaurantId}}/reviews",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{userToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Great place for dinner.\"\n}" }
+      }
+    },
+    {
+      "name": "13. List reviews",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Items returned', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+        ] } }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/restaurants/{{restaurantId}}/reviews" }
+    },
+    {
+      "name": "14. Cancel booking",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Booking cancelled', () => pm.expect(pm.response.json().status).to.eql('cancelled'));"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }]
+      }
+    },
+    {
+      "name": "15. Admin bookings",
+      "event": [
+        { "listen": "test", "script": { "exec": [
+          "pm.test('Status 200', () => pm.response.to.have.status(200));",
+          "pm.test('Items returned', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+        ] } }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/admin/bookings?limit=10&offset=0",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+      }
+    }
+  ]
+}

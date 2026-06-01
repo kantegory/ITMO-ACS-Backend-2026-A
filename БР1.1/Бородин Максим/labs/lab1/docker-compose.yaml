@@ -1,0 +1,64 @@
+x-dns:
+  dns_servers: &dns_servers
+    - 8.8.8.8
+    - 1.1.1.1
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    dns: *dns_servers
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: restaurant_booking
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate
+    dns: *dns_servers
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgres://postgres:postgres@postgres:5432/restaurant_booking?sslmode=disable",
+        "up"
+      ]
+    restart: on-failure
+
+  app:
+    build: .
+    restart: unless-stopped
+    dns: *dns_servers
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: restaurant_booking
+      DB_SSLMODE: disable
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "8080"
+      JWT_SECRET: "change_me_in_production"
+
+volumes:
+  postgres_data:

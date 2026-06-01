@@ -1,0 +1,227 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "БР1.1/Бородин Максим/labs/lab1/**"
+      - "БР1.1/Бородин Максим/labs/lab2/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "БР1.1/Бородин Максим/labs/lab1/**"
+      - "БР1.1/Бородин Максим/labs/lab2/**"
+
+jobs:
+  # ────────────────────────────────────────────────
+  # Lab 1 — monolith
+  # ────────────────────────────────────────────────
+  lab1-build:
+    name: Lab1 Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: "БР1.1/Бородин Максим/labs/lab1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: "БР1.1/Бородин Максим/labs/lab1/go.sum"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  lab1-docker:
+    name: Lab1 Docker Build
+    runs-on: ubuntu-latest
+    needs: lab1-build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: "БР1.1/Бородин Максим/labs/lab1"
+          push: false
+          tags: restaurant-booking:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ────────────────────────────────────────────────
+  # Lab 2 — microservices (build + vet per service)
+  # ────────────────────────────────────────────────
+  lab2-auth:
+    name: Lab2 auth-service Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: "БР1.1/Бородин Максим/labs/lab2/auth-service"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: "БР1.1/Бородин Максим/labs/lab2/auth-service/go.sum"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  lab2-restaurant:
+    name: Lab2 restaurant-service Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: "БР1.1/Бородин Максим/labs/lab2/restaurant-service"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: "БР1.1/Бородин Максим/labs/lab2/restaurant-service/go.sum"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  lab2-booking:
+    name: Lab2 booking-service Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: "БР1.1/Бородин Максим/labs/lab2/booking-service"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: "БР1.1/Бородин Максим/labs/lab2/booking-service/go.sum"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  lab2-gateway:
+    name: Lab2 api-gateway Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: "БР1.1/Бородин Максим/labs/lab2/api-gateway"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: "БР1.1/Бородин Максим/labs/lab2/api-gateway/go.sum"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  lab2-docker:
+    name: Lab2 Docker Build (all services)
+    runs-on: ubuntu-latest
+    needs: [lab2-auth, lab2-restaurant, lab2-booking, lab2-gateway]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build auth-service image
+        uses: docker/build-push-action@v5
+        with:
+          context: "БР1.1/Бородин Максим/labs/lab2/auth-service"
+          push: false
+          tags: restaurant-booking/auth-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build restaurant-service image
+        uses: docker/build-push-action@v5
+        with:
+          context: "БР1.1/Бородин Максим/labs/lab2/restaurant-service"
+          push: false
+          tags: restaurant-booking/restaurant-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build booking-service image
+        uses: docker/build-push-action@v5
+        with:
+          context: "БР1.1/Бородин Максим/labs/lab2/booking-service"
+          push: false
+          tags: restaurant-booking/booking-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build api-gateway image
+        uses: docker/build-push-action@v5
+        with:
+          context: "БР1.1/Бородин Максим/labs/lab2/api-gateway"
+          push: false
+          tags: restaurant-booking/api-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,198 @@
+x-dns:
+  dns_servers: &dns_servers
+    - 8.8.8.8
+    - 1.1.1.1
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    dns: *dns_servers
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init/create_databases.sql:/docker-entrypoint-initdb.d/create_databases.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  migrate-auth:
+    image: migrate/migrate
+    dns: *dns_servers
+    restart: on-failure
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://postgres:postgres@postgres:5432/auth_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ./auth-service/migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  migrate-restaurant:
+    image: migrate/migrate
+    dns: *dns_servers
+    restart: on-failure
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://postgres:postgres@postgres:5432/restaurant_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ./restaurant-service/migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  kafka:
+    image: redpandadata/redpanda:v24.2.2
+    dns: *dns_servers
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://kafka:9092,external://localhost:19092
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --mode
+      - dev-container
+      - --default-log-level=warn
+    networks:
+      - backend
+
+  migrate-booking:
+    image: migrate/migrate
+    dns: *dns_servers
+    restart: on-failure
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://postgres:postgres@postgres:5432/booking_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ./booking-service/migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    dns: *dns_servers
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: auth_db
+      DB_SSLMODE: disable
+      JWT_SECRET: supersecretkey
+      SERVER_PORT: "8081"
+    depends_on:
+      migrate-auth:
+        condition: service_completed_successfully
+    networks:
+      - backend
+
+  restaurant-service:
+    build:
+      context: ./restaurant-service
+      dockerfile: Dockerfile
+    dns: *dns_servers
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: restaurant_db
+      DB_SSLMODE: disable
+      SERVER_PORT: "8082"
+    depends_on:
+      migrate-restaurant:
+        condition: service_completed_successfully
+    networks:
+      - backend
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    dns: *dns_servers
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: booking_db
+      DB_SSLMODE: disable
+      RESTAURANT_SERVICE_URL: http://restaurant-service:8082
+      SERVER_PORT: "8083"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: bookings
+    depends_on:
+      migrate-booking:
+        condition: service_completed_successfully
+      restaurant-service:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - backend
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    dns: *dns_servers
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: bookings
+      KAFKA_GROUP_ID: notification-service
+    depends_on:
+      kafka:
+        condition: service_started
+    networks:
+      - backend
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    dns: *dns_servers
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: supersecretkey
+      AUTH_SERVICE_URL: http://auth-service:8081
+      RESTAURANT_SERVICE_URL: http://restaurant-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      SERVER_PORT: "8080"
+    depends_on:
+      - auth-service
+      - restaurant-service
+      - booking-service
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+    driver: bridge
