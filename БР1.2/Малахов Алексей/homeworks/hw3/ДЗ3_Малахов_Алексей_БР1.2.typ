@@ -96,6 +96,22 @@
 - В пререквест-скриптах генерируются уникальные email для регистрации.
 - В тестах проверяются коды ответов (200/201), а также сохраняются `id` и `token` для следующих шагов.
 
+= Запуск через Newman
+
+Коллекция была запущена через Newman — CLI-runner для Postman — без открытия графического интерфейса:
+
+```
+newman run postman_collection.json --env-var "baseUrl=http://localhost:8001/api/v1"
+```
+
+Все 9 запросов выполнились успешно: 9 test-scripts, 3 prerequest-scripts, 0 failed. Результат подтверждает, что сценарий воспроизводим в автоматическом режиме.
+
+#figure(
+  image("newman.png", width: 100%),
+  caption: [Вывод Newman: 9 запросов, 0 ошибок],
+)
+
+#pagebreak()
 = Скриншоты
 #image("1.png", width: 100%)
 #pagebreak()
