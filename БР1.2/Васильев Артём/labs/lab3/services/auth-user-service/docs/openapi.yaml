@@ -1,0 +1,119 @@
+openapi: 3.0.3
+info:
+  title: Auth User Service API
+  version: 1.0.0
+  description: Users, authentication, JWT and internal batch user lookup.
+servers:
+  - url: http://localhost:3001/api/v1
+tags:
+  - name: Auth
+  - name: Users
+  - name: Internal
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register applicant or employer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, first_name, last_name, email, password, phone]
+              properties:
+                role:
+                  type: string
+                  enum: [APPLICANT, EMPLOYER]
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                middle_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                phone:
+                  type: string
+      responses:
+        '201':
+          description: User created
+        '409':
+          description: Email already exists
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Access token returned
+        '401':
+          description: Invalid credentials
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+    patch:
+      tags: [Users]
+      summary: Update current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Updated user
+  /internal/v1/users/batch:
+    post:
+      tags: [Internal]
+      summary: Internal batch user lookup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      security:
+        - serviceToken: []
+      responses:
+        '200':
+          description: Users and missingIds returned
+        '401':
+          description: Invalid service token
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token

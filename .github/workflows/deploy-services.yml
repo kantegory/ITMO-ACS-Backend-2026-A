@@ -1,0 +1,148 @@
+name: Deploy HW6 Service
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "HW6 microservice to rebuild and restart"
+        required: true
+        type: choice
+        options:
+          - application-service
+          - auth-user-service
+          - company-service
+          - dictionary-service
+          - interaction-service
+          - resume-service
+          - vacancy-service
+
+concurrency:
+  group: deploy-hw6-service-${{ inputs.service }}
+  cancel-in-progress: false
+
+env:
+  BRANCH: main
+  HW6_SUBDIR: "БР1.2/Васильев Артём/homeworks/hw6"
+  DEPLOY_PATH: ${{ secrets.HW6_DEPLOY_PATH || '/opt/job-platform-hw6' }}
+  REPO_URL: ${{ secrets.HW6_REPO_URL || format('{0}/{1}.git', github.server_url, github.repository) }}
+
+jobs:
+  deploy-service:
+    name: Deploy ${{ inputs.service }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository metadata so the workflow logs show the exact revision requested.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Print manual deployment instructions and selected service without exposing secrets.
+      - name: Log selected service
+        run: |
+          echo "Manual HW6 service deploy"
+          echo "Selected service: ${{ inputs.service }}"
+          echo "Branch: ${BRANCH}"
+          echo "Commit: ${GITHUB_SHA}"
+
+      # Step 3: Connect to the server over SSH and redeploy only the selected Docker Compose service.
+      - name: Deploy selected service on remote server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BRANCH: ${{ env.BRANCH }}
+          COMMIT_SHA: ${{ github.sha }}
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          HW6_SUBDIR: ${{ env.HW6_SUBDIR }}
+          REPO_URL: ${{ env.REPO_URL }}
+          SERVICE_NAME: ${{ inputs.service }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER || 'root' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: BRANCH,COMMIT_SHA,DEPLOY_PATH,HW6_SUBDIR,REPO_URL,SERVICE_NAME,JWT_SECRET_KEY,SERVICE_TOKEN,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD
+          script: |
+            set -Eeuo pipefail
+
+            log() {
+              printf '[deploy-hw6-service] %s\n' "$1"
+            }
+
+            fail() {
+              printf '[deploy-hw6-service][error] %s\n' "$1" >&2
+              exit 1
+            }
+
+            trap 'fail "Deployment failed at line ${LINENO}. Check the command output above."' ERR
+
+            # Step 3.1: Validate the selected service and required runtime secrets.
+            case "${SERVICE_NAME}" in
+              application-service|auth-user-service|company-service|dictionary-service|interaction-service|resume-service|vacancy-service) ;;
+              *) fail "Unsupported service: ${SERVICE_NAME}" ;;
+            esac
+
+            : "${JWT_SECRET_KEY:?JWT_SECRET_KEY secret is required}"
+            : "${SERVICE_TOKEN:?SERVICE_TOKEN secret is required}"
+            : "${DB_PASSWORD:?DB_PASSWORD secret is required}"
+            : "${RABBITMQ_USER:?RABBITMQ_USER secret is required}"
+            : "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD secret is required}"
+
+            REPO_DIR="${DEPLOY_PATH}/repo"
+            APP_DIR="${REPO_DIR}/${HW6_SUBDIR}"
+            COMPOSE=(docker compose --project-directory "${APP_DIR}" -f "${APP_DIR}/docker-compose.yml")
+
+            # Step 3.2: Create the deployment directory if the server has not deployed HW6 before.
+            log "Preparing deployment directory: ${DEPLOY_PATH}"
+            mkdir -p "${DEPLOY_PATH}"
+
+            # Step 3.3: Clone on first run, otherwise update the existing working copy to origin/main.
+            if [ ! -d "${REPO_DIR}/.git" ]; then
+              log "Repository not found on server. Cloning ${BRANCH}."
+              git clone --branch "${BRANCH}" --single-branch "${REPO_URL}" "${REPO_DIR}"
+            else
+              log "Repository exists. Fetching and resetting to origin/${BRANCH}."
+              git -C "${REPO_DIR}" remote set-url origin "${REPO_URL}"
+              git -C "${REPO_DIR}" fetch --prune origin "${BRANCH}"
+              git -C "${REPO_DIR}" reset --hard "origin/${BRANCH}"
+              git -C "${REPO_DIR}" clean -fd
+            fi
+
+            # Step 3.4: Ensure the selected service and Docker Compose file exist after update.
+            test -f "${APP_DIR}/docker-compose.yml"
+            test -f "${APP_DIR}/services/${SERVICE_NAME}/Dockerfile"
+            log "Updated ${SERVICE_NAME} sources in ${APP_DIR}/services/${SERVICE_NAME}"
+
+            # Step 3.5: Recreate the runtime .env from GitHub Secrets so compose uses current credentials.
+            log "Writing runtime .env from GitHub Secrets."
+            cat > "${APP_DIR}/.env" <<EOF
+            JWT_SECRET_KEY=${JWT_SECRET_KEY}
+            SERVICE_TOKEN=${SERVICE_TOKEN}
+            DB_PASSWORD=${DB_PASSWORD}
+            RABBITMQ_USER=${RABBITMQ_USER}
+            RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
+            EOF
+            chmod 600 "${APP_DIR}/.env"
+
+            # Step 3.6: Validate Docker Compose before changing the running service.
+            log "Validating Docker Compose configuration."
+            "${COMPOSE[@]}" config --quiet
+
+            # Step 3.7: Stop and remove only the selected service container.
+            # Docker Compose has no service-scoped `down`; stop/rm is the safe equivalent for a single service.
+            log "Stopping selected service: ${SERVICE_NAME}"
+            "${COMPOSE[@]}" stop "${SERVICE_NAME}" || true
+            "${COMPOSE[@]}" rm -f "${SERVICE_NAME}" || true
+
+            # Step 3.8: Rebuild and start only the selected service without restarting dependencies.
+            log "Rebuilding and starting selected service: ${SERVICE_NAME}"
+            "${COMPOSE[@]}" up -d --build --no-deps "${SERVICE_NAME}"
+
+            # Step 3.9: Print service status and finish with a success marker.
+            log "Current status for ${SERVICE_NAME}:"
+            "${COMPOSE[@]}" ps "${SERVICE_NAME}"
+            log "Service ${SERVICE_NAME} deployed successfully for commit ${COMMIT_SHA}."

@@ -1,0 +1,325 @@
+openapi: 3.0.3
+info:
+  title: Interaction Service API
+  version: 1.0.0
+  description: >
+    API сервиса пользовательских взаимодействий с вакансиями. Сервис владеет favorite_vacancies
+    и vacancy_views в interactions_db. user_id и vacancy_id являются external IDs. Для vacancy_views
+    не задается unique constraint: просмотры хранятся как история.
+servers:
+  - url: /api/v1
+    description: Public API
+tags:
+  - name: Favorites
+  - name: VacancyViews
+  - name: InternalInteractions
+paths:
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: Получить избранные вакансии
+      description: Возвращает избранные вакансии текущего пользователя. user_id берется из JWT.
+      operationId: listFavorites
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список избранного.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /favorites/{vacancy_id}:
+    parameters:
+      - $ref: '#/components/parameters/VacancyId'
+    post:
+      tags: [Favorites]
+      summary: Добавить вакансию в избранное
+      description: Interaction Service проверяет vacancy_id через Vacancy Service. user_id и vacancy_id являются external IDs.
+      operationId: addFavorite
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Вакансия добавлена в избранное.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteVacancy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden or vacancy is not published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Vacancy already added to favorites.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Favorites]
+      summary: Удалить вакансию из избранного
+      operationId: removeFavorite
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Удалено из избранного.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Favorite vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /vacancy-views:
+    get:
+      tags: [VacancyViews]
+      summary: Получить историю просмотров вакансий
+      description: Возвращает историю просмотров текущего пользователя; просмотры не уникальны по vacancy_id.
+      operationId: listVacancyViews
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: История просмотров.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyViewListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /vacancies/{vacancy_id}/views:
+    post:
+      tags: [VacancyViews]
+      summary: Зафиксировать просмотр вакансии
+      description: Создает новую запись истории просмотра. vacancy_id проверяется через Vacancy Service.
+      operationId: createVacancyView
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '201':
+          description: Просмотр зафиксирован.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden or vacancy is not published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/v1/vacancies/{vacancy_id}/favorites/count:
+    get:
+      tags: [InternalInteractions]
+      summary: Получить число добавлений в избранное
+      description: Возвращает счетчик избранного по vacancy_id без прямого доступа к Vacancy Service DB.
+      operationId: countVacancyFavorites
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountResponse'
+  /internal/v1/vacancies/{vacancy_id}/views/count:
+    get:
+      tags: [InternalInteractions]
+      summary: Получить число просмотров вакансии
+      description: Возвращает счетчик просмотров по vacancy_id без прямого доступа к Vacancy Service DB.
+      operationId: countVacancyViews
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountResponse'
+  /internal/v1/users/{user_id}/favorites:
+    get:
+      tags: [InternalInteractions]
+      summary: Получить избранное пользователя
+      description: user_id является external ID из Auth/User Service.
+      operationId: listInternalUserFavorites
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Favorites.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    VacancyId:
+      name: vacancy_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: External ID вакансии из Vacancy Service.
+  responses:
+    ValidationError:
+      description: ValidationError.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Vacancy service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceUnavailableError'
+  schemas:
+    PageMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    FavoriteVacancy:
+      type: object
+      required: [id, user_id, vacancy_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, description: External ID из Auth/User Service, не FK. }
+        vacancy_id: { type: string, format: uuid, description: External ID из Vacancy Service, не FK. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    VacancyView:
+      type: object
+      required: [id, user_id, vacancy_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, description: External ID из Auth/User Service, не FK. }
+        vacancy_id: { type: string, format: uuid, description: External ID из Vacancy Service, не FK. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    FavoriteListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteVacancy'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    VacancyViewListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/VacancyView'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    CountResponse:
+      type: object
+      required: [resource_id, count]
+      properties:
+        resource_id: { type: string, format: uuid }
+        count: { type: integer, minimum: 0 }
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceUnavailableError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: Vacancy service unavailable }

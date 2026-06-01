@@ -1,0 +1,342 @@
+openapi: 3.0.3
+info:
+  title: Application Service API
+  version: 1.0.0
+  description: >
+    API сервиса откликов. Сервис владеет applications в applications_db. vacancy_id,
+    resume_id и user_id являются external IDs, а не FK.
+servers:
+  - url: /api/v1
+    description: Public API
+tags:
+  - name: Applications
+  - name: InternalApplications
+paths:
+  /vacancies/{vacancy_id}/applications:
+    parameters:
+      - $ref: '#/components/parameters/VacancyId'
+    post:
+      tags: [Applications]
+      summary: Создать отклик на вакансию
+      description: >
+        Application Service проверяет вакансию и ее публикацию через Vacancy Service, резюме
+        и ownership через Resume Service. Прямое чтение чужих БД запрещено.
+      operationId: createApplication
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Отклик создан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Vacancy is not published or resume is not owned by current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Vacancy or resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Application for this vacancy and resume already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Applications]
+      summary: Получить отклики на вакансию
+      description: Работодатель должен быть владельцем вакансии. Право проверяется через Vacancy Service и Company Service.
+      operationId: listVacancyApplications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список откликов.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /applications/my:
+    get:
+      tags: [Applications]
+      summary: Получить мои отклики
+      description: Возвращает отклики текущего пользователя по user_id из JWT.
+      operationId: listMyApplications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список откликов текущего пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /applications/{application_id}/status:
+    patch:
+      tags: [Applications]
+      summary: Изменить статус отклика
+      description: Право работодателя проверяется через Vacancy Service и Company Service.
+      operationId: updateApplicationStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationStatusRequest'
+      responses:
+        '200':
+          description: Статус обновлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Application or vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/v1/applications/{application_id}:
+    get:
+      tags: [InternalApplications]
+      summary: Internal lookup отклика
+      description: Возвращает отклик для межсервисных сценариев. vacancy_id, resume_id и user_id остаются external IDs.
+      operationId: getInternalApplication
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      responses:
+        '200':
+          description: Internal application.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalApplicationResponse'
+        '404':
+          description: Application not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/vacancies/{vacancy_id}/applications/count:
+    get:
+      tags: [InternalApplications]
+      summary: Получить число откликов на вакансию
+      description: Возвращает агрегированный счетчик откликов по vacancy_id без доступа к чужим БД.
+      operationId: countVacancyApplications
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationsCountResponse'
+  /internal/v1/users/{user_id}/applications:
+    get:
+      tags: [InternalApplications]
+      summary: Получить отклики пользователя
+      description: user_id является external ID из Auth/User Service.
+      operationId: listInternalUserApplications
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Applications.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    VacancyId:
+      name: vacancy_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: External ID вакансии из Vacancy Service.
+    ApplicationId:
+      name: application_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    ValidationError:
+      description: ValidationError.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Dependent service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceUnavailableError'
+  schemas:
+    ApplicationStatus:
+      type: string
+      enum: [PENDING, VIEWED, INVITED, REJECTED, ACCEPTED]
+    PageMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    Application:
+      type: object
+      required: [id, vacancy_id, resume_id, user_id, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        vacancy_id: { type: string, format: uuid, description: External ID из Vacancy Service, не FK. }
+        resume_id: { type: string, format: uuid, description: External ID из Resume Service, не FK. }
+        user_id: { type: string, format: uuid, description: External ID из Auth/User Service, не FK. }
+        cover_letter: { type: string, nullable: true }
+        status:
+          $ref: '#/components/schemas/ApplicationStatus'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateApplicationRequest:
+      type: object
+      required: [resume_id]
+      properties:
+        resume_id: { type: string, format: uuid, description: External ID из Resume Service. }
+        cover_letter: { type: string, nullable: true }
+    UpdateApplicationStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/ApplicationStatus'
+    ApplicationListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    InternalApplicationResponse:
+      allOf:
+        - $ref: '#/components/schemas/Application'
+      description: Internal representation with external IDs.
+    ApplicationsCountResponse:
+      type: object
+      required: [vacancy_id, count]
+      properties:
+        vacancy_id: { type: string, format: uuid }
+        count: { type: integer, minimum: 0 }
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceUnavailableError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: Dependent service unavailable }
