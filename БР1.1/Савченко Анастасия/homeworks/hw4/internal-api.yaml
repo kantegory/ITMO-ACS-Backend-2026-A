@@ -1,0 +1,222 @@
+openapi: '3.0.0'
+info:
+  title: Restaurant Booking Microservices API
+  description: |
+    Внутренние эндпоинты для межсервисного взаимодействия.
+  version: '1.0.0'
+
+servers:
+  - url: http://auth-service:8001
+    description: auth-service
+  - url: http://restaurant-service:8002
+    description: restaurant-service
+  - url: http://booking-service:8003
+    description: booking-service
+
+paths:
+
+  # === AUTH-SERVICE ===
+
+  /api/internal/users/{user_id}/exists:
+    get:
+      operationId: checkUserExists
+      summary: Проверить существование пользователя
+      description: Используется booking-service перед созданием брони или отзыва
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Пользователь существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserExistsResponse'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotExistsResponse'
+
+  # === RESTAURANT-SERVICE ===
+
+  /api/internal/restaurants/{restaurant_id}/exists:
+    get:
+      operationId: checkRestaurantExists
+      summary: Проверить существование ресторана
+      description: Используется booking-service при создании брони или отзыва
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Ресторан существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantExistsResponse'
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotExistsResponse'
+
+  /api/internal/tables/{table_id}/exists:
+    get:
+      operationId: checkTableExists
+      summary: Проверить существование столика
+      description: |
+        Используется booking-service перед созданием брони.
+        Дополнительно проверяется принадлежность столика указанному ресторану.
+      parameters:
+        - name: table_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: restaurant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: ID ресторана для проверки принадлежности столика
+      responses:
+        '200':
+          description: Столик существует и принадлежит ресторану
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableExistsResponse'
+        '404':
+          description: Столик не найден или не принадлежит ресторану
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotExistsResponse'
+
+  # === BOOKING-SERVICE ===
+
+  /api/internal/restaurants/{restaurant_id}/stats:
+    get:
+      operationId: getRestaurantStats
+      summary: Получить статистику ресторана
+      description: |
+        Используется restaurant-service для получения среднего рейтинга
+        и количества отзывов о ресторане
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Статистика ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantStatsResponse'
+        '404':
+          description: Статистика не найдена (нет отзывов)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rating_avg:
+                    type: number
+                    example: 0
+                  reviews_count:
+                    type: integer
+                    example: 0
+
+components:
+  schemas:
+
+    UserExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+          example: true
+        user:
+          type: object
+          properties:
+            user_id:
+              type: integer
+            name:
+              type: string
+            email:
+              type: string
+
+    RestaurantExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+          example: true
+        restaurant:
+          type: object
+          properties:
+            restaurant_id:
+              type: integer
+            name:
+              type: string
+
+    TableExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+          example: true
+        table:
+          type: object
+          properties:
+            table_id:
+              type: integer
+            table_num:
+              type: string
+            capacity:
+              type: integer
+            restaurant_id:
+              type: integer
+
+    NotExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+          example: false
+
+    RestaurantStatsResponse:
+      type: object
+      properties:
+        rating_avg:
+          type: number
+          description: Средний рейтинг
+          example: 4.5
+        reviews_count:
+          type: integer
+          description: Количество отзывов
+          example: 42
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            status:
+              type: integer
