@@ -1,0 +1,157 @@
+name: lab2
+
+x-app-secrets: &app_secrets
+  JWT_SECRET: ${JWT_SECRET:-01234567890123456789012345678901abc}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+  INTERNAL_SECRET: ${INTERNAL_SECRET:-lab2-internal-docker-secret-min16}
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: lab2_rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: lab2_mq
+      RABBITMQ_DEFAULT_PASS: lab2_mq_pass
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 40s
+
+  postgres:
+    image: postgres:16
+    container_name: lab1_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lab1
+      POSTGRES_USER: lab1_user
+      POSTGRES_PASSWORD: lab1_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/02-lab2-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab1_user -d lab1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: auth
+    restart: unless-stopped
+    environment:
+      PORT: "3001"
+      DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_auth?schema=public
+      JWT_SECRET: ${JWT_SECRET:-01234567890123456789012345678901abc}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  catalog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: catalog
+    restart: unless-stopped
+    environment:
+      PORT: "3002"
+      DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_catalog?schema=public
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-lab2-internal-docker-secret-min16}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  jobseeker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: jobseeker
+    restart: unless-stopped
+    environment:
+      PORT: "3003"
+      DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_jobseeker?schema=public
+      CATALOG_SERVICE_URL: http://catalog:3002
+      <<: *app_secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+
+  employer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: employer
+    restart: unless-stopped
+    environment:
+      PORT: "3004"
+      DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_employer?schema=public
+      CATALOG_SERVICE_URL: http://catalog:3002
+      RABBITMQ_URL: amqp://lab2_mq:lab2_mq_pass@rabbitmq:5672
+      <<: *app_secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  application:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: application
+    restart: unless-stopped
+    environment:
+      PORT: "3005"
+      DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_application?schema=public
+      EMPLOYER_SERVICE_URL: http://employer:3004
+      JOBSEEKER_SERVICE_URL: http://jobseeker:3003
+      RABBITMQ_URL: amqp://lab2_mq:lab2_mq_pass@rabbitmq:5672
+      <<: *app_secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      employer:
+        condition: service_started
+      jobseeker:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      AUTH_SERVICE_URL: http://auth:3001
+      CATALOG_SERVICE_URL: http://catalog:3002
+      JOBSEEKER_SERVICE_URL: http://jobseeker:3003
+      EMPLOYER_SERVICE_URL: http://employer:3004
+      APPLICATION_SERVICE_URL: http://application:3005
+    depends_on:
+      - auth
+      - catalog
+      - jobseeker
+      - employer
+      - application
+
+volumes:
+  postgres_data:
