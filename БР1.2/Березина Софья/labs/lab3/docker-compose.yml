@@ -1,0 +1,153 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+
+  users-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: users_db
+      POSTGRES_USER: users_user
+      POSTGRES_PASSWORD: users_pass
+    volumes:
+      - users_db_data:/var/lib/postgresql/data
+
+  workouts-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: workouts_db
+      POSTGRES_USER: workouts_user
+      POSTGRES_PASSWORD: workouts_pass
+    volumes:
+      - workouts_db_data:/var/lib/postgresql/data
+
+  user-workouts-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: user_workouts_db
+      POSTGRES_USER: user_workouts_user
+      POSTGRES_PASSWORD: user_workouts_pass
+    volumes:
+      - user_workouts_db_data:/var/lib/postgresql/data
+
+  progress-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: progress_db
+      POSTGRES_USER: progress_user
+      POSTGRES_PASSWORD: progress_pass
+    volumes:
+      - progress_db_data:/var/lib/postgresql/data
+
+  blog-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: blog_db
+      POSTGRES_USER: blog_user
+      POSTGRES_PASSWORD: blog_pass
+    volumes:
+      - blog_db_data:/var/lib/postgresql/data
+
+  auth:
+    build: ./services/auth
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
+      JWT_SECRET: fitness-platform-secret
+      USERS_SERVICE_URL: http://user:3000
+    depends_on:
+      - auth-db
+      - user
+
+  user:
+    build: ./services/user
+    ports:
+      - "3002:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://users_user:users_pass@users-db:5432/users_db
+    depends_on:
+      - users-db
+
+  workout:
+    build: ./services/workout
+    ports:
+      - "3003:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://workouts_user:workouts_pass@workouts-db:5432/workouts_db
+    depends_on:
+      - workouts-db
+
+  userworkouts:
+    build: ./services/userworkouts
+    ports:
+      - "3004:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://user_workouts_user:user_workouts_pass@user-workouts-db:5432/user_workouts_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USERS_SERVICE_URL: http://user:3000
+      WORKOUTS_SERVICE_URL: http://workout:3000
+    depends_on:
+      - user-workouts-db
+      - rabbitmq
+      - user
+      - workout
+
+  progress:
+    build: ./services/progress
+    ports:
+      - "3005:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://progress_user:progress_pass@progress-db:5432/progress_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - progress-db
+      - rabbitmq
+
+  blog:
+    build: ./services/blog
+    ports:
+      - "3006:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://blog_user:blog_pass@blog-db:5432/blog_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USERS_SERVICE_URL: http://user:3000
+    depends_on:
+      - blog-db
+      - rabbitmq
+      - user
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  auth_db_data:
+  users_db_data:
+  workouts_db_data:
+  user_workouts_db_data:
+  progress_db_data:
+  blog_db_data:

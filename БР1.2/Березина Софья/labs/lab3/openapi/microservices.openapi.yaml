@@ -1,0 +1,665 @@
+openapi: 3.0.3
+info:
+  title: Fitness Platform Microservices API
+  version: 1.0.0
+  description: HTTP endpoints used by the decomposed fitness-platform services.
+servers:
+  - url: http://localhost:3001
+    description: auth service
+  - url: http://localhost:3002
+    description: users service
+  - url: http://localhost:3003
+    description: workouts service
+  - url: http://localhost:3004
+    description: user-workouts service
+  - url: http://localhost:3005
+    description: progress service
+  - url: http://localhost:3006
+    description: blog service
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register account and create user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthAccount"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          $ref: "#/components/responses/DependencyError"
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and issue JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: JWT issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/validate:
+    post:
+      tags: [Auth]
+      summary: Validate JWT for other services
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenValidation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /internal/users:
+    post:
+      tags: [Users]
+      summary: Internal endpoint used by auth service to create a profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalUserCreate"
+      responses:
+        "201":
+          description: User profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by id
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /users/{id}/profile:
+    patch:
+      tags: [Users]
+      summary: Update profile fields
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                age:
+                  type: integer
+                heightCm:
+                  type: number
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /workouts:
+    get:
+      tags: [Workouts]
+      summary: List workouts
+      responses:
+        "200":
+          description: Workouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workout"
+    post:
+      tags: [Workouts]
+      summary: Create workout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkoutRequest"
+      responses:
+        "201":
+          description: Workout created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /workouts/{id}:
+    get:
+      tags: [Workouts]
+      summary: Get workout by id
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Workout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /user-workouts/assign:
+    post:
+      tags: [UserWorkouts]
+      summary: Assign workout to user
+      description: Checks user and workout through HTTP calls, then publishes user.workout.assigned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignWorkoutRequest"
+      responses:
+        "201":
+          description: Assignment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWorkout"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/DependencyError"
+  /user-workouts/{id}/complete:
+    post:
+      tags: [UserWorkouts]
+      summary: Complete assigned workout
+      description: Updates assignment and publishes user.workout.completed for progress service.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteWorkoutRequest"
+      responses:
+        "200":
+          description: Assignment completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWorkout"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /user-workouts:
+    get:
+      tags: [UserWorkouts]
+      summary: List assigned workouts
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserWorkout"
+  /progress:
+    get:
+      tags: [Progress]
+      summary: List progress records
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Progress records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgressRecord"
+    post:
+      tags: [Progress]
+      summary: Create manual progress record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProgressRequest"
+      responses:
+        "201":
+          description: Progress record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgressRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /blog/posts:
+    get:
+      tags: [Blog]
+      summary: List blog posts
+      responses:
+        "200":
+          description: Blog posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogPost"
+    post:
+      tags: [Blog]
+      summary: Create blog post
+      description: Checks author through users service and publishes blog.post.published.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBlogPostRequest"
+      responses:
+        "201":
+          description: Blog post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/DependencyError"
+  /blog/posts/{id}:
+    get:
+      tags: [Blog]
+      summary: Get blog post
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Blog post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request payload
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DependencyError:
+      description: Dependent service is unavailable or returned an error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [user, admin, trainer]
+        age:
+          type: integer
+        heightCm:
+          type: number
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+        expiresIn:
+          type: integer
+    TokenValidation:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        exp:
+          type: integer
+    AuthAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+    InternalUserCreate:
+      allOf:
+        - $ref: "#/components/schemas/RegisterRequest"
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+              format: uuid
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+        profile:
+          type: object
+          properties:
+            age:
+              type: integer
+              nullable: true
+            heightCm:
+              type: number
+              nullable: true
+    CreateWorkoutRequest:
+      type: object
+      required: [title, type, difficultyLevel, durationMin]
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+          enum: [cardio, strength, hiit, yoga, pilates, stretching]
+        difficultyLevel:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        description:
+          type: string
+        durationMin:
+          type: integer
+        createdBy:
+          type: string
+          format: uuid
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/Exercise"
+    Workout:
+      allOf:
+        - $ref: "#/components/schemas/CreateWorkoutRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            isPublished:
+              type: boolean
+            createdAt:
+              type: string
+              format: date-time
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        targetMuscleGroup:
+          type: string
+        equipment:
+          type: string
+        sets:
+          type: integer
+        reps:
+          type: integer
+    AssignWorkoutRequest:
+      type: object
+      required: [userId, workoutId]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        workoutId:
+          type: string
+          format: uuid
+        scheduledDate:
+          type: string
+          format: date
+    CompleteWorkoutRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+        resultNotes:
+          type: string
+        completedExercisesCount:
+          type: integer
+        metrics:
+          type: object
+          properties:
+            weightKg:
+              type: number
+            heightCm:
+              type: number
+            muscleMassKg:
+              type: number
+    UserWorkout:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        workoutId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [scheduled, completed]
+        scheduledDate:
+          type: string
+          format: date
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateProgressRequest:
+      type: object
+      required: [userId, date, weightKg]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        muscleMassKg:
+          type: number
+    ProgressRecord:
+      allOf:
+        - $ref: "#/components/schemas/CreateProgressRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            userWorkoutId:
+              type: string
+              format: uuid
+              nullable: true
+            workoutId:
+              type: string
+              format: uuid
+              nullable: true
+            sourceEventId:
+              type: string
+              format: uuid
+              nullable: true
+    CreateBlogPostRequest:
+      type: object
+      required: [authorId, title, content, category]
+      properties:
+        authorId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+          enum: [nutrition, health, motivation, recovery, science]
+        featuredImage:
+          type: string
+    BlogPost:
+      allOf:
+        - $ref: "#/components/schemas/CreateBlogPostRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
