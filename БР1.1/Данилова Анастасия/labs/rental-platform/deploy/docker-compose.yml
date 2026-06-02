@@ -1,73 +1,30 @@
 services:
-  postgres-auth:
+  postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: auth
-      POSTGRES_PASSWORD: auth
-      POSTGRES_DB: auth_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_password
+      POSTGRES_DB: postgres
     volumes:
-      - auth_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
+    entrypoint: >
+      sh -c "
+      (sleep 5 && 
+       psql -U admin -d postgres -c 'CREATE DATABASE auth_db;' || true &&
+       psql -U admin -d postgres -c 'CREATE DATABASE property_db;' || true &&
+       psql -U admin -d postgres -c 'CREATE DATABASE rental_db;' || true &&
+       psql -U admin -d postgres -c 'CREATE DATABASE chat_db;' || true) &
+       exec docker-entrypoint.sh postgres"
     networks:
       - rental-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth -d auth_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  postgres-property:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: property
-      POSTGRES_PASSWORD: property
-      POSTGRES_DB: property_db
-    volumes:
-      - property_data:/var/lib/postgresql/data
-    networks:
-      - rental-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U property -d property_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  postgres-rental:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: rental
-      POSTGRES_PASSWORD: rental
-      POSTGRES_DB: rental_db
-    volumes:
-      - rental_data:/var/lib/postgresql/data
-    networks:
-      - rental-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rental -d rental_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  postgres-chat:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: chat
-      POSTGRES_PASSWORD: chat
-      POSTGRES_DB: chat_db
-    volumes:
-      - chat_data:/var/lib/postgresql/data
-    networks:
-      - rental-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chat -d chat_db"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     networks:
       - rental-net
     healthcheck:
@@ -80,13 +37,10 @@ services:
     build:
       context: ..
       dockerfile: services/auth-service/Dockerfile
-    environment:
-      PORT: "8081"
-      DB_URL: postgres://auth:auth@postgres-auth:5432/auth_db?sslmode=disable
-      JWT_SECRET: dev_secret_change_me
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    env_file:
+      - ../services/auth-service/.env
     depends_on:
-      postgres-auth:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -97,19 +51,13 @@ services:
     build:
       context: ..
       dockerfile: services/property-service/Dockerfile
-    environment:
-      PORT: "8082"
-      DB_URL: postgres://property:property@postgres-property:5432/property_db?sslmode=disable
-      JWT_SECRET: dev_secret_change_me
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      AUTH_SERVICE_URL: http://auth-service:8081
+    env_file:
+      - ../services/property-service/.env
     depends_on:
-      postgres-property:
+      postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      auth-service:
-        condition: service_started
     networks:
       - rental-net
 
@@ -117,22 +65,11 @@ services:
     build:
       context: ..
       dockerfile: services/rental-service/Dockerfile
-    environment:
-      PORT: "8083"
-      DB_URL: postgres://rental:rental@postgres-rental:5432/rental_db?sslmode=disable
-      JWT_SECRET: dev_secret_change_me
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      AUTH_SERVICE_URL: http://auth-service:8081
-      PROPERTY_SERVICE_URL: http://property-service:8082
+    env_file:
+      - ../services/rental-service/.env
     depends_on:
-      postgres-rental:
+      postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      auth-service:
-        condition: service_started
-      property-service:
-        condition: service_started
     networks:
       - rental-net
 
@@ -140,22 +77,11 @@ services:
     build:
       context: ..
       dockerfile: services/chat-service/Dockerfile
-    environment:
-      PORT: "8084"
-      DB_URL: postgres://chat:chat@postgres-chat:5432/chat_db?sslmode=disable
-      JWT_SECRET: dev_secret_change_me
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      AUTH_SERVICE_URL: http://auth-service:8081
-      PROPERTY_SERVICE_URL: http://property-service:8082
+    env_file:
+      - ../services/chat-service/.env
     depends_on:
-      postgres-chat:
+      postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      auth-service:
-        condition: service_started
-      property-service:
-        condition: service_started
     networks:
       - rental-net
 
@@ -165,7 +91,6 @@ services:
       - "8080:80"
     volumes:
       - ../infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ../infra/nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       - auth-service
       - property-service
@@ -179,7 +104,4 @@ networks:
     driver: bridge
 
 volumes:
-  auth_data:
-  property_data:
-  rental_data:
-  chat_data:
+  pg_data:
