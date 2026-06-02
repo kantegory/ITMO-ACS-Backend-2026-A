@@ -1,0 +1,1425 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Rental Property API — Комплексный сценарий тестирования",
+    "description": "## ДЗ3: Тестирование API средствами Postman\n\nКомплексный сценарий для сервиса аренды недвижимости.\n\n### Порядок выполнения\n\n1. Регистрация владельца и арендатора\n2. Вход в систему, получение токенов\n3. Создание типа недвижимости (через админа) и получение списка типов\n4. Владелец создаёт объявление и загружает фото\n5. Арендатор ищет объекты, фильтрует, просматривает детали\n6. Арендатор бронирует объект\n7. Владелец подтверждает бронирование\n8. Арендатор оплачивает\n9. Арендатор начинает переписку с владельцем\n10. Просмотр истории бронирований и транзакций\n\n### Переменные окружения (задаются в Environment)\n\n| Переменная | Назначение |\n|---|---|\n| `base_url` | Базовый URL API (по умолчанию `http://localhost:8080/api/v1`) |\n| `owner_token` | Access-токен владельца |\n| `tenant_token` | Access-токен арендатора |\n| `owner_id` | ID пользователя-владельца |\n| `tenant_id` | ID пользователя-арендатора |\n| `type_id` | ID типа недвижимости |\n| `property_id` | ID созданного объекта |\n| `rental_id` | ID бронирования |\n| `transaction_id` | ID транзакции |\n| `image_id` | ID загруженного изображения |\n\n### Предварительные условия\n\nПеред запуском коллекции необходимо:\n1. Запустить приложение: `docker-compose up --build`\n2. В БД должны существовать типы недвижимости или запустить запрос «Создать тип недвижимости» с токеном админа",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Регистрация и аутентификация",
+      "item": [
+        {
+          "name": "Регистрация владельца (Owner)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var ts = Date.now();",
+                  "pm.environment.set('owner_email', 'owner_' + ts + '@test.com');",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит access_token', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('access_token');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит refresh_token', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('refresh_token');",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит объект user', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('user');",
+                  "    pm.expect(data.user).to.have.property('id');",
+                  "    pm.expect(data.user).to.have.property('email');",
+                  "    pm.expect(data.user).to.have.property('full_name');",
+                  "    pm.expect(data.user).to.have.property('role');",
+                  "    pm.expect(data.user.role).to.eql('owner');",
+                  "});",
+                  "",
+                  "// Сохраняем токен и id владельца в переменные коллекции",
+                  "var data = pm.response.json();",
+                  "pm.environment.set('owner_token', data.access_token);",
+                  "pm.environment.set('owner_id', data.user.id);",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\",\n  \"full_name\": \"Иван Владелец\",\n  \"phone\": \"+79161234567\",\n  \"role\": \"owner\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Регистрация арендатора (Tenant)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var ts = Date.now();",
+                  "pm.environment.set('tenant_email', 'tenant_' + ts + '@test.com');",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит access_token', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "pm.test('Роль пользователя — tenant', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.user.role).to.eql('tenant');",
+                  "});",
+                  "",
+                  "// Сохраняем токен и id арендатора",
+                  "var data = pm.response.json();",
+                  "pm.environment.set('tenant_token', data.access_token);",
+                  "pm.environment.set('tenant_id', data.user.id);",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"{{tenant_password}}\",\n  \"full_name\": \"Петр Арендатор\",\n  \"phone\": \"+79261234567\",\n  \"role\": \"tenant\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Вход владельца (Login)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Токен доступа получен', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.access_token).to.be.a('string');",
+                  "    pm.environment.set('owner_token', data.access_token);",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"{{owner_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Вход арендатора (Login)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Токен доступа получен', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.access_token).to.be.a('string');",
+                  "    pm.environment.set('tenant_token', data.access_token);",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"{{tenant_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Настройка типов недвижимости",
+      "item": [
+        {
+          "name": "Получить список типов недвижимости",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ — массив', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Сохраняем первый type_id, если есть",
+                  "var data = pm.response.json();",
+                  "if (data && data.length > 0) {",
+                  "    pm.environment.set('type_id', data[0].id);",
+                  "    pm.test('Сохранён type_id = ' + data[0].id, function () {",
+                  "        pm.expect(data[0].id).to.be.a('number');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('ВНИМАНИЕ: нет типов недвижимости — необходимо создать через админа', function () {",
+                  "        pm.expect.fail('Сначала создайте типы через POST /property-types с admin-токеном');",
+                  "    });",
+                  "}",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/property-types",
+              "host": ["{{base_url}}"],
+              "path": ["property-types"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Работа с объявлениями (Owner)",
+      "item": [
+        {
+          "name": "Создать объявление",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит id объекта', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит title и city', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.title).to.include('Уютная квартира');",
+                  "    pm.expect(data.city).to.eql('Москва');",
+                  "});",
+                  "",
+                  "pm.test('Цена за сутки корректна', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.price_per_day).to.be.a('number').and.above(0);",
+                  "});",
+                  "",
+                  "// Сохраняем property_id",
+                  "var data = pm.response.json();",
+                  "pm.environment.set('property_id', data.id);",
+                  "",
+                  "// Также сохраняем city для последующего поиска",
+                  "pm.environment.set('search_city', 'Москва');",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type_id\": {{type_id}},\n  \"title\": \"Уютная квартира в центре\",\n  \"description\": \"Просторная квартира с видом на Кремль. Рядом метро, кафе и магазины.\",\n  \"price_per_day\": 4500,\n  \"city\": \"Москва\",\n  \"address\": \"ул. Тверская, д. 15, кв. 42\",\n  \"latitude\": 55.761667,\n  \"longitude\": 37.610000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/properties",
+              "host": ["{{base_url}}"],
+              "path": ["properties"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Загрузить фото объявления",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит image_url и is_main', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('image_url');",
+                  "    pm.expect(data).to.have.property('is_main');",
+                  "});",
+                  "",
+                  "// Сохраняем image_id",
+                  "var data = pm.response.json();",
+                  "if (data.id) {",
+                  "    pm.environment.set('image_id', data.id);",
+                  "}",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": "/tmp/test-upload.png"
+                },
+                {
+                  "key": "is_main",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/properties/{{property_id}}/images",
+              "host": ["{{base_url}}"],
+              "path": ["properties", "{{property_id}}", "images"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Получить детали объявления",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит полную информацию об объекте', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('id');",
+                  "    pm.expect(data).to.have.property('title');",
+                  "    pm.expect(data).to.have.property('city');",
+                  "    pm.expect(data).to.have.property('price_per_day');",
+                  "    pm.expect(data).to.have.property('description');",
+                  "    pm.expect(data).to.have.property('address');",
+                  "    pm.expect(data).to.have.property('owner');",
+                  "    pm.expect(data).to.have.property('images');",
+                  "    pm.expect(data).to.have.property('status');",
+                  "});",
+                  "",
+                  "pm.test('Объект имеет статус active', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('active');",
+                  "});",
+                  "",
+                  "pm.test('Владелец указан корректно', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.owner).to.have.property('full_name');",
+                  "    pm.expect(data.owner).to.have.property('email');",
+                  "    pm.expect(data.owner.role).to.eql('owner');",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/properties/{{property_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["properties", "{{property_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Поиск и фильтрация (Tenant)",
+      "item": [
+        {
+          "name": "Поиск всех объявлений",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит total и items', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('total');",
+                  "    pm.expect(data).to.have.property('items');",
+                  "    pm.expect(data.items).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('total >= 1 (есть наше объявление)', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.total).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test('Элементы списка содержат нужные поля', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.items.length > 0) {",
+                  "        var item = data.items[0];",
+                  "        pm.expect(item).to.have.property('id');",
+                  "        pm.expect(item).to.have.property('title');",
+                  "        pm.expect(item).to.have.property('city');",
+                  "        pm.expect(item).to.have.property('price_per_day');",
+                  "        pm.expect(item).to.have.property('type_name');",
+                  "    }",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/properties",
+              "host": ["{{base_url}}"],
+              "path": ["properties"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Фильтрация по городу",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Все найденные объекты в городе Москва', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.total).to.be.at.least(1);",
+                  "    data.items.forEach(function(item) {",
+                  "        pm.expect(item.city).to.eql('Москва');",
+                  "    });",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/properties?city={{search_city}}",
+              "host": ["{{base_url}}"],
+              "path": ["properties"],
+              "query": [
+                { "key": "city", "value": "{{search_city}}" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Фильтрация по цене (диапазон)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Цена объектов в диапазоне 1000–10000', function () {",
+                  "    var data = pm.response.json();",
+                  "    data.items.forEach(function(item) {",
+                  "        pm.expect(item.price_per_day).to.be.at.least(1000);",
+                  "        pm.expect(item.price_per_day).to.be.at.most(10000);",
+                  "    });",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/properties?min_price=1000&max_price=10000",
+              "host": ["{{base_url}}"],
+              "path": ["properties"],
+              "query": [
+                { "key": "min_price", "value": "1000" },
+                { "key": "max_price", "value": "10000" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Бронирование и оплата",
+      "item": [
+        {
+          "name": "Создать бронирование (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Бронирование создано со статусом pending', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('pending');",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит данные о недвижимости', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('property');",
+                  "    pm.expect(data.property).to.have.property('title');",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит данные арендатора и владельца', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('tenant');",
+                  "    pm.expect(data).to.have.property('owner');",
+                  "});",
+                  "",
+                  "pm.test('Даты бронирования корректны', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('start_date');",
+                  "    pm.expect(data).to.have.property('end_date');",
+                  "    pm.expect(new Date(data.end_date)).to.be.above(new Date(data.start_date));",
+                  "});",
+                  "",
+                  "pm.test('Сумма total_price рассчитана', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.total_price).to.be.a('number').and.above(0);",
+                  "});",
+                  "",
+                  "// Сохраняем rental_id и owner_id из ответа (для переписки)",
+                  "var data = pm.response.json();",
+                  "pm.environment.set('rental_id', data.id);",
+                  "pm.environment.set('booking_owner_id', data.owner.id);",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": {{property_id}},\n  \"start_date\": \"2026-06-01T00:00:00Z\",\n  \"end_date\": \"2026-06-05T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rentals",
+              "host": ["{{base_url}}"],
+              "path": ["rentals"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Просмотр бронирования (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('ID бронирования совпадает', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.id).to.eql(Number(pm.environment.get('rental_id')));",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rentals/{{rental_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["rentals", "{{rental_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Подтвердить бронирование (владелец)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Статус изменён на confirmed', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('confirmed');",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"confirmed\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rentals/{{rental_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["rentals", "{{rental_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Оплатить бронирование (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит rental и transaction', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('rental');",
+                  "    pm.expect(data).to.have.property('transaction');",
+                  "});",
+                  "",
+                  "pm.test('Бронирование оплачено (статус paid)', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.rental.status).to.eql('paid');",
+                  "});",
+                  "",
+                  "pm.test('Транзакция успешна (статус success)', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.transaction.status).to.eql('success');",
+                  "});",
+                  "",
+                  "pm.test('Сумма транзакции совпадает с total_price', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.transaction.amount).to.eql(data.rental.total_price);",
+                  "});",
+                  "",
+                  "pm.test('Транзакция содержит payment_method', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.transaction.payment_method).to.eql('credit_card');",
+                  "});",
+                  "",
+                  "// Сохраняем transaction_id",
+                  "var data = pm.response.json();",
+                  "pm.environment.set('transaction_id', data.transaction.id);",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_method\": \"credit_card\",\n  \"idempotency_key\": \"idem-{{$guid}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rentals/{{rental_id}}/pay",
+              "host": ["{{base_url}}"],
+              "path": ["rentals", "{{rental_id}}", "pay"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Переписка (сообщения)",
+      "item": [
+        {
+          "name": "Отправить сообщение владельцу (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Сообщение содержит все поля', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('id');",
+                  "    pm.expect(data).to.have.property('sender_id');",
+                  "    pm.expect(data).to.have.property('receiver_id');",
+                  "    pm.expect(data).to.have.property('property_id');",
+                  "    pm.expect(data).to.have.property('message_text');",
+                  "    pm.expect(data).to.have.property('sent_at');",
+                  "});",
+                  "",
+                  "pm.test('Отправитель — арендатор', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.sender_id).to.eql(Number(pm.environment.get('tenant_id')));",
+                  "});",
+                  "",
+                  "pm.test('Получатель — владелец', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.receiver_id).to.eql(Number(pm.environment.get('booking_owner_id')));",
+                  "});",
+                  "",
+                  "pm.test('Текст сообщения сохранён', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.message_text).to.include('Здравствуйте');",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": {{booking_owner_id}},\n  \"property_id\": {{property_id}},\n  \"message_text\": \"Здравствуйте! Интересует ваша квартира. Есть ли парковка рядом?\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages",
+              "host": ["{{base_url}}"],
+              "path": ["messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ответ владельца арендатору",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 201 — Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Отправитель — владелец', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.sender_id).to.eql(Number(pm.environment.get('owner_id')));",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": {{tenant_id}},\n  \"property_id\": {{property_id}},\n  \"message_text\": \"Здравствуйте! Да, рядом есть бесплатная парковка. Буду рад вас принять!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages",
+              "host": ["{{base_url}}"],
+              "path": ["messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Список диалогов (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ — массив диалогов', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "    pm.expect(data.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test('Диалог содержит property_id и last_message', function () {",
+                  "    var data = pm.response.json();",
+                  "    var conv = data[0];",
+                  "    pm.expect(conv).to.have.property('property_id');",
+                  "    pm.expect(conv).to.have.property('property_title');",
+                  "    pm.expect(conv).to.have.property('other_user_id');",
+                  "    pm.expect(conv).to.have.property('other_user_name');",
+                  "    pm.expect(conv).to.have.property('last_message');",
+                  "    pm.expect(conv).to.have.property('last_sent_at');",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/messages/conversations",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "conversations"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "История переписки по объекту",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ — массив сообщений', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "    pm.expect(data.length).to.be.at.least(2);",
+                  "});",
+                  "",
+                  "pm.test('Сообщения относятся к правильному property_id', function () {",
+                  "    var data = pm.response.json();",
+                  "    data.forEach(function(msg) {",
+                  "        pm.expect(msg.property_id).to.eql(Number(pm.environment.get('property_id')));",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('Сообщения отсортированы по времени', function () {",
+                  "    var data = pm.response.json();",
+                  "    for (var i = 1; i < data.length; i++) {",
+                  "        pm.expect(new Date(data[i].sent_at)).to.be.at.least(new Date(data[i-1].sent_at));",
+                  "    }",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/messages/property/{{property_id}}/user/{{booking_owner_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "property", "{{property_id}}", "user", "{{booking_owner_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. История и профиль",
+      "item": [
+        {
+          "name": "Мои бронирования (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ содержит total и items', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('total');",
+                  "    pm.expect(data).to.have.property('items');",
+                  "    pm.expect(data.items).to.be.an('array');",
+                  "    pm.expect(data.total).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test('Созданное бронирование присутствует в списке', function () {",
+                  "    var data = pm.response.json();",
+                  "    var rentalIds = data.items.map(function(r) { return r.id; });",
+                  "    pm.expect(rentalIds).to.include(Number(pm.environment.get('rental_id')));",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rentals",
+              "host": ["{{base_url}}"],
+              "path": ["rentals"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Мои бронирования с фильтром по статусу",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Все бронирования имеют статус paid', function () {",
+                  "    var data = pm.response.json();",
+                  "    data.items.forEach(function(item) {",
+                  "        pm.expect(item.status).to.eql('paid');",
+                  "    });",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rentals?status=paid",
+              "host": ["{{base_url}}"],
+              "path": ["rentals"],
+              "query": [
+                { "key": "status", "value": "paid" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "История транзакций (арендатор)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Ответ — массив транзакций', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "    pm.expect(data.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test('Наша транзакция в истории', function () {",
+                  "    var data = pm.response.json();",
+                  "    var txIds = data.map(function(t) { return t.id; });",
+                  "    pm.expect(txIds).to.include(Number(pm.environment.get('transaction_id')));",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transactions",
+              "host": ["{{base_url}}"],
+              "path": ["transactions"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Профиль текущего пользователя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200 — OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Профиль содержит все поля', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('id');",
+                  "    pm.expect(data).to.have.property('email');",
+                  "    pm.expect(data).to.have.property('full_name');",
+                  "    pm.expect(data).to.have.property('role');",
+                  "    pm.expect(data).to.have.property('created_at');",
+                  "});",
+                  "",
+                  "pm.test('Email содержит @', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.email).to.include('@');",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8. Негативные тесты (ошибки)",
+      "item": [
+        {
+          "name": "Регистрация с дублирующимся email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 400 — Bad Request (email уже занят)', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"123456\",\n  \"full_name\": \"Дубль\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Вход с неверным паролем",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 401 — Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Доступ без токена (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 401 — Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Запрос несуществующего объекта (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 404 — Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/properties/99999",
+              "host": ["{{base_url}}"],
+              "path": ["properties", "99999"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Арендатор пытается создать объявление (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 403 — Forbidden (только owner/admin)', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type_id\": 1,\n  \"title\": \"Попытка от арендатора\",\n  \"price_per_day\": 1000,\n  \"city\": \"Москва\",\n  \"address\": \"ул. Запретная, 1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/properties",
+              "host": ["{{base_url}}"],
+              "path": ["properties"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Бронирование на занятые даты (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 409 — Conflict (даты заняты)', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenant_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": {{property_id}},\n  \"start_date\": \"2026-06-02T00:00:00Z\",\n  \"end_date\": \"2026-06-04T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rentals",
+              "host": ["{{base_url}}"],
+              "path": ["rentals"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "owner_email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "owner_password",
+      "value": "securePass123",
+      "type": "string"
+    },
+    {
+      "key": "tenant_email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenant_password",
+      "value": "securePass123",
+      "type": "string"
+    },
+    {
+      "key": "owner_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenant_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "owner_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "type_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "property_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rental_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transaction_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "image_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "search_city",
+      "value": "Москва",
+      "type": "string"
+    },
+    {
+      "key": "booking_owner_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
