@@ -1,0 +1,250 @@
+services:
+  # ── Databases ──────────────────────────────────────────────────────────────
+  auth-db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_db
+      POSTGRES_PASSWORD: auth_db
+    ports:
+      - "15433:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_db -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  restaurant-db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: restaurant_db
+      POSTGRES_USER: restaurant_db
+      POSTGRES_PASSWORD: restaurant_db
+    ports:
+      - "15434:5432"
+    volumes:
+      - restaurant-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U restaurant_db -d restaurant_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  reservation-db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: reservation_db
+      POSTGRES_USER: reservation_db
+      POSTGRES_PASSWORD: reservation_db
+    ports:
+      - "15435:5432"
+    volumes:
+      - reservation-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reservation_db -d reservation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  menu-db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: menu_db
+      POSTGRES_USER: menu_db
+      POSTGRES_PASSWORD: menu_db
+    ports:
+      - "15436:5432"
+    volumes:
+      - menu-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U menu_db -d menu_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  review-db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: review_db
+      POSTGRES_USER: review_db
+      POSTGRES_PASSWORD: review_db
+    ports:
+      - "15437:5432"
+    volumes:
+      - review-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U review_db -d review_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── RabbitMQ ────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── Services ────────────────────────────────────────────────────────────────
+  api-gateway:
+    build: ./services/api-gateway
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      APP_PORT: "3000"
+      AUTH_SERVICE_URL: "http://auth-service:3001"
+      RESTAURANT_SERVICE_URL: "http://restaurant-service:3002"
+      RESERVATION_SERVICE_URL: "http://reservation-service:3003"
+      MENU_SERVICE_URL: "http://menu-service:3004"
+      REVIEW_SERVICE_URL: "http://review-service:3005"
+    depends_on:
+      - auth-service
+      - restaurant-service
+      - reservation-service
+      - menu-service
+      - review-service
+
+  auth-service:
+    build: ./services/auth-service
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      APP_PORT: "3001"
+      APP_API_PREFIX: "/api/v1"
+      DB_HOST: auth-db
+      DB_PORT: "5432"
+      DB_NAME: auth_db
+      DB_USER: auth_db
+      DB_PASSWORD: auth_db
+      JWT_SECRET_KEY: supersecret
+      JWT_ACCESS_TOKEN_LIFETIME: "86400"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+      RESERVATION_SERVICE_URL: "http://reservation-service:3003"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  restaurant-service:
+    build: ./services/restaurant-service
+    restart: always
+    ports:
+      - "3002:3002"
+    environment:
+      APP_PORT: "3002"
+      APP_API_PREFIX: "/api/v1"
+      DB_HOST: restaurant-db
+      DB_PORT: "5432"
+      DB_NAME: restaurant_db
+      DB_USER: restaurant_db
+      DB_PASSWORD: restaurant_db
+      JWT_SECRET_KEY: supersecret
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+      AUTH_SERVICE_URL: "http://auth-service:3001"
+      RESERVATION_SERVICE_URL: "http://reservation-service:3003"
+      MENU_SERVICE_URL: "http://menu-service:3004"
+      REVIEW_SERVICE_URL: "http://review-service:3005"
+    depends_on:
+      restaurant-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  reservation-service:
+    build: ./services/reservation-service
+    restart: always
+    ports:
+      - "3003:3003"
+    environment:
+      APP_PORT: "3003"
+      APP_API_PREFIX: "/api/v1"
+      DB_HOST: reservation-db
+      DB_PORT: "5432"
+      DB_NAME: reservation_db
+      DB_USER: reservation_db
+      DB_PASSWORD: reservation_db
+      JWT_SECRET_KEY: supersecret
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+      RESTAURANT_SERVICE_URL: "http://restaurant-service:3002"
+    depends_on:
+      reservation-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  menu-service:
+    build: ./services/menu-service
+    restart: always
+    ports:
+      - "3004:3004"
+    environment:
+      APP_PORT: "3004"
+      APP_API_PREFIX: "/api/v1"
+      DB_HOST: menu-db
+      DB_PORT: "5432"
+      DB_NAME: menu_db
+      DB_USER: menu_db
+      DB_PASSWORD: menu_db
+      JWT_SECRET_KEY: supersecret
+      RESTAURANT_SERVICE_URL: "http://restaurant-service:3002"
+    depends_on:
+      menu-db:
+        condition: service_healthy
+
+  review-service:
+    build: ./services/review-service
+    restart: always
+    ports:
+      - "3005:3005"
+    environment:
+      APP_PORT: "3005"
+      APP_API_PREFIX: "/api/v1"
+      DB_HOST: review-db
+      DB_PORT: "5432"
+      DB_NAME: review_db
+      DB_USER: review_db
+      DB_PASSWORD: review_db
+      JWT_SECRET_KEY: supersecret
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+      AUTH_SERVICE_URL: "http://auth-service:3001"
+      RESTAURANT_SERVICE_URL: "http://restaurant-service:3002"
+    depends_on:
+      review-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    build: ./services/notification-service
+    restart: always
+    environment:
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  auth-db-data:
+  restaurant-db-data:
+  reservation-db-data:
+  menu-db-data:
+  review-db-data:
