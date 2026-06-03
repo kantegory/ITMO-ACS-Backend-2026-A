@@ -1,0 +1,17 @@
+ALTER TABLE property
+    ADD main_image VARCHAR(255);
+
+ALTER TABLE property
+    ALTER COLUMN main_image SET NOT NULL;
+
+ALTER TABLE chat
+    ADD user1id_id BIGINT;
+
+ALTER TABLE chat
+    ADD user2id_id BIGINT;
+
+ALTER TABLE chat
+    ADD CONSTRAINT FK_CHAT_ON_USER1ID FOREIGN KEY (user1id_id) REFERENCES _user_ (id);
+
+ALTER TABLE chat
+    ADD CONSTRAINT FK_CHAT_ON_USER2ID FOREIGN KEY (user2id_id) REFERENCES _user_ (id);
