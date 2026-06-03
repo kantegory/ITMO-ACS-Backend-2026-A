@@ -1,0 +1,159 @@
+# Restaurant Booking — микросервисы (ЛР2) + контейнеризация (ЛР3)
+# Запуск: docker compose up --build
+# Точка входа для клиента: http://localhost:3000/api/v1
+
+services:
+
+  # ── Брокер сообщений (ДЗ5) ─────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"      # AMQP
+      - "${RABBITMQ_UI_PORT:-15672}:15672" # Management UI: http://localhost:15672
+    networks: [rbnet]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build: ./auth-service
+    environment:
+      PORT: 8081
+      DB_PATH: /data/auth.sqlite
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-secret}
+    volumes:
+      - auth-data:/data
+    networks: [rbnet]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8081/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  catalog-service:
+    build: ./catalog-service
+    environment:
+      PORT: 8082
+      DB_PATH: /data/catalog.sqlite
+      REVIEW_URL: http://review-service:8084
+      RESERVATION_URL: http://reservation-service:8083
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-secret}
+    volumes:
+      - catalog-data:/data
+    networks: [rbnet]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8082/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  reservation-service:
+    build: ./reservation-service
+    environment:
+      PORT: 8083
+      DB_PATH: /data/reservations.sqlite
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
+      CATALOG_URL: http://catalog-service:8082
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-secret}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+    volumes:
+      - reservation-data:/data
+    networks: [rbnet]
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8083/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  review-service:
+    build: ./review-service
+    environment:
+      PORT: 8084
+      DB_PATH: /data/reviews.sqlite
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
+      CATALOG_URL: http://catalog-service:8082
+      AUTH_URL: http://auth-service:8081
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-secret}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+    volumes:
+      - review-data:/data
+    networks: [rbnet]
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8084/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # ── Потребитель событий очереди (ДЗ5) ──────────────────────────────
+  notification-service:
+    build: ./notification-service
+    environment:
+      PORT: 8085
+      DB_PATH: /data/notifications.sqlite
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+    volumes:
+      - notification-data:/data
+    networks: [rbnet]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8085/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  gateway:
+    build: ./gateway
+    environment:
+      PORT: 3000
+      AUTH_URL: http://auth-service:8081
+      CATALOG_URL: http://catalog-service:8082
+      RESERVATION_URL: http://reservation-service:8083
+      REVIEW_URL: http://review-service:8084
+      NOTIFICATION_URL: http://notification-service:8085
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    networks: [rbnet]
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      reservation-service:
+        condition: service_healthy
+      review-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+
+volumes:
+  auth-data:
+  catalog-data:
+  reservation-data:
+  review-data:
+  notification-data:
+
+networks:
+  rbnet:
+    driver: bridge
