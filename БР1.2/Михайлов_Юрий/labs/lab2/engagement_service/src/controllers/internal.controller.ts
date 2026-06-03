@@ -2,12 +2,14 @@ import { JsonController, Get, Param } from 'routing-controllers';
 import dataSource from '../config/data-source';
 import { Review } from '../models/review.entity';
 import { Conversation } from '../models/conversation.entity';
+import {OpenAPI} from "routing-controllers-openapi";
 
 @JsonController('/internal')
 export class InternalEngagementController {
 
     // Получить отзывы по property_id
     @Get('/reviews/property/:propertyId')
+    @OpenAPI({ deprecated: true })
     async getReviewsByProperty(@Param('propertyId') propertyId: number) {
         const reviewRepo = dataSource.getRepository(Review);
         const reviews = await reviewRepo.find({
@@ -25,6 +27,7 @@ export class InternalEngagementController {
 
     // Получить чаты по property_id
     @Get('/conversations/property/:propertyId')
+    @OpenAPI({ deprecated: true })
     async getConversationsByProperty(@Param('propertyId') propertyId: number) {
         const conversationRepo = dataSource.getRepository(Conversation);
         const conversations = await conversationRepo.find({

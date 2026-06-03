@@ -81,6 +81,7 @@ class VerifyTokenBody {
 export class InternalAuthController {
 
     @Post('/verify')
+    @OpenAPI({ deprecated: true })
     async verifyToken(@Body() body: VerifyTokenBody) {
         const { token } = body;
 

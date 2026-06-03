@@ -402,6 +402,7 @@ import { JsonController} from 'routing-controllers';
 export class InternalPropertiesController {
 
     @Get('/properties/:id')
+    @OpenAPI({ deprecated: true })
     async getProperty(@Param('id') id: number) {
         const propertyRepo = dataSource.getRepository(Property);
         const property = await propertyRepo.findOneBy({ id });
@@ -420,6 +421,7 @@ export class InternalPropertiesController {
     }
 
     @Get('/properties/:id/exists')
+    @OpenAPI({ deprecated: true })
     async checkPropertyExists(@Param('id') id: number) {
         const propertyRepo = dataSource.getRepository(Property);
         const exists = await propertyRepo.existsBy({ id });

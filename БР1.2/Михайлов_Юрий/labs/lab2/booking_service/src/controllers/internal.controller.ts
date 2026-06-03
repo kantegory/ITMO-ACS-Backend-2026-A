@@ -1,6 +1,7 @@
 import { JsonController, Get, Param, NotFoundError, Body, Post } from 'routing-controllers';
 import dataSource from '../config/data-source';
 import { Booking } from '../models/booking.entity';
+import {OpenAPI} from "routing-controllers-openapi";
 
 class CheckBookingDto {
     booking_id: number;
@@ -12,6 +13,7 @@ export class InternalBookingController {
 
     // Проверить существование бронирования
     @Get('/bookings/:id')
+    @OpenAPI({ deprecated: true })
     async getBooking(@Param('id') id: number) {
         const bookingRepo = dataSource.getRepository(Booking);
         const booking = await bookingRepo.findOneBy({ id });
@@ -29,6 +31,7 @@ export class InternalBookingController {
     }
 
     @Post('/bookings/verify')
+    @OpenAPI({ deprecated: true })
     async verifyBooking(@Body() body: CheckBookingDto) {
         const bookingRepo = dataSource.getRepository(Booking);
         const booking = await bookingRepo.findOneBy({ id: body.booking_id });
@@ -53,6 +56,7 @@ export class InternalBookingController {
     }
 
     @Get('/bookings/:id/exists')
+    @OpenAPI({ deprecated: true })
     async checkBookingExists(@Param('id') id: number) {
         const bookingRepo = dataSource.getRepository(Booking);
         const booking = await bookingRepo.findOneBy({ id });
@@ -60,6 +64,7 @@ export class InternalBookingController {
     }
 
     @Get('/users/:userId/bookings')
+    @OpenAPI({ deprecated: true })
     async getUserBookings(@Param('userId') userId: number) {
         const bookingRepo = dataSource.getRepository(Booking);
         const bookings = await bookingRepo.find({
