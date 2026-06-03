@@ -12,9 +12,11 @@
 | `catalog-service` | 8082 | `catalog.sqlite` (`catalog-data`) | рестораны, кухни, меню, фото, столики |
 | `reservation-service` | 8083 | `reservations.sqlite` (`reservation-data`) | бронирования, проверка занятости столиков |
 | `review-service` | 8084 | `reviews.sqlite` (`review-data`) | отзывы, средний рейтинг |
+| `notification-service` | 8085 | `notifications.sqlite` (`notification-data`) | уведомления из событий очереди (ДЗ5) |
+| `rabbitmq` | 5672 / 15672 | — | брокер сообщений (AMQP + Management UI), ДЗ5 |
 
 Сеть: bridge-сеть `rbnet`, сервисы общаются по DNS-именам (`http://catalog-service:8082` и т. п.).
-Наружу публикуется только порт `3000` (gateway).
+Наружу публикуются порт `3000` (gateway) и `15672` (RabbitMQ Management UI).
 
 ## Взаимодействие сервисов
 
@@ -24,7 +26,12 @@
   - `catalog-service → review-service`: `POST /internal/ratings/batch` (`average_rating`, `reviews_count`);
   - `review-service → catalog-service`: `GET /internal/restaurants/:id` (валидация ресторана при отзыве);
   - `review-service → auth-service`: `POST /internal/users/batch` (имена авторов отзывов).
-- JWT клиента подписывается `auth-service` и проверяется `reservation-service`/`review-service` общим `JWT_SECRET`.
+- **Асинхронное (RabbitMQ, topic-exchange `restaurant.events`, ДЗ5):**
+  - `reservation-service` публикует `reservation.created`, `reservation.cancelled`;
+  - `review-service` публикует `review.created`;
+  - `notification-service` слушает очередь `notifications` (привязки на все три ключа) и формирует уведомления пользователю.
+  - Публикация — «best effort» (fire-and-forget): недоступность брокера не ломает HTTP-ответ; потребитель переподключается автоматически, очередь и сообщения `durable` (переживают рестарт).
+- JWT клиента подписывается `auth-service` и проверяется `reservation-service`/`review-service`/`notification-service` общим `JWT_SECRET`.
 - Внутренние эндпоинты (`/internal/*`) наружу через gateway **не выставляются**.
 - Деградация: если зависимый сервис недоступен — обогащение делается «мягко» (рейтинг = 0, столики = свободны),
   а при операциях, требующих проверки (создание брони/отзыва), возвращается `503`.
@@ -67,6 +74,7 @@ cd gateway             && npm i && npm run dev
 | `GET /restaurants/:id/reviews` | review |
 | `POST /reservations`, `GET/PUT/DELETE /reservations/:id` | reservation |
 | `POST /reviews`, `PUT/DELETE /reviews/:id` | review |
+| `GET /notifications` | notification (читает уведомления, сформированные из событий очереди) |
 
 Тестовые пользователи (seed): `ivan@example.com / securepass123`, `maria@example.com / mariapass456`.
 
@@ -87,6 +95,8 @@ curl -s -X POST $BASE/reviews -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"restaurant_id":2,"rating":5,"comment":"Отлично!"}' | jq
 curl -s $BASE/restaurants/2/reviews | jq
+curl -s $BASE/notifications -H "Authorization: Bearer $TOKEN" | jq   # уведомления из событий очереди (ДЗ5)
 ```
 
 Внутренний (service-to-service) контракт описан в `homeworks/hw4/openapi-internal.yaml`.
+Асинхронное взаимодействие через RabbitMQ описано в `homeworks/hw5/README.md` (отчёт ДЗ5).

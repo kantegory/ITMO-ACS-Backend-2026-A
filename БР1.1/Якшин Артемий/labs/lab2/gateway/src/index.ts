@@ -8,6 +8,7 @@ const AUTH_URL = process.env.AUTH_URL || 'http://localhost:8081';
 const CATALOG_URL = process.env.CATALOG_URL || 'http://localhost:8082';
 const RESERVATION_URL = process.env.RESERVATION_URL || 'http://localhost:8083';
 const REVIEW_URL = process.env.REVIEW_URL || 'http://localhost:8084';
+const NOTIFICATION_URL = process.env.NOTIFICATION_URL || 'http://localhost:8085';
 
 // тело запроса проксируется как поток — bodyParser в gateway намеренно не подключаем
 const mk = (target: string) => createProxyMiddleware({ target, changeOrigin: true });
@@ -17,11 +18,13 @@ const proxies = {
   catalog: mk(CATALOG_URL),
   reservation: mk(RESERVATION_URL),
   review: mk(REVIEW_URL),
+  notification: mk(NOTIFICATION_URL),
 };
 type Key = keyof typeof proxies;
 
 function pick(path: string): Key | undefined {
   if (path.startsWith('/api/v1/auth')) return 'auth';
+  if (path.startsWith('/api/v1/notifications')) return 'notification';
   if (path.startsWith('/api/v1/users/me/reservations')) return 'reservation';
   if (path.startsWith('/api/v1/users')) return 'auth';
   if (/^\/api\/v1\/restaurants\/\d+\/reviews(\/|$)/.test(path)) return 'review';
@@ -45,6 +48,7 @@ app.get('/', (_req, res) => res.json({
     'GET /api/v1/restaurants/:id/reviews': REVIEW_URL,
     '* /api/v1/reservations*': RESERVATION_URL,
     '* /api/v1/reviews*': REVIEW_URL,
+    'GET /api/v1/notifications': NOTIFICATION_URL,
   },
 }));
 
@@ -63,4 +67,5 @@ app.listen(PORT, () => {
   console.log(`  catalog     -> ${CATALOG_URL}`);
   console.log(`  reservation -> ${RESERVATION_URL}`);
   console.log(`  review      -> ${REVIEW_URL}`);
+  console.log(`  notification-> ${NOTIFICATION_URL}`);
 });

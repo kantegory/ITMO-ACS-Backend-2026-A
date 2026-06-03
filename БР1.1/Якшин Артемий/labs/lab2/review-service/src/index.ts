@@ -9,6 +9,7 @@ import {
   asyncHandler, errorHandler, authMiddleware, internalKeyMiddleware,
   BadRequest, Conflict, Forbidden, NotFound, svcGet, svcPostSoft,
 } from './common';
+import { initBus, publishEvent } from './bus';
 
 const PORT = Number(process.env.PORT || 8084);
 const CATALOG_URL = process.env.CATALOG_URL || 'http://localhost:8082';
@@ -42,6 +43,7 @@ async function seed() {
 async function main() {
   await AppDataSource.initialize();
   await seed();
+  await initBus();
 
   const app = express();
   app.use(cors());
@@ -63,6 +65,11 @@ async function main() {
     if (await repo.findOne({ where: { restaurant_id, user_id: req.user!.user_id } })) throw Conflict('You have already reviewed this restaurant');
     const review = repo.create({ user_id: req.user!.user_id, restaurant_id, rating, comment: comment ?? null });
     await repo.save(review);
+    // асинхронное событие: отзыв создан (потребляет notification-service)
+    await publishEvent('review.created', {
+      review_id: review.review_id, user_id: review.user_id,
+      restaurant_id: review.restaurant_id, rating: review.rating,
+    });
     const author = await svcPostSoft<UserSummary[]>(`${AUTH_URL}/internal/users/batch`, { user_ids: [review.user_id] }, []);
     res.status(201).json({
       review_id: review.review_id,

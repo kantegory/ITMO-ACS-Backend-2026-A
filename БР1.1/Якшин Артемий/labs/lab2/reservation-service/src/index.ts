@@ -8,6 +8,7 @@ import {
   asyncHandler, errorHandler, authMiddleware, internalKeyMiddleware,
   BadRequest, Conflict, Forbidden, NotFound, svcGet, svcGetSoft,
 } from './common';
+import { initBus, publishEvent } from './bus';
 
 const PORT = Number(process.env.PORT || 8083);
 const CATALOG_URL = process.env.CATALOG_URL || 'http://localhost:8082';
@@ -44,6 +45,7 @@ async function serialize(r: Reservation) {
 
 async function main() {
   await AppDataSource.initialize();
+  await initBus();
 
   const app = express();
   app.use(cors());
@@ -69,6 +71,12 @@ async function main() {
     const repo = AppDataSource.getRepository(Reservation);
     const r = repo.create({ user_id: req.user!.user_id, table_id, restaurant_id: table.restaurant_id, reservation_date, reservation_time, guests_count, status: 'confirmed' });
     await repo.save(r);
+    // асинхронное событие: бронь создана (потребляет notification-service)
+    await publishEvent('reservation.created', {
+      reservation_id: r.reservation_id, user_id: r.user_id, restaurant_id: r.restaurant_id,
+      table_id: r.table_id, reservation_date: r.reservation_date, reservation_time: r.reservation_time,
+      guests_count: r.guests_count, status: r.status,
+    });
     res.status(201).json(await serialize(r));
   }));
 
@@ -113,6 +121,11 @@ async function main() {
     if (r.user_id !== req.user!.user_id) throw Forbidden();
     r.status = 'cancelled';
     await repo.save(r);
+    // асинхронное событие: бронь отменена
+    await publishEvent('reservation.cancelled', {
+      reservation_id: r.reservation_id, user_id: r.user_id, restaurant_id: r.restaurant_id,
+      reservation_date: r.reservation_date, reservation_time: r.reservation_time,
+    });
     res.status(204).send();
   }));
 
