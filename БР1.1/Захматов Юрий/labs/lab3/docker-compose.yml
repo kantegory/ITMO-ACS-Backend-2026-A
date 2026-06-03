@@ -1,0 +1,224 @@
+services:
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8081:8081"
+    networks:
+      - microservices-net
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - microservices-net
+
+
+  postgres-auth:
+    image: postgres:16
+    container_name: postgres-auth
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - auth-data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+
+  postgres-property:
+    image: postgres:16
+    container_name: postgres-property
+    environment:
+      POSTGRES_DB: property_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - property-data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+
+  postgres-payment:
+    image: postgres:16
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - payment-data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+
+  postgres-chat:
+    image: postgres:16
+    container_name: postgres-chat
+    environment:
+      POSTGRES_DB: chat_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - chat-data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+
+  postgres-review:
+    image: postgres:16
+    container_name: postgres-review
+    environment:
+      POSTGRES_DB: reviews_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - review-data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+
+  postgres-booking:
+    image: postgres:16
+    container_name: postgres-booking
+    environment:
+      POSTGRES_DB: booking_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - booking-data:/var/lib/postgresql/data
+    networks:
+      - microservices-net
+
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+    networks:
+      - microservices-net
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    depends_on:
+      eureka-server:
+        condition: service_started
+      postgres-auth:
+        condition: service_healthy
+
+    networks:
+      - microservices-net
+
+  property-service:
+    build: ./property-service
+    container_name: property-service
+    depends_on:
+      eureka-server:
+        condition: service_started
+      postgres-property:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+  booking-service:
+    build: ./booking-service
+    container_name: booking-service
+    depends_on:
+      eureka-server:
+        condition: service_started
+      postgres-booking:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+  payment-service:
+    build: ./payment-service
+    container_name: payment-service
+    depends_on:
+      eureka-server:
+        condition: service_started
+      postgres-payment:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+  chat-service:
+    build: ./chat-service
+    container_name: chat-service
+    depends_on:
+      eureka-server:
+        condition: service_started
+      postgres-chat:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+  reviews-service:
+    build: ./reviews-service
+    container_name: reviews-service
+    depends_on:
+      eureka-server:
+        condition: service_started
+      postgres-review:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge
+
+volumes:
+  auth-data:
+  property-data:
+  booking-data:
+  payment-data:
+  chat-data:
+  review-data:
