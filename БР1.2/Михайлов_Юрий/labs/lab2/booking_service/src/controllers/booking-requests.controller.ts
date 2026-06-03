@@ -1,4 +1,3 @@
-// booking-service/controllers/booking-requests.controller.ts
 import {
     Body,
     Get,
@@ -19,6 +18,7 @@ import dataSource from '../config/data-source';
 
 import { BookingRequest } from '../models/booking-request.entity';
 import { ObjectLiteral } from "typeorm";
+import {publishEvent} from "../rabbitmq/publisher";
 
 const PROPERTY_SERVICE_URL = process.env.PROPERTY_SERVICE_URL || 'http://localhost:8001';
 
@@ -62,12 +62,29 @@ class BookingRequestsController extends BaseController {
             throw new NotFoundError('Property not found');
         }
 
+        // Получаем property, чтобы узнать owner_id
+        const propertyData = await fetch(
+            `${PROPERTY_SERVICE_URL}/api/internal/properties/${body.property_id}`,
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+        const property = await propertyData.json();
+
         const created = this.repository.create({
             property_id: body.property_id,
             comments: body.comments,
             tenant_id: user.id,
         });
         const saved = await this.repository.save(created);
+
+        // Отправляем событие для создания чата
+        await publishEvent('booking_request.created', {
+            bookingRequestId: saved.id,
+            propertyId: body.property_id,
+            tenantId: user.id,
+            ownerId: property.owner_id,
+            comments: body.comments
+        });
+
         return { id: saved.id };
     }
 

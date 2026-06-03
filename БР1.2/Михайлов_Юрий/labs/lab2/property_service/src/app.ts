@@ -15,6 +15,9 @@ import AttributesController from './controllers/attributes.controller';
 import PropertyLocationsController from './controllers/property-locations.controller';
 import PropertyImagesController from './controllers/property-images.controller';
 import {InternalPropertiesController} from "./controllers/properties.controller";
+import { connectRabbitMQ } from './rabbitmq/connection';
+import { startConsumer } from './rabbitmq/consumer';
+import { setupConsumers } from './rabbitmq/setup-consumers';
 
 class App {
     public port: number;
@@ -70,16 +73,13 @@ class App {
         return app;
     }
 
-    public start(): void {
-        // establish database connection
-        dataSource
-            .initialize()
-            .then(() => {
-                console.log('Data Source has been initialized!');
-            })
-            .catch((err) => {
-                console.error('Error during Data Source initialization:', err);
-            });
+    public async start(): Promise<void> {
+        await dataSource.initialize();
+        console.log('Data Source has been initialized!');
+
+        await connectRabbitMQ();
+        setupConsumers();
+        await startConsumer('property-service');
 
         this.app.listen(this.port, this.host, () => {
             console.log(

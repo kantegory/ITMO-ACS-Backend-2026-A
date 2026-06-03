@@ -14,7 +14,9 @@ import MessagesController from './controllers/messages.controller';
 import PaymentsController from './controllers/payments.controller';
 import ReviewsController from './controllers/reviews.controller';
 import {InternalEngagementController} from "./controllers/internal.controller";
-
+import { connectRabbitMQ } from './rabbitmq/connection';
+import { startConsumer } from './rabbitmq/consumer';
+import { setupConsumers } from './rabbitmq/setup-consumers';
 
 class App {
     public port: number;
@@ -70,16 +72,13 @@ class App {
         return app;
     }
 
-    public start(): void {
-        // establish database connection
-        dataSource
-            .initialize()
-            .then(() => {
-                console.log('Data Source has been initialized!');
-            })
-            .catch((err) => {
-                console.error('Error during Data Source initialization:', err);
-            });
+    public async start(): Promise<void> {
+        await dataSource.initialize();
+        console.log('Data Source has been initialized!');
+
+        await connectRabbitMQ();
+        setupConsumers();
+        await startConsumer('engagement-service');
 
         this.app.listen(this.port, this.host, () => {
             console.log(

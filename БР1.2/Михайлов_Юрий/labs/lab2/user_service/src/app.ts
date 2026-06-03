@@ -13,6 +13,8 @@ import AuthController from './controllers/auth.controller';
 import UserController from './controllers/user.controller';
 import {InternalAuthController} from "./controllers/user.controller";
 
+import { connectRabbitMQ, closeRabbitMQ } from './rabbitmq/connection';
+
 class App {
     public port: number;
     public host: string;
@@ -65,9 +67,9 @@ class App {
         return app;
     }
 
-    public start(): void {
+    public async start(): Promise<void> {
         // establish database connection
-        dataSource
+        await dataSource
             .initialize()
             .then(() => {
                 console.log('Data Source has been initialized!');
@@ -75,6 +77,9 @@ class App {
             .catch((err) => {
                 console.error('Error during Data Source initialization:', err);
             });
+
+        await connectRabbitMQ();
+        console.log('RabbitMQ connected!');
 
         this.app.listen(this.port, this.host, () => {
             console.log(

@@ -3,7 +3,7 @@ import {
     Get,
     Patch,
     UseBefore,
-    Req,
+    Req, Delete,
 } from 'routing-controllers';
 import { OpenAPI } from 'routing-controllers-openapi';
 import { IsOptional, IsString } from 'class-validator';
@@ -57,6 +57,21 @@ class UserController extends BaseController {
     }
 
     @UseBefore(authMiddleware)
+    @Delete('/me')
+    @OpenAPI({ security: [{ bearerAuth: [] }] })
+    async deleteMe(@Req() request: RequestWithUser): Promise<{ success: boolean }> {
+        const { user } = request;
+
+        // 1. Удаляем пользователя из БД
+        await this.repository.delete({ id: user.id });
+
+        // 2. Отправляем событие в RabbitMQ (user.deleted)
+        await publishEvent('user.deleted', { userId: user.id });
+
+        return { success: true };
+    }
+
+    @UseBefore(authMiddleware)
     @Get('/me')
     @OpenAPI({ security: [{ bearerAuth: [] }] })
     async me(@Req() request: RequestWithUser) {
@@ -71,6 +86,7 @@ class UserController extends BaseController {
 import { JsonController, Post} from 'routing-controllers';
 import jwt from 'jsonwebtoken';
 import SETTINGS from '../config/settings';
+import {publishEvent} from "../rabbitmq/publisher";
 
 class VerifyTokenBody {
     @IsString()
