@@ -19,9 +19,14 @@ type Config struct {
 }
 
 type ServiceConfig struct {
-	Name         string
-	Addr         string
-	ServiceToken string
+	Name              string
+	Addr              string
+	DatabaseURL       string
+	JWTAccessSecret   string
+	JWTRefreshSecret  string
+	AccessTTLSeconds  int
+	RefreshTTLSeconds int
+	ServiceToken      string
 }
 
 func Load() Config {
@@ -36,11 +41,32 @@ func Load() Config {
 }
 
 func LoadService(name, defaultAddr string) ServiceConfig {
+	prefix := serviceEnvPrefix(name)
+
 	return ServiceConfig{
-		Name:         name,
-		Addr:         cmpOr(os.Getenv("HTTP_ADDR"), defaultAddr),
-		ServiceToken: cmpOr(os.Getenv("SERVICE_TOKEN"), "dev-service-token-change-me"),
+		Name:              name,
+		Addr:              firstNonEmpty(os.Getenv(prefix+"_HTTP_ADDR"), os.Getenv("HTTP_ADDR"), defaultAddr),
+		DatabaseURL:       firstNonEmpty(os.Getenv(prefix+"_DATABASE_URL"), os.Getenv("DATABASE_URL"), defaultDatabaseURL),
+		JWTAccessSecret:   cmpOr(os.Getenv("JWT_ACCESS_SECRET"), "dev-access-secret-change-me"),
+		JWTRefreshSecret:  cmpOr(os.Getenv("JWT_REFRESH_SECRET"), "dev-refresh-secret-change-me"),
+		AccessTTLSeconds:  atoiDef(os.Getenv("JWT_ACCESS_TTL_SEC"), 3600),
+		RefreshTTLSeconds: atoiDef(os.Getenv("JWT_REFRESH_TTL_SEC"), 60*60*24*7),
+		ServiceToken:      cmpOr(os.Getenv("SERVICE_TOKEN"), "dev-service-token-change-me"),
 	}
+}
+
+func serviceEnvPrefix(name string) string {
+	replacer := strings.NewReplacer("-", "_", ".", "_")
+	return strings.ToUpper(replacer.Replace(strings.TrimSpace(name)))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func cmpOr(a, b string) string {
