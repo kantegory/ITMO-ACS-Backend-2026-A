@@ -7,6 +7,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"recipehub/internal/config"
+	"recipehub/internal/infrastructure/clients/recipeclient"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/identityrepo"
 	"recipehub/internal/infrastructure/security/tokenmanager"
@@ -42,6 +43,7 @@ func main() {
 			AccessTTLSeconds:  cfg.AccessTTLSeconds,
 			RefreshTTLSeconds: cfg.RefreshTTLSeconds,
 		},
+		recipeclient.New(cfg.RecipeURL, cfg.ServiceToken),
 	)
 
 	if err := server.Run(cfg.Name, cfg.Addr, identityhttp.NewRouter(cfg, identityService)); err != nil {

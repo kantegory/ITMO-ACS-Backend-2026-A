@@ -218,9 +218,30 @@ func (s *Service) ListSavedRecipes(ctx context.Context, userID uint64, limit, of
 	return engagementdomain.Page[engagementdomain.RecipeBrief]{Items: items, Total: page.Total}, nil
 }
 
-// StatsBatch returns likes/comments counts for ids.
-func (s *Service) StatsBatch(ctx context.Context, target engagementdomain.TargetType, ids []uint64) ([]engagementdomain.Stat, error) {
-	return s.repo.StatsBatch(ctx, target, ids)
+// StatsBatch returns likes/comments counts and optional viewer flags for ids.
+func (s *Service) StatsBatch(ctx context.Context, target engagementdomain.TargetType, ids []uint64, viewerID *uint64) ([]engagementdomain.Stat, error) {
+	stats, err := s.repo.StatsBatch(ctx, target, ids)
+	if err != nil || viewerID == nil {
+		return stats, err
+	}
+
+	for idx := range stats {
+		liked, err := s.repo.IsLiked(ctx, target, *viewerID, stats[idx].TargetID)
+		if err != nil {
+			return nil, err
+		}
+		stats[idx].IsLiked = liked
+
+		if target == engagementdomain.TargetRecipe {
+			saved, err := s.repo.IsSaved(ctx, *viewerID, stats[idx].TargetID)
+			if err != nil {
+				return nil, err
+			}
+			stats[idx].IsSaved = saved
+		}
+	}
+
+	return stats, nil
 }
 
 func (s *Service) ensureTargetExists(ctx context.Context, target engagementdomain.TargetType, targetID uint64) error {

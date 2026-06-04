@@ -63,6 +63,11 @@ type TokenManager interface {
 	HashRefreshToken(raw string) string
 }
 
+// RecipeGateway is the recipe-service port required by identity use cases.
+type RecipeGateway interface {
+	AuthorRecipeCount(ctx context.Context, authorID uint64) (int64, error)
+}
+
 // Config contains identity use case settings.
 type Config struct {
 	AccessTTLSeconds  int
@@ -74,11 +79,12 @@ type Service struct {
 	repo   Repository
 	tokens TokenManager
 	cfg    Config
+	recipe RecipeGateway
 }
 
 // NewService creates identity use cases.
-func NewService(repo Repository, tokens TokenManager, cfg Config) *Service {
-	return &Service{repo: repo, tokens: tokens, cfg: cfg}
+func NewService(repo Repository, tokens TokenManager, cfg Config, recipe RecipeGateway) *Service {
+	return &Service{repo: repo, tokens: tokens, cfg: cfg, recipe: recipe}
 }
 
 // RegisterInput contains registration data.
@@ -191,22 +197,30 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPair, 
 }
 
 // UserProfile returns a public user profile.
-func (s *Service) UserProfile(ctx context.Context, userID uint64) (identitydomain.User, int64, int64, error) {
+func (s *Service) UserProfile(ctx context.Context, userID uint64) (identitydomain.User, int64, int64, int64, error) {
 	user, err := s.repo.UserByID(ctx, userID)
 	if err != nil {
-		return identitydomain.User{}, 0, 0, err
+		return identitydomain.User{}, 0, 0, 0, err
 	}
 
 	followers, err := s.repo.FollowersCount(ctx, userID)
 	if err != nil {
-		return identitydomain.User{}, 0, 0, fmt.Errorf("count followers: %w", err)
+		return identitydomain.User{}, 0, 0, 0, fmt.Errorf("count followers: %w", err)
 	}
 	following, err := s.repo.FollowingCount(ctx, userID)
 	if err != nil {
-		return identitydomain.User{}, 0, 0, fmt.Errorf("count following: %w", err)
+		return identitydomain.User{}, 0, 0, 0, fmt.Errorf("count following: %w", err)
 	}
 
-	return user, followers, following, nil
+	var recipes int64
+	if s.recipe != nil {
+		recipes, err = s.recipe.AuthorRecipeCount(ctx, userID)
+		if err != nil {
+			return identitydomain.User{}, 0, 0, 0, fmt.Errorf("count recipes: %w", err)
+		}
+	}
+
+	return user, followers, following, recipes, nil
 }
 
 // PatchMe updates current user profile fields.

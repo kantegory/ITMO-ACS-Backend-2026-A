@@ -44,6 +44,8 @@ type Stat struct {
 	TargetID      uint64
 	LikesCount    int64
 	CommentsCount int64
+	IsLiked       bool
+	IsSaved       bool
 }
 
 // SavedRecipe contains a saved recipe reference.

@@ -34,6 +34,7 @@ type postListItemResponse struct {
 	Author        userShortResponse `json:"author"`
 	LikesCount    int64             `json:"likes_count"`
 	CommentsCount int64             `json:"comments_count"`
+	IsLiked       bool              `json:"is_liked"`
 	CreatedAt     time.Time         `json:"created_at"`
 }
 
@@ -87,6 +88,7 @@ func toPostListItemResponse(item blogdomain.PostWithAuthor) postListItemResponse
 		Author:        toUserShortResponse(item.Author),
 		LikesCount:    item.Stats.LikesCount,
 		CommentsCount: item.Stats.CommentsCount,
+		IsLiked:       item.Stats.IsLiked,
 		CreatedAt:     item.Post.CreatedAt,
 	}
 }
@@ -100,7 +102,7 @@ func toPostFullResponse(item blogdomain.PostWithAuthor) postFullResponse {
 		Author:        toUserShortResponse(item.Author),
 		LikesCount:    item.Stats.LikesCount,
 		CommentsCount: item.Stats.CommentsCount,
-		IsLiked:       false,
+		IsLiked:       item.Stats.IsLiked,
 		CreatedAt:     item.Post.CreatedAt,
 		UpdatedAt:     item.Post.UpdatedAt,
 	}

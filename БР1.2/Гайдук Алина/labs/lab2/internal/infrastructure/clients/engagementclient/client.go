@@ -34,19 +34,22 @@ func New(baseURL, serviceToken string) *Client {
 }
 
 // RecipeStatsBatch returns engagement counters for recipe ids.
-func (c *Client) RecipeStatsBatch(ctx context.Context, recipeIDs []uint64) (map[uint64]recipedomain.EngagementStats, error) {
+func (c *Client) RecipeStatsBatch(ctx context.Context, recipeIDs []uint64, viewerID *uint64) (map[uint64]recipedomain.EngagementStats, error) {
 	if len(recipeIDs) == 0 {
 		return map[uint64]recipedomain.EngagementStats{}, nil
 	}
 
 	body := struct {
 		RecipeIDs []uint64 `json:"recipe_ids"`
-	}{RecipeIDs: recipeIDs}
+		ViewerID  *uint64  `json:"viewer_id"`
+	}{RecipeIDs: recipeIDs, ViewerID: viewerID}
 	var response struct {
 		Stats []struct {
 			RecipeID      uint64 `json:"recipe_id"`
 			LikesCount    int64  `json:"likes_count"`
 			CommentsCount int64  `json:"comments_count"`
+			IsLiked       bool   `json:"is_liked"`
+			IsSaved       bool   `json:"is_saved"`
 		} `json:"stats"`
 	}
 
@@ -59,6 +62,8 @@ func (c *Client) RecipeStatsBatch(ctx context.Context, recipeIDs []uint64) (map[
 		stats[item.RecipeID] = recipedomain.EngagementStats{
 			LikesCount:    item.LikesCount,
 			CommentsCount: item.CommentsCount,
+			IsLiked:       item.IsLiked,
+			IsSaved:       item.IsSaved,
 		}
 	}
 
@@ -66,19 +71,21 @@ func (c *Client) RecipeStatsBatch(ctx context.Context, recipeIDs []uint64) (map[
 }
 
 // PostStatsBatch returns engagement counters for post ids.
-func (c *Client) PostStatsBatch(ctx context.Context, postIDs []uint64) (map[uint64]blogdomain.EngagementStats, error) {
+func (c *Client) PostStatsBatch(ctx context.Context, postIDs []uint64, viewerID *uint64) (map[uint64]blogdomain.EngagementStats, error) {
 	if len(postIDs) == 0 {
 		return map[uint64]blogdomain.EngagementStats{}, nil
 	}
 
 	body := struct {
-		PostIDs []uint64 `json:"post_ids"`
-	}{PostIDs: postIDs}
+		PostIDs  []uint64 `json:"post_ids"`
+		ViewerID *uint64  `json:"viewer_id"`
+	}{PostIDs: postIDs, ViewerID: viewerID}
 	var response struct {
 		Stats []struct {
 			PostID        uint64 `json:"post_id"`
 			LikesCount    int64  `json:"likes_count"`
 			CommentsCount int64  `json:"comments_count"`
+			IsLiked       bool   `json:"is_liked"`
 		} `json:"stats"`
 	}
 
@@ -91,6 +98,7 @@ func (c *Client) PostStatsBatch(ctx context.Context, postIDs []uint64) (map[uint
 		stats[item.PostID] = blogdomain.EngagementStats{
 			LikesCount:    item.LikesCount,
 			CommentsCount: item.CommentsCount,
+			IsLiked:       item.IsLiked,
 		}
 	}
 

@@ -46,7 +46,7 @@ type CatalogGateway interface {
 
 // EngagementGateway is the engagement-service port required by recipe use cases.
 type EngagementGateway interface {
-	RecipeStatsBatch(ctx context.Context, recipeIDs []uint64) (map[uint64]recipedomain.EngagementStats, error)
+	RecipeStatsBatch(ctx context.Context, recipeIDs []uint64, viewerID *uint64) (map[uint64]recipedomain.EngagementStats, error)
 }
 
 // Service coordinates recipe application scenarios.
@@ -79,17 +79,17 @@ func (s *Service) CreateRecipe(ctx context.Context, recipe recipedomain.Recipe) 
 		return recipedomain.RecipeWithAuthor{}, fmt.Errorf("create recipe: %w", err)
 	}
 
-	return s.attachAuthor(ctx, created)
+	return s.attachAuthor(ctx, created, nil)
 }
 
 // GetRecipe returns a recipe by id.
-func (s *Service) GetRecipe(ctx context.Context, id uint64) (recipedomain.RecipeWithAuthor, error) {
+func (s *Service) GetRecipe(ctx context.Context, id uint64, viewerID *uint64) (recipedomain.RecipeWithAuthor, error) {
 	recipe, err := s.repo.RecipeByID(ctx, id)
 	if err != nil {
 		return recipedomain.RecipeWithAuthor{}, err
 	}
 
-	return s.attachAuthor(ctx, recipe)
+	return s.attachAuthor(ctx, recipe, viewerID)
 }
 
 // ListRecipes returns paginated recipes.
@@ -105,7 +105,7 @@ func (s *Service) ListRecipes(ctx context.Context, filters recipedomain.Filters)
 		return recipedomain.Page[recipedomain.RecipeWithAuthor]{}, err
 	}
 
-	items, err := s.attachAuthors(ctx, page.Items)
+	items, err := s.attachAuthors(ctx, page.Items, filters.ViewerID)
 	if err != nil {
 		return recipedomain.Page[recipedomain.RecipeWithAuthor]{}, err
 	}
@@ -169,7 +169,7 @@ func (s *Service) PatchRecipe(ctx context.Context, id, actorID uint64, patch rec
 		return recipedomain.RecipeWithAuthor{}, fmt.Errorf("update recipe: %w", err)
 	}
 
-	return s.attachAuthor(ctx, updated)
+	return s.attachAuthor(ctx, updated, nil)
 }
 
 // DeleteRecipe deletes a recipe if actor is the author.
@@ -224,8 +224,8 @@ func (s *Service) validateCatalogRefs(ctx context.Context, recipe recipedomain.R
 	return nil
 }
 
-func (s *Service) attachAuthor(ctx context.Context, recipe recipedomain.Recipe) (recipedomain.RecipeWithAuthor, error) {
-	items, err := s.attachAuthors(ctx, []recipedomain.Recipe{recipe})
+func (s *Service) attachAuthor(ctx context.Context, recipe recipedomain.Recipe, viewerID *uint64) (recipedomain.RecipeWithAuthor, error) {
+	items, err := s.attachAuthors(ctx, []recipedomain.Recipe{recipe}, viewerID)
 	if err != nil {
 		return recipedomain.RecipeWithAuthor{}, err
 	}
@@ -236,7 +236,7 @@ func (s *Service) attachAuthor(ctx context.Context, recipe recipedomain.Recipe) 
 	return items[0], nil
 }
 
-func (s *Service) attachAuthors(ctx context.Context, recipes []recipedomain.Recipe) ([]recipedomain.RecipeWithAuthor, error) {
+func (s *Service) attachAuthors(ctx context.Context, recipes []recipedomain.Recipe, viewerID *uint64) ([]recipedomain.RecipeWithAuthor, error) {
 	users, err := s.identity.UsersBatch(ctx, uniqueAuthorIDs(recipes))
 	if err != nil {
 		return nil, fmt.Errorf("load recipe authors: %w", err)
@@ -253,7 +253,7 @@ func (s *Service) attachAuthors(ctx context.Context, recipes []recipedomain.Reci
 	}
 
 	out := make([]recipedomain.RecipeWithAuthor, 0, len(recipes))
-	stats, err := s.recipeStats(ctx, recipes)
+	stats, err := s.recipeStats(ctx, recipes, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -264,12 +264,12 @@ func (s *Service) attachAuthors(ctx context.Context, recipes []recipedomain.Reci
 	return out, nil
 }
 
-func (s *Service) recipeStats(ctx context.Context, recipes []recipedomain.Recipe) (map[uint64]recipedomain.EngagementStats, error) {
+func (s *Service) recipeStats(ctx context.Context, recipes []recipedomain.Recipe, viewerID *uint64) (map[uint64]recipedomain.EngagementStats, error) {
 	if s.engagement == nil || len(recipes) == 0 {
 		return map[uint64]recipedomain.EngagementStats{}, nil
 	}
 
-	stats, err := s.engagement.RecipeStatsBatch(ctx, uniqueRecipeIDs(recipes))
+	stats, err := s.engagement.RecipeStatsBatch(ctx, uniqueRecipeIDs(recipes), viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("load recipe engagement stats: %w", err)
 	}

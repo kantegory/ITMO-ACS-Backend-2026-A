@@ -39,7 +39,7 @@ type IdentityGateway interface {
 
 // EngagementGateway is the engagement-service port required by blog use cases.
 type EngagementGateway interface {
-	PostStatsBatch(ctx context.Context, postIDs []uint64) (map[uint64]blogdomain.EngagementStats, error)
+	PostStatsBatch(ctx context.Context, postIDs []uint64, viewerID *uint64) (map[uint64]blogdomain.EngagementStats, error)
 }
 
 // Service coordinates blog application scenarios.
@@ -91,27 +91,27 @@ func (s *Service) CreatePost(ctx context.Context, input CreatePostInput) (blogdo
 		return blogdomain.PostWithAuthor{}, fmt.Errorf("create post: %w", err)
 	}
 
-	return s.attachAuthor(ctx, post)
+	return s.attachAuthor(ctx, post, nil)
 }
 
 // GetPost returns a post by id.
-func (s *Service) GetPost(ctx context.Context, id uint64) (blogdomain.PostWithAuthor, error) {
+func (s *Service) GetPost(ctx context.Context, id uint64, viewerID *uint64) (blogdomain.PostWithAuthor, error) {
 	post, err := s.repo.PostByID(ctx, id)
 	if err != nil {
 		return blogdomain.PostWithAuthor{}, err
 	}
 
-	return s.attachAuthor(ctx, post)
+	return s.attachAuthor(ctx, post, viewerID)
 }
 
 // ListPosts returns paginated posts.
-func (s *Service) ListPosts(ctx context.Context, limit, offset int) (blogdomain.Page[blogdomain.PostWithAuthor], error) {
+func (s *Service) ListPosts(ctx context.Context, limit, offset int, viewerID *uint64) (blogdomain.Page[blogdomain.PostWithAuthor], error) {
 	page, err := s.repo.ListPosts(ctx, limit, offset)
 	if err != nil {
 		return blogdomain.Page[blogdomain.PostWithAuthor]{}, err
 	}
 
-	items, err := s.attachAuthors(ctx, page.Items)
+	items, err := s.attachAuthors(ctx, page.Items, viewerID)
 	if err != nil {
 		return blogdomain.Page[blogdomain.PostWithAuthor]{}, err
 	}
@@ -120,7 +120,7 @@ func (s *Service) ListPosts(ctx context.Context, limit, offset int) (blogdomain.
 }
 
 // ListPostsByAuthor returns paginated posts for an author.
-func (s *Service) ListPostsByAuthor(ctx context.Context, authorID uint64, limit, offset int) (blogdomain.Page[blogdomain.PostWithAuthor], error) {
+func (s *Service) ListPostsByAuthor(ctx context.Context, authorID uint64, limit, offset int, viewerID *uint64) (blogdomain.Page[blogdomain.PostWithAuthor], error) {
 	if ok, err := s.identity.UserExists(ctx, authorID); err != nil || !ok {
 		return blogdomain.Page[blogdomain.PostWithAuthor]{}, notFoundOrWrapped(err)
 	}
@@ -130,7 +130,7 @@ func (s *Service) ListPostsByAuthor(ctx context.Context, authorID uint64, limit,
 		return blogdomain.Page[blogdomain.PostWithAuthor]{}, err
 	}
 
-	items, err := s.attachAuthors(ctx, page.Items)
+	items, err := s.attachAuthors(ctx, page.Items, viewerID)
 	if err != nil {
 		return blogdomain.Page[blogdomain.PostWithAuthor]{}, err
 	}
@@ -171,7 +171,7 @@ func (s *Service) PatchPost(ctx context.Context, postID uint64, input PatchPostI
 		return blogdomain.PostWithAuthor{}, fmt.Errorf("update post: %w", err)
 	}
 
-	return s.attachAuthor(ctx, updated)
+	return s.attachAuthor(ctx, updated, nil)
 }
 
 // DeletePost deletes a post if actor is the author.
@@ -197,8 +197,8 @@ func (s *Service) PostBrief(ctx context.Context, postID uint64) (blogdomain.Post
 	return s.repo.PostByID(ctx, postID)
 }
 
-func (s *Service) attachAuthor(ctx context.Context, post blogdomain.Post) (blogdomain.PostWithAuthor, error) {
-	items, err := s.attachAuthors(ctx, []blogdomain.Post{post})
+func (s *Service) attachAuthor(ctx context.Context, post blogdomain.Post, viewerID *uint64) (blogdomain.PostWithAuthor, error) {
+	items, err := s.attachAuthors(ctx, []blogdomain.Post{post}, viewerID)
 	if err != nil {
 		return blogdomain.PostWithAuthor{}, err
 	}
@@ -209,7 +209,7 @@ func (s *Service) attachAuthor(ctx context.Context, post blogdomain.Post) (blogd
 	return items[0], nil
 }
 
-func (s *Service) attachAuthors(ctx context.Context, posts []blogdomain.Post) ([]blogdomain.PostWithAuthor, error) {
+func (s *Service) attachAuthors(ctx context.Context, posts []blogdomain.Post, viewerID *uint64) ([]blogdomain.PostWithAuthor, error) {
 	ids := uniqueAuthorIDs(posts)
 	users, err := s.identity.UsersBatch(ctx, ids)
 	if err != nil {
@@ -227,7 +227,7 @@ func (s *Service) attachAuthors(ctx context.Context, posts []blogdomain.Post) ([
 	}
 
 	out := make([]blogdomain.PostWithAuthor, 0, len(posts))
-	stats, err := s.postStats(ctx, posts)
+	stats, err := s.postStats(ctx, posts, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -242,12 +242,12 @@ func (s *Service) attachAuthors(ctx context.Context, posts []blogdomain.Post) ([
 	return out, nil
 }
 
-func (s *Service) postStats(ctx context.Context, posts []blogdomain.Post) (map[uint64]blogdomain.EngagementStats, error) {
+func (s *Service) postStats(ctx context.Context, posts []blogdomain.Post, viewerID *uint64) (map[uint64]blogdomain.EngagementStats, error) {
 	if s.engagement == nil || len(posts) == 0 {
 		return map[uint64]blogdomain.EngagementStats{}, nil
 	}
 
-	stats, err := s.engagement.PostStatsBatch(ctx, uniquePostIDs(posts))
+	stats, err := s.engagement.PostStatsBatch(ctx, uniquePostIDs(posts), viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("load post engagement stats: %w", err)
 	}

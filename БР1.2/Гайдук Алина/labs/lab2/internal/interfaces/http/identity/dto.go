@@ -114,7 +114,7 @@ func toUserShortResponse(user identitydomain.UserShort) userShortResponse {
 	}
 }
 
-func toUserProfileResponse(user identitydomain.User, followersCount, followingCount int64) userProfileResponse {
+func toUserProfileResponse(user identitydomain.User, followersCount, followingCount, recipesCount int64) userProfileResponse {
 	return userProfileResponse{
 		ID:             user.ID,
 		Email:          user.Email,
@@ -124,7 +124,7 @@ func toUserProfileResponse(user identitydomain.User, followersCount, followingCo
 		AvatarURL:      user.AvatarURL,
 		FollowersCount: followersCount,
 		FollowingCount: followingCount,
-		RecipesCount:   0,
+		RecipesCount:   recipesCount,
 		CreatedAt:      user.CreatedAt,
 	}
 }

@@ -33,6 +33,7 @@ type PostWithAuthor struct {
 type EngagementStats struct {
 	LikesCount    int64
 	CommentsCount int64
+	IsLiked       bool
 }
 
 // Page describes paginated blog results.

@@ -128,14 +128,20 @@ func (h *Handler) RecipeStatsBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := h.service.StatsBatch(r.Context(), engagementdomain.TargetRecipe, body.RecipeIDs)
+	stats, err := h.service.StatsBatch(r.Context(), engagementdomain.TargetRecipe, body.RecipeIDs, body.ViewerID)
 	if respondEngagementError(w, err) {
 		return
 	}
 
 	out := make([]recipeStatsItemResponse, 0, len(stats))
 	for _, stat := range stats {
-		out = append(out, recipeStatsItemResponse{RecipeID: stat.TargetID, LikesCount: stat.LikesCount, CommentsCount: stat.CommentsCount})
+		out = append(out, recipeStatsItemResponse{
+			RecipeID:      stat.TargetID,
+			LikesCount:    stat.LikesCount,
+			CommentsCount: stat.CommentsCount,
+			IsLiked:       stat.IsLiked,
+			IsSaved:       stat.IsSaved,
+		})
 	}
 
 	api.RespondJSON(w, http.StatusOK, map[string]any{"stats": out})
@@ -148,14 +154,19 @@ func (h *Handler) PostStatsBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := h.service.StatsBatch(r.Context(), engagementdomain.TargetPost, body.PostIDs)
+	stats, err := h.service.StatsBatch(r.Context(), engagementdomain.TargetPost, body.PostIDs, body.ViewerID)
 	if respondEngagementError(w, err) {
 		return
 	}
 
 	out := make([]postStatsItemResponse, 0, len(stats))
 	for _, stat := range stats {
-		out = append(out, postStatsItemResponse{PostID: stat.TargetID, LikesCount: stat.LikesCount, CommentsCount: stat.CommentsCount})
+		out = append(out, postStatsItemResponse{
+			PostID:        stat.TargetID,
+			LikesCount:    stat.LikesCount,
+			CommentsCount: stat.CommentsCount,
+			IsLiked:       stat.IsLiked,
+		})
 	}
 
 	api.RespondJSON(w, http.StatusOK, map[string]any{"stats": out})

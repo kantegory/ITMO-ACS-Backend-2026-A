@@ -27,7 +27,7 @@ func NewHandler(service *blogusecase.Service) *Handler {
 // List handles GET /api/v1/posts.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	limit, offset := httpx.ClampLimitOffset(r, defaultPostLimit)
-	page, err := h.service.ListPosts(r.Context(), limit, offset)
+	page, err := h.service.ListPosts(r.Context(), limit, offset, viewerID(r))
 	if respondBlogError(w, err) {
 		return
 	}
@@ -52,7 +52,7 @@ func (h *Handler) ListByAuthor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit, offset := httpx.ClampLimitOffset(r, defaultPostLimit)
-	page, err := h.service.ListPostsByAuthor(r.Context(), authorID, limit, offset)
+	page, err := h.service.ListPostsByAuthor(r.Context(), authorID, limit, offset, viewerID(r))
 	if respondBlogError(w, err) {
 		return
 	}
@@ -97,12 +97,21 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post, err := h.service.GetPost(r.Context(), postID)
+	post, err := h.service.GetPost(r.Context(), postID, viewerID(r))
 	if respondBlogError(w, err) {
 		return
 	}
 
 	api.RespondJSON(w, http.StatusOK, map[string]any{"data": toPostFullResponse(post)})
+}
+
+func viewerID(r *http.Request) *uint64 {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		return nil
+	}
+
+	return &userID
 }
 
 // Patch handles PATCH /api/v1/posts/{id}.

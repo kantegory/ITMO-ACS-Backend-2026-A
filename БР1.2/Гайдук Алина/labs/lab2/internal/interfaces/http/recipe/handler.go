@@ -61,6 +61,7 @@ func (h *Handler) ListByAuthor(w http.ResponseWriter, r *http.Request) {
 	limit, offset := httpx.ClampLimitOffset(r, defaultRecipeLimit)
 	page, err := h.service.ListRecipes(r.Context(), recipedomain.Filters{
 		AuthorID: &authorID,
+		ViewerID: viewerID(r),
 		Limit:    limit,
 		Offset:   offset,
 	})
@@ -108,7 +109,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recipe, err := h.service.GetRecipe(r.Context(), recipeID)
+	recipe, err := h.service.GetRecipe(r.Context(), recipeID, viewerID(r))
 	if respondRecipeError(w, err) {
 		return
 	}
@@ -215,6 +216,7 @@ func (h *Handler) AuthorRecipeCount(w http.ResponseWriter, r *http.Request) {
 func parseFilters(w http.ResponseWriter, r *http.Request) (recipedomain.Filters, bool) {
 	limit, offset := httpx.ClampLimitOffset(r, defaultRecipeLimit)
 	filters := recipedomain.Filters{Limit: limit, Offset: offset}
+	filters.ViewerID = viewerID(r)
 	query := r.URL.Query()
 	filters.Search = strings.TrimSpace(query.Get("search"))
 
@@ -242,6 +244,15 @@ func parseFilters(w http.ResponseWriter, r *http.Request) (recipedomain.Filters,
 	}
 
 	return filters, true
+}
+
+func viewerID(r *http.Request) *uint64 {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		return nil
+	}
+
+	return &userID
 }
 
 func parseOptionalUint(w http.ResponseWriter, raw string, out **uint64) bool {

@@ -68,6 +68,20 @@ func (c *Client) RecipeBrief(ctx context.Context, recipeID uint64) (recipedomain
 	}, nil
 }
 
+// AuthorRecipeCount returns number of recipes by author.
+func (c *Client) AuthorRecipeCount(ctx context.Context, authorID uint64) (int64, error) {
+	var response struct {
+		Count int64 `json:"count"`
+	}
+
+	path := "/internal/v1/authors/" + strconv.FormatUint(authorID, 10) + "/recipe-count"
+	if err := c.doGET(ctx, path, &response); err != nil {
+		return 0, err
+	}
+
+	return response.Count, nil
+}
+
 func (c *Client) doGET(ctx context.Context, path string, responseBody any) error {
 	endpoint, err := url.JoinPath(c.baseURL, path)
 	if err != nil {

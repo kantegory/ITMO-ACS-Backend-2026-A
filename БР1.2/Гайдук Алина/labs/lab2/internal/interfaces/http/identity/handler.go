@@ -87,7 +87,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.RespondJSON(w, http.StatusOK, map[string]any{"data": toUserProfileResponse(user, 0, 0)})
+	api.RespondJSON(w, http.StatusOK, map[string]any{"data": toUserProfileResponse(user, 0, 0, 0)})
 }
 
 // GetByID handles GET /api/v1/users/{id}.
@@ -98,12 +98,12 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, followers, following, err := h.service.UserProfile(r.Context(), userID)
+	user, followers, following, recipes, err := h.service.UserProfile(r.Context(), userID)
 	if respondEntityError(w, err) {
 		return
 	}
 
-	api.RespondJSON(w, http.StatusOK, map[string]any{"data": toUserProfileResponse(user, followers, following)})
+	api.RespondJSON(w, http.StatusOK, map[string]any{"data": toUserProfileResponse(user, followers, following, recipes)})
 }
 
 // ListFollowers handles GET /api/v1/users/{id}/followers.

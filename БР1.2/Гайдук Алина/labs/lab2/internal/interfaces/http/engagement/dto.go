@@ -45,22 +45,27 @@ type recipeBriefResponse struct {
 
 type recipeStatsBatchRequest struct {
 	RecipeIDs []uint64 `json:"recipe_ids"`
+	ViewerID  *uint64  `json:"viewer_id"`
 }
 
 type postStatsBatchRequest struct {
-	PostIDs []uint64 `json:"post_ids"`
+	PostIDs  []uint64 `json:"post_ids"`
+	ViewerID *uint64  `json:"viewer_id"`
 }
 
 type recipeStatsItemResponse struct {
 	RecipeID      uint64 `json:"recipe_id"`
 	LikesCount    int64  `json:"likes_count"`
 	CommentsCount int64  `json:"comments_count"`
+	IsLiked       bool   `json:"is_liked"`
+	IsSaved       bool   `json:"is_saved"`
 }
 
 type postStatsItemResponse struct {
 	PostID        uint64 `json:"post_id"`
 	LikesCount    int64  `json:"likes_count"`
 	CommentsCount int64  `json:"comments_count"`
+	IsLiked       bool   `json:"is_liked"`
 }
 
 func toCommentResponse(thread engagementdomain.CommentThread) commentResponse {

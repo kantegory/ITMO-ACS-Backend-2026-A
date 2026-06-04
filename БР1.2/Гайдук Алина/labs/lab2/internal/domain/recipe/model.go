@@ -59,11 +59,14 @@ type RecipeWithAuthor struct {
 type EngagementStats struct {
 	LikesCount    int64
 	CommentsCount int64
+	IsLiked       bool
+	IsSaved       bool
 }
 
 // Filters contains recipe list filters.
 type Filters struct {
 	AuthorID      *uint64
+	ViewerID      *uint64
 	Search        string
 	DishTypeID    *uint64
 	DifficultyID  *uint64

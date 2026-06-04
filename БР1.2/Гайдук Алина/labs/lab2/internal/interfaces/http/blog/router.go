@@ -30,10 +30,10 @@ func NewRouter(cfg config.ServiceConfig, service *blogusecase.Service) http.Hand
 	})
 
 	router.Route("/api/v1", func(router chi.Router) {
-		router.Get("/users/{id}/posts", handler.ListByAuthor)
-		router.Get("/posts", handler.List)
+		router.With(authMw.Optional).Get("/users/{id}/posts", handler.ListByAuthor)
+		router.With(authMw.Optional).Get("/posts", handler.List)
 		router.With(authMw.Required).Post("/posts", handler.Create)
-		router.Get("/posts/{id}", handler.GetByID)
+		router.With(authMw.Optional).Get("/posts/{id}", handler.GetByID)
 		router.With(authMw.Required).Patch("/posts/{id}", handler.Patch)
 		router.With(authMw.Required).Delete("/posts/{id}", handler.Delete)
 	})
