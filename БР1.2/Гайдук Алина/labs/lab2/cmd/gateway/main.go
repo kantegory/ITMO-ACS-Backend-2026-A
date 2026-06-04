@@ -8,7 +8,7 @@ import (
 
 	"recipehub/internal/config"
 	infolog "recipehub/internal/infrastructure/logger"
-	health "recipehub/internal/interfaces/http/health"
+	gatewayhttp "recipehub/internal/interfaces/http/gateway"
 	"recipehub/internal/platform/server"
 )
 
@@ -20,7 +20,7 @@ func main() {
 	infolog.Init()
 
 	cfg := config.LoadService(serviceName, ":8080")
-	if err := server.Run(cfg.Name, cfg.Addr, health.NewRouter(cfg.Name)); err != nil {
+	if err := server.Run(cfg.Name, cfg.Addr, gatewayhttp.NewRouter(cfg)); err != nil {
 		slog.Error("server", "service", cfg.Name, "error", err)
 	}
 }

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
-# Приложение + GORM Postgres (github.com/jackc/pgx, без CGO)
 ARG GO_VERSION=1.23
+ARG SERVICE=service
 
 FROM golang:${GO_VERSION}-bookworm AS build
 
@@ -14,15 +14,16 @@ COPY . .
 
 ENV CGO_ENABLED=0
 
+ARG SERVICE
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags="-s -w" -o /out/recipehub ./cmd/service
+    go build -trimpath -ldflags="-s -w" -o /out/recipehub ./cmd/${SERVICE}
 
 FROM debian:bookworm-slim AS runtime
 
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="RecipeHub API"
-LABEL org.opencontainers.image.description="REST API RecipeHub (учебный сервис)"
+LABEL org.opencontainers.image.description="RecipeHub microservice"
 LABEL org.opencontainers.image.version="${VERSION}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

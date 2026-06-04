@@ -1,5 +1,30 @@
-# Docker Compose v2+. Скопируйте .env.example → .env.
 name: recipehub
+
+x-service-env: &service-env
+  HTTP_ADDR: :8080
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+  JWT_ACCESS_TTL_SEC: ${JWT_ACCESS_TTL_SEC:-3600}
+  JWT_REFRESH_TTL_SEC: ${JWT_REFRESH_TTL_SEC:-604800}
+  SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+  IDENTITY_SERVICE_URL: http://identity-service:8080
+  CATALOG_SERVICE_URL: http://catalog-service:8080
+  RECIPE_SERVICE_URL: http://recipe-service:8080
+  BLOG_SERVICE_URL: http://blog-service:8080
+  ENGAGEMENT_SERVICE_URL: http://engagement-service:8080
+
+x-service-build: &service-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+
+x-service-healthcheck: &service-healthcheck
+  test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+  interval: 15s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
 
 services:
   db:
@@ -8,48 +33,149 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-recipehub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recipehub}
-      POSTGRES_DB: ${POSTGRES_DB:-recipehub}
+      POSTGRES_DB: ${POSTGRES_DB:-recipehub_admin}
     volumes:
       - recipehub_pg:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-databases.sql:/docker-entrypoint-initdb.d/10-init-multiple-databases.sql:ro
     ports:
-      # По умолчанию 5433 на хосте: часто 5432 уже занят локальным PostgreSQL (Windows).
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:
-      # Совпадает с POSTGRES_USER / POSTGRES_DB по умолчанию ниже; при смене пользователя поправьте и это.
-      test: ["CMD-SHELL", "pg_isready -U recipehub -d recipehub"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-recipehub} -d $${POSTGRES_DB:-recipehub_admin}"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
 
-  api:
+  gateway:
     build:
-      context: .
-      dockerfile: Dockerfile
+      <<: *service-build
       args:
         VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
-    image: recipehub-api:${RECIPEHUB_IMAGE_TAG:-local}
+        SERVICE: gateway
+    image: recipehub-gateway:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+      blog-service:
+        condition: service_healthy
+      engagement-service:
+        condition: service_healthy
+    ports:
+      - "${RECIPEHUB_PORT:-8080}:8080"
+    environment:
+      <<: *service-env
+    healthcheck: *service-healthcheck
+
+  identity-service:
+    build:
+      <<: *service-build
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+        SERVICE: identity-service
+    image: recipehub-identity-service:${RECIPEHUB_IMAGE_TAG:-local}
     init: true
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "${RECIPEHUB_PORT:-8080}:8080"
+      - "${IDENTITY_SERVICE_PORT:-8081}:8080"
     environment:
-      HTTP_ADDR: :8080
-      DATABASE_URL: ${DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub?sslmode=disable}
-      OPENAPI_SPEC_PATH: /app/docs/openapi.yaml
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
-      JWT_ACCESS_TTL_SEC: ${JWT_ACCESS_TTL_SEC:-3600}
-      JWT_REFRESH_TTL_SEC: ${JWT_REFRESH_TTL_SEC:-604800}
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
-      interval: 15s
-      timeout: 3s
-      retries: 3
-      start_period: 20s
+      <<: *service-env
+      IDENTITY_SERVICE_DATABASE_URL: ${IDENTITY_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_identity?sslmode=disable}
+    healthcheck: *service-healthcheck
+
+  catalog-service:
+    build:
+      <<: *service-build
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+        SERVICE: catalog-service
+    image: recipehub-catalog-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${CATALOG_SERVICE_PORT:-8082}:8080"
+    environment:
+      <<: *service-env
+      CATALOG_SERVICE_DATABASE_URL: ${CATALOG_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_catalog?sslmode=disable}
+    healthcheck: *service-healthcheck
+
+  recipe-service:
+    build:
+      <<: *service-build
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+        SERVICE: recipe-service
+    image: recipehub-recipe-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+    ports:
+      - "${RECIPE_SERVICE_PORT:-8083}:8080"
+    environment:
+      <<: *service-env
+      RECIPE_SERVICE_DATABASE_URL: ${RECIPE_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_recipe?sslmode=disable}
+    healthcheck: *service-healthcheck
+
+  blog-service:
+    build:
+      <<: *service-build
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+        SERVICE: blog-service
+    image: recipehub-blog-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    ports:
+      - "${BLOG_SERVICE_PORT:-8084}:8080"
+    environment:
+      <<: *service-env
+      BLOG_SERVICE_DATABASE_URL: ${BLOG_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_blog?sslmode=disable}
+    healthcheck: *service-healthcheck
+
+  engagement-service:
+    build:
+      <<: *service-build
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+        SERVICE: engagement-service
+    image: recipehub-engagement-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+      blog-service:
+        condition: service_healthy
+    ports:
+      - "${ENGAGEMENT_SERVICE_PORT:-8085}:8080"
+    environment:
+      <<: *service-env
+      ENGAGEMENT_SERVICE_DATABASE_URL: ${ENGAGEMENT_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_engagement?sslmode=disable}
+    healthcheck: *service-healthcheck
 
 volumes:
   recipehub_pg:
