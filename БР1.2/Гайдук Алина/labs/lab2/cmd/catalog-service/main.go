@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"path/filepath"
 
@@ -9,7 +10,7 @@ import (
 	"recipehub/internal/config"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/catalogrepo"
-	health "recipehub/internal/interfaces/http/health"
+	cataloghttp "recipehub/internal/interfaces/http/catalog"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
 	catalogusecase "recipehub/internal/usecase/catalog"
@@ -33,11 +34,14 @@ func main() {
 		slog.Error("migrate", "service", cfg.Name, "error", err)
 		return
 	}
+	if err := catalogrepo.SeedDefaults(context.Background(), db); err != nil {
+		slog.Error("seed", "service", cfg.Name, "error", err)
+		return
+	}
 
 	catalogService := catalogusecase.NewService(catalogrepo.New(db))
-	_ = catalogService
 
-	if err := server.Run(cfg.Name, cfg.Addr, health.NewRouter(cfg.Name)); err != nil {
+	if err := server.Run(cfg.Name, cfg.Addr, cataloghttp.NewRouter(cfg, catalogService)); err != nil {
 		slog.Error("server", "service", cfg.Name, "error", err)
 	}
 }
