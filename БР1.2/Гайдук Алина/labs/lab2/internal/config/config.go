@@ -18,6 +18,12 @@ type Config struct {
 	RefreshTTLSeconds int
 }
 
+type ServiceConfig struct {
+	Name         string
+	Addr         string
+	ServiceToken string
+}
+
 func Load() Config {
 	return Config{
 		Addr:              cmpOr(os.Getenv("HTTP_ADDR"), ":8080"),
@@ -26,6 +32,14 @@ func Load() Config {
 		JWTRefreshSecret:  cmpOr(os.Getenv("JWT_REFRESH_SECRET"), "dev-refresh-secret-change-me"),
 		AccessTTLSeconds:  atoiDef(os.Getenv("JWT_ACCESS_TTL_SEC"), 3600),
 		RefreshTTLSeconds: atoiDef(os.Getenv("JWT_REFRESH_TTL_SEC"), 60*60*24*7),
+	}
+}
+
+func LoadService(name, defaultAddr string) ServiceConfig {
+	return ServiceConfig{
+		Name:         name,
+		Addr:         cmpOr(os.Getenv("HTTP_ADDR"), defaultAddr),
+		ServiceToken: cmpOr(os.Getenv("SERVICE_TOKEN"), "dev-service-token-change-me"),
 	}
 }
 
