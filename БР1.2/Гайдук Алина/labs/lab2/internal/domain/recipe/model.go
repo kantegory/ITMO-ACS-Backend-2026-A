@@ -52,6 +52,13 @@ type Ingredient struct {
 type RecipeWithAuthor struct {
 	Recipe Recipe
 	Author AuthorPreview
+	Stats  EngagementStats
+}
+
+// EngagementStats contains counters owned by engagement-service.
+type EngagementStats struct {
+	LikesCount    int64
+	CommentsCount int64
 }
 
 // Filters contains recipe list filters.

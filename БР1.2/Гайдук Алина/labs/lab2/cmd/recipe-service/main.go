@@ -8,6 +8,7 @@ import (
 
 	"recipehub/internal/config"
 	"recipehub/internal/infrastructure/clients/catalogclient"
+	"recipehub/internal/infrastructure/clients/engagementclient"
 	"recipehub/internal/infrastructure/clients/identityclient"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/reciperepo"
@@ -40,6 +41,7 @@ func main() {
 		reciperepo.New(db),
 		identityclient.New(cfg.IdentityURL, cfg.ServiceToken),
 		catalogclient.New(cfg.CatalogURL, cfg.ServiceToken),
+		engagementclient.New(cfg.EngagementURL, cfg.ServiceToken),
 	)
 
 	if err := server.Run(cfg.Name, cfg.Addr, recipehttp.NewRouter(cfg, recipeService)); err != nil {

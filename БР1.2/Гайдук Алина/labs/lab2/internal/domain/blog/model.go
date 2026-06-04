@@ -26,6 +26,13 @@ type Post struct {
 type PostWithAuthor struct {
 	Post   Post
 	Author AuthorPreview
+	Stats  EngagementStats
+}
+
+// EngagementStats contains counters owned by engagement-service.
+type EngagementStats struct {
+	LikesCount    int64
+	CommentsCount int64
 }
 
 // Page describes paginated blog results.

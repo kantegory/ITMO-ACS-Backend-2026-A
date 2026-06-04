@@ -44,16 +44,22 @@ type CatalogGateway interface {
 	ValidateIDs(ctx context.Context, req catalogdomain.ValidateIDsRequest) (catalogdomain.ValidateIDsResult, error)
 }
 
+// EngagementGateway is the engagement-service port required by recipe use cases.
+type EngagementGateway interface {
+	RecipeStatsBatch(ctx context.Context, recipeIDs []uint64) (map[uint64]recipedomain.EngagementStats, error)
+}
+
 // Service coordinates recipe application scenarios.
 type Service struct {
-	repo     Repository
-	identity IdentityGateway
-	catalog  CatalogGateway
+	repo       Repository
+	identity   IdentityGateway
+	catalog    CatalogGateway
+	engagement EngagementGateway
 }
 
 // NewService creates recipe use cases.
-func NewService(repo Repository, identity IdentityGateway, catalog CatalogGateway) *Service {
-	return &Service{repo: repo, identity: identity, catalog: catalog}
+func NewService(repo Repository, identity IdentityGateway, catalog CatalogGateway, engagement EngagementGateway) *Service {
+	return &Service{repo: repo, identity: identity, catalog: catalog, engagement: engagement}
 }
 
 // CreateRecipe validates and creates a recipe.
@@ -247,11 +253,28 @@ func (s *Service) attachAuthors(ctx context.Context, recipes []recipedomain.Reci
 	}
 
 	out := make([]recipedomain.RecipeWithAuthor, 0, len(recipes))
+	stats, err := s.recipeStats(ctx, recipes)
+	if err != nil {
+		return nil, err
+	}
 	for _, recipe := range recipes {
-		out = append(out, recipedomain.RecipeWithAuthor{Recipe: recipe, Author: authors[recipe.AuthorID]})
+		out = append(out, recipedomain.RecipeWithAuthor{Recipe: recipe, Author: authors[recipe.AuthorID], Stats: stats[recipe.ID]})
 	}
 
 	return out, nil
+}
+
+func (s *Service) recipeStats(ctx context.Context, recipes []recipedomain.Recipe) (map[uint64]recipedomain.EngagementStats, error) {
+	if s.engagement == nil || len(recipes) == 0 {
+		return map[uint64]recipedomain.EngagementStats{}, nil
+	}
+
+	stats, err := s.engagement.RecipeStatsBatch(ctx, uniqueRecipeIDs(recipes))
+	if err != nil {
+		return nil, fmt.Errorf("load recipe engagement stats: %w", err)
+	}
+
+	return stats, nil
 }
 
 func validateRecipe(recipe recipedomain.Recipe) error {
@@ -306,6 +329,20 @@ func uniqueAuthorIDs(recipes []recipedomain.Recipe) []uint64 {
 		}
 		seen[recipe.AuthorID] = struct{}{}
 		out = append(out, recipe.AuthorID)
+	}
+
+	return out
+}
+
+func uniqueRecipeIDs(recipes []recipedomain.Recipe) []uint64 {
+	out := make([]uint64, 0, len(recipes))
+	seen := make(map[uint64]struct{}, len(recipes))
+	for _, recipe := range recipes {
+		if _, ok := seen[recipe.ID]; ok {
+			continue
+		}
+		seen[recipe.ID] = struct{}{}
+		out = append(out, recipe.ID)
 	}
 
 	return out

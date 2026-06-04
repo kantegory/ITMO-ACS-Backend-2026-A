@@ -4,10 +4,12 @@ package engagementrepo
 import (
 	"context"
 	"errors"
+	"strings"
 
 	engagementdomain "recipehub/internal/domain/engagement"
 	engagementusecase "recipehub/internal/usecase/engagement"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -153,14 +155,17 @@ func (r *Repository) DeleteCommentSubtree(ctx context.Context, id uint64) error 
 
 // Like creates a like.
 func (r *Repository) Like(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) error {
+	var err error
 	switch target {
 	case engagementdomain.TargetRecipe:
-		return r.db.WithContext(ctx).Create(&recipeLikeRow{UserID: userID, RecipeID: targetID}).Error
+		err = r.db.WithContext(ctx).Create(&recipeLikeRow{UserID: userID, RecipeID: targetID}).Error
 	case engagementdomain.TargetPost:
-		return r.db.WithContext(ctx).Create(&postLikeRow{UserID: userID, PostID: targetID}).Error
+		err = r.db.WithContext(ctx).Create(&postLikeRow{UserID: userID, PostID: targetID}).Error
 	default:
 		return engagementusecase.ErrInvalidInput
 	}
+
+	return mapDuplicateKey(err)
 }
 
 // Unlike deletes a like.
@@ -191,7 +196,7 @@ func (r *Repository) IsLiked(ctx context.Context, target engagementdomain.Target
 
 // SaveRecipe saves a recipe for a user.
 func (r *Repository) SaveRecipe(ctx context.Context, userID, recipeID uint64) error {
-	return r.db.WithContext(ctx).Create(&savedRecipeRow{UserID: userID, RecipeID: recipeID}).Error
+	return mapDuplicateKey(r.db.WithContext(ctx).Create(&savedRecipeRow{UserID: userID, RecipeID: recipeID}).Error)
 }
 
 // UnsaveRecipe removes a saved recipe.
@@ -273,6 +278,27 @@ func likeQuery(db *gorm.DB, target engagementdomain.TargetType, targetID uint64)
 func mapNotFound(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return engagementusecase.ErrNotFound
+	}
+
+	return err
+}
+
+func mapDuplicateKey(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return engagementusecase.ErrAlreadyExists
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return engagementusecase.ErrAlreadyExists
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint") {
+		return engagementusecase.ErrAlreadyExists
 	}
 
 	return err

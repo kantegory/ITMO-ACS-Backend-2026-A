@@ -37,15 +37,21 @@ type IdentityGateway interface {
 	UsersBatch(ctx context.Context, ids []uint64) ([]identitydomain.UserShort, error)
 }
 
+// EngagementGateway is the engagement-service port required by blog use cases.
+type EngagementGateway interface {
+	PostStatsBatch(ctx context.Context, postIDs []uint64) (map[uint64]blogdomain.EngagementStats, error)
+}
+
 // Service coordinates blog application scenarios.
 type Service struct {
-	repo     Repository
-	identity IdentityGateway
+	repo       Repository
+	identity   IdentityGateway
+	engagement EngagementGateway
 }
 
 // NewService creates blog use cases.
-func NewService(repo Repository, identity IdentityGateway) *Service {
-	return &Service{repo: repo, identity: identity}
+func NewService(repo Repository, identity IdentityGateway, engagement EngagementGateway) *Service {
+	return &Service{repo: repo, identity: identity, engagement: engagement}
 }
 
 // CreatePostInput contains post creation data.
@@ -221,14 +227,32 @@ func (s *Service) attachAuthors(ctx context.Context, posts []blogdomain.Post) ([
 	}
 
 	out := make([]blogdomain.PostWithAuthor, 0, len(posts))
+	stats, err := s.postStats(ctx, posts)
+	if err != nil {
+		return nil, err
+	}
 	for _, post := range posts {
 		out = append(out, blogdomain.PostWithAuthor{
 			Post:   post,
 			Author: authors[post.AuthorID],
+			Stats:  stats[post.ID],
 		})
 	}
 
 	return out, nil
+}
+
+func (s *Service) postStats(ctx context.Context, posts []blogdomain.Post) (map[uint64]blogdomain.EngagementStats, error) {
+	if s.engagement == nil || len(posts) == 0 {
+		return map[uint64]blogdomain.EngagementStats{}, nil
+	}
+
+	stats, err := s.engagement.PostStatsBatch(ctx, uniquePostIDs(posts))
+	if err != nil {
+		return nil, fmt.Errorf("load post engagement stats: %w", err)
+	}
+
+	return stats, nil
 }
 
 func normalizePostText(title, content string) (string, string, error) {
@@ -250,6 +274,20 @@ func uniqueAuthorIDs(posts []blogdomain.Post) []uint64 {
 		}
 		seen[post.AuthorID] = struct{}{}
 		out = append(out, post.AuthorID)
+	}
+
+	return out
+}
+
+func uniquePostIDs(posts []blogdomain.Post) []uint64 {
+	out := make([]uint64, 0, len(posts))
+	seen := make(map[uint64]struct{}, len(posts))
+	for _, post := range posts {
+		if _, ok := seen[post.ID]; ok {
+			continue
+		}
+		seen[post.ID] = struct{}{}
+		out = append(out, post.ID)
 	}
 
 	return out

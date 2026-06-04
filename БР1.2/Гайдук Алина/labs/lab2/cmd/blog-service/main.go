@@ -7,6 +7,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"recipehub/internal/config"
+	"recipehub/internal/infrastructure/clients/engagementclient"
 	"recipehub/internal/infrastructure/clients/identityclient"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/blogrepo"
@@ -38,6 +39,7 @@ func main() {
 	blogService := blogusecase.NewService(
 		blogrepo.New(db),
 		identityclient.New(cfg.IdentityURL, cfg.ServiceToken),
+		engagementclient.New(cfg.EngagementURL, cfg.ServiceToken),
 	)
 
 	if err := server.Run(cfg.Name, cfg.Addr, bloghttp.NewRouter(cfg, blogService)); err != nil {

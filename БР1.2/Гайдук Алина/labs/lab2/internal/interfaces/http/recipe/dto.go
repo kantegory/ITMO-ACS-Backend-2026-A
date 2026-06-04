@@ -147,6 +147,8 @@ func toRecipeResponse(item recipedomain.RecipeWithAuthor, full bool) recipeRespo
 		PrepTimeMinutes: recipe.PrepTimeMinutes,
 		CookTimeMinutes: recipe.CookTimeMinutes,
 		Servings:        recipe.Servings,
+		LikesCount:      item.Stats.LikesCount,
+		CommentsCount:   item.Stats.CommentsCount,
 		TagIDs:          recipe.TagIDs,
 		CreatedAt:       recipe.CreatedAt,
 		UpdatedAt:       recipe.UpdatedAt,

@@ -85,8 +85,8 @@ func toPostListItemResponse(item blogdomain.PostWithAuthor) postListItemResponse
 		Content:       item.Post.Content,
 		CoverImageURL: item.Post.CoverImageURL,
 		Author:        toUserShortResponse(item.Author),
-		LikesCount:    0,
-		CommentsCount: 0,
+		LikesCount:    item.Stats.LikesCount,
+		CommentsCount: item.Stats.CommentsCount,
 		CreatedAt:     item.Post.CreatedAt,
 	}
 }
@@ -98,8 +98,8 @@ func toPostFullResponse(item blogdomain.PostWithAuthor) postFullResponse {
 		Content:       item.Post.Content,
 		CoverImageURL: item.Post.CoverImageURL,
 		Author:        toUserShortResponse(item.Author),
-		LikesCount:    0,
-		CommentsCount: 0,
+		LikesCount:    item.Stats.LikesCount,
+		CommentsCount: item.Stats.CommentsCount,
 		IsLiked:       false,
 		CreatedAt:     item.Post.CreatedAt,
 		UpdatedAt:     item.Post.UpdatedAt,
