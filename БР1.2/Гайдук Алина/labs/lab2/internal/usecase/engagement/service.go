@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	engagementdomain "recipehub/internal/domain/engagement"
+	eventsdomain "recipehub/internal/domain/events"
 	identitydomain "recipehub/internal/domain/identity"
 	recipedomain "recipehub/internal/domain/recipe"
 )
@@ -26,7 +27,7 @@ type Repository interface {
 	CommentDescendants(ctx context.Context, target engagementdomain.TargetType, targetID uint64, rootIDs []uint64) ([]engagementdomain.Comment, error)
 	CommentByID(ctx context.Context, id uint64) (engagementdomain.Comment, error)
 	CreateComment(ctx context.Context, comment engagementdomain.Comment) (engagementdomain.Comment, error)
-	DeleteCommentSubtree(ctx context.Context, id uint64) error
+	DeleteCommentSubtree(ctx context.Context, id uint64) (int64, error)
 
 	Like(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) error
 	Unlike(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) error
@@ -57,17 +58,28 @@ type BlogGateway interface {
 	PostExists(ctx context.Context, postID uint64) (bool, error)
 }
 
+// EventPublisher publishes integration events after successful state changes.
+type EventPublisher interface {
+	Publish(ctx context.Context, event eventsdomain.Envelope) error
+}
+
 // Service coordinates engagement application scenarios.
 type Service struct {
 	repo     Repository
 	identity IdentityGateway
 	recipe   RecipeGateway
 	blog     BlogGateway
+	events   EventPublisher
 }
 
 // NewService creates engagement use cases.
-func NewService(repo Repository, identity IdentityGateway, recipe RecipeGateway, blog BlogGateway) *Service {
-	return &Service{repo: repo, identity: identity, recipe: recipe, blog: blog}
+func NewService(repo Repository, identity IdentityGateway, recipe RecipeGateway, blog BlogGateway, publishers ...EventPublisher) *Service {
+	var publisher EventPublisher
+	if len(publishers) > 0 {
+		publisher = publishers[0]
+	}
+
+	return &Service{repo: repo, identity: identity, recipe: recipe, blog: blog, events: publisher}
 }
 
 // ListComments returns paginated comments with nested replies.
@@ -130,6 +142,9 @@ func (s *Service) CreateComment(ctx context.Context, target engagementdomain.Tar
 	if err != nil {
 		return engagementdomain.CommentThread{}, err
 	}
+	if err := s.publishCommentCreated(ctx, comment); err != nil {
+		return engagementdomain.CommentThread{}, err
+	}
 
 	threads, err := s.buildThreads(ctx, []engagementdomain.Comment{comment}, nil)
 	if err != nil {
@@ -149,7 +164,12 @@ func (s *Service) DeleteComment(ctx context.Context, commentID, actorID uint64) 
 		return ErrForbidden
 	}
 
-	return s.repo.DeleteCommentSubtree(ctx, commentID)
+	deleted, err := s.repo.DeleteCommentSubtree(ctx, commentID)
+	if err != nil {
+		return err
+	}
+
+	return s.publishCommentDeleted(ctx, comment, deleted)
 }
 
 // Like adds a like and returns updated count.
@@ -158,6 +178,9 @@ func (s *Service) Like(ctx context.Context, target engagementdomain.TargetType, 
 		return 0, err
 	}
 	if err := s.repo.Like(ctx, target, userID, targetID); err != nil {
+		return 0, err
+	}
+	if err := s.publishLikeChanged(ctx, target, userID, targetID, true); err != nil {
 		return 0, err
 	}
 
@@ -170,6 +193,9 @@ func (s *Service) Unlike(ctx context.Context, target engagementdomain.TargetType
 		return 0, err
 	}
 	if err := s.repo.Unlike(ctx, target, userID, targetID); err != nil {
+		return 0, err
+	}
+	if err := s.publishLikeChanged(ctx, target, userID, targetID, false); err != nil {
 		return 0, err
 	}
 
@@ -242,6 +268,77 @@ func (s *Service) StatsBatch(ctx context.Context, target engagementdomain.Target
 	}
 
 	return stats, nil
+}
+
+func (s *Service) publishLikeChanged(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64, liked bool) error {
+	eventType := ""
+	switch target {
+	case engagementdomain.TargetRecipe:
+		if liked {
+			eventType = eventsdomain.TypeRecipeLiked
+		} else {
+			eventType = eventsdomain.TypeRecipeUnliked
+		}
+	case engagementdomain.TargetPost:
+		if liked {
+			eventType = eventsdomain.TypePostLiked
+		} else {
+			eventType = eventsdomain.TypePostUnliked
+		}
+	default:
+		return ErrInvalidInput
+	}
+
+	return s.publish(ctx, eventType, eventsdomain.LikePayload{TargetID: targetID, UserID: userID})
+}
+
+func (s *Service) publishCommentCreated(ctx context.Context, comment engagementdomain.Comment) error {
+	eventType := ""
+	switch comment.TargetType {
+	case engagementdomain.TargetRecipe:
+		eventType = eventsdomain.TypeRecipeCommentCreated
+	case engagementdomain.TargetPost:
+		eventType = eventsdomain.TypePostCommentCreated
+	default:
+		return ErrInvalidInput
+	}
+
+	return s.publish(ctx, eventType, eventsdomain.CommentCreatedPayload{
+		TargetID:  comment.TargetID,
+		CommentID: comment.ID,
+		AuthorID:  comment.AuthorID,
+	})
+}
+
+func (s *Service) publishCommentDeleted(ctx context.Context, comment engagementdomain.Comment, deletedCount int64) error {
+	eventType := ""
+	switch comment.TargetType {
+	case engagementdomain.TargetRecipe:
+		eventType = eventsdomain.TypeRecipeCommentDeleted
+	case engagementdomain.TargetPost:
+		eventType = eventsdomain.TypePostCommentDeleted
+	default:
+		return ErrInvalidInput
+	}
+
+	return s.publish(ctx, eventType, eventsdomain.CommentDeletedPayload{
+		TargetID:     comment.TargetID,
+		CommentID:    comment.ID,
+		DeletedCount: deletedCount,
+	})
+}
+
+func (s *Service) publish(ctx context.Context, eventType string, payload any) error {
+	if s.events == nil {
+		return nil
+	}
+
+	event, err := eventsdomain.NewEnvelope(eventType, payload)
+	if err != nil {
+		return err
+	}
+
+	return s.events.Publish(ctx, event)
 }
 
 func (s *Service) ensureTargetExists(ctx context.Context, target engagementdomain.TargetType, targetID uint64) error {

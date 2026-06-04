@@ -22,6 +22,8 @@ type ServiceConfig struct {
 	Name              string
 	Addr              string
 	DatabaseURL       string
+	RabbitMQURL       string
+	EventsExchange    string
 	IdentityURL       string
 	CatalogURL        string
 	RecipeURL         string
@@ -52,6 +54,8 @@ func LoadService(name, defaultAddr string) ServiceConfig {
 		Name:              name,
 		Addr:              firstNonEmpty(os.Getenv(prefix+"_HTTP_ADDR"), os.Getenv("HTTP_ADDR"), defaultAddr),
 		DatabaseURL:       firstNonEmpty(os.Getenv(prefix+"_DATABASE_URL"), os.Getenv("DATABASE_URL"), defaultDatabaseURL),
+		RabbitMQURL:       cmpOr(os.Getenv("RABBITMQ_URL"), "amqp://guest:guest@127.0.0.1:5672/"),
+		EventsExchange:    cmpOr(os.Getenv("EVENTS_EXCHANGE"), "recipehub.events"),
 		IdentityURL:       cmpOr(os.Getenv("IDENTITY_SERVICE_URL"), "http://127.0.0.1:8081"),
 		CatalogURL:        cmpOr(os.Getenv("CATALOG_SERVICE_URL"), "http://127.0.0.1:8082"),
 		RecipeURL:         cmpOr(os.Getenv("RECIPE_SERVICE_URL"), "http://127.0.0.1:8083"),

@@ -2,10 +2,52 @@ package engagement
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	engagementdomain "recipehub/internal/domain/engagement"
+	eventsdomain "recipehub/internal/domain/events"
+	recipedomain "recipehub/internal/domain/recipe"
 )
+
+func TestLikePublishesRecipeLikedEvent(t *testing.T) {
+	repo := &statsRepository{}
+	publisher := &capturePublisher{}
+	service := NewService(repo, nil, targetRecipeGateway{}, nil, publisher)
+
+	if _, err := service.Like(context.Background(), engagementdomain.TargetRecipe, 7, 10); err != nil {
+		t.Fatalf("Like returned error: %v", err)
+	}
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	event := publisher.events[0]
+	if event.EventType != eventsdomain.TypeRecipeLiked {
+		t.Fatalf("event type = %s, want %s", event.EventType, eventsdomain.TypeRecipeLiked)
+	}
+
+	var payload eventsdomain.LikePayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("payload unmarshal: %v", err)
+	}
+	if payload.TargetID != 10 || payload.UserID != 7 {
+		t.Fatalf("payload = %+v, want target 10 user 7", payload)
+	}
+}
+
+func TestLikeDoesNotPublishWhenRepositoryFails(t *testing.T) {
+	repo := &statsRepository{likeErr: ErrAlreadyExists}
+	publisher := &capturePublisher{}
+	service := NewService(repo, nil, targetRecipeGateway{}, nil, publisher)
+
+	if _, err := service.Like(context.Background(), engagementdomain.TargetRecipe, 7, 10); err == nil {
+		t.Fatal("Like returned nil error, want repository error")
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	}
+}
 
 func TestStatsBatchAddsRecipeViewerFlags(t *testing.T) {
 	repo := &statsRepository{
@@ -64,6 +106,7 @@ type statsRepository struct {
 	liked        map[uint64]bool
 	saved        map[uint64]bool
 	isSavedCalls int
+	likeErr      error
 }
 
 func (r *statsRepository) ListComments(context.Context, engagementdomain.TargetType, uint64, int, int) (engagementdomain.Page[engagementdomain.Comment], error) {
@@ -82,12 +125,12 @@ func (r *statsRepository) CreateComment(_ context.Context, comment engagementdom
 	return comment, nil
 }
 
-func (r *statsRepository) DeleteCommentSubtree(context.Context, uint64) error {
-	return nil
+func (r *statsRepository) DeleteCommentSubtree(context.Context, uint64) (int64, error) {
+	return 0, nil
 }
 
 func (r *statsRepository) Like(context.Context, engagementdomain.TargetType, uint64, uint64) error {
-	return nil
+	return r.likeErr
 }
 
 func (r *statsRepository) Unlike(context.Context, engagementdomain.TargetType, uint64, uint64) error {
@@ -122,4 +165,24 @@ func (r *statsRepository) ListSavedRecipes(context.Context, uint64, int, int) (e
 
 func (r *statsRepository) StatsBatch(context.Context, engagementdomain.TargetType, []uint64) ([]engagementdomain.Stat, error) {
 	return append([]engagementdomain.Stat(nil), r.stats...), nil
+}
+
+type capturePublisher struct {
+	events []eventsdomain.Envelope
+}
+
+func (p *capturePublisher) Publish(_ context.Context, event eventsdomain.Envelope) error {
+	p.events = append(p.events, event)
+
+	return nil
+}
+
+type targetRecipeGateway struct{}
+
+func (targetRecipeGateway) RecipeExists(context.Context, uint64) (bool, error) {
+	return true, nil
+}
+
+func (targetRecipeGateway) RecipeBrief(context.Context, uint64) (recipedomain.Recipe, error) {
+	return recipedomain.Recipe{}, nil
 }

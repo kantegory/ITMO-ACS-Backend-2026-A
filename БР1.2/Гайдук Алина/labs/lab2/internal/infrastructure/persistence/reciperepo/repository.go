@@ -3,20 +3,25 @@ package reciperepo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
+	eventsdomain "recipehub/internal/domain/events"
 	recipedomain "recipehub/internal/domain/recipe"
 	recipeusecase "recipehub/internal/usecase/recipe"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
-	recipesTable     = "recipes"
-	stepsTable       = "recipe_steps"
-	ingredientsTable = "recipe_ingredients"
-	tagsTable        = "recipe_tags"
+	recipesTable         = "recipes"
+	stepsTable           = "recipe_steps"
+	ingredientsTable     = "recipe_ingredients"
+	tagsTable            = "recipe_tags"
+	recipeStatsTable     = "recipe_engagement_stats"
+	processedEventsTable = "processed_events"
 )
 
 var _ recipeusecase.Repository = (*Repository)(nil)
@@ -183,6 +188,90 @@ func (r *Repository) AuthorRecipeCount(ctx context.Context, authorID uint64) (in
 	return count, nil
 }
 
+// EngagementStatsBatch returns async engagement projections for recipe ids.
+func (r *Repository) EngagementStatsBatch(ctx context.Context, ids []uint64) (map[uint64]recipedomain.EngagementStats, error) {
+	out := make(map[uint64]recipedomain.EngagementStats, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	var rows []recipeStatsRow
+	if err := r.db.WithContext(ctx).Where("recipe_id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.RecipeID] = recipedomain.EngagementStats{
+			LikesCount:    row.LikesCount,
+			CommentsCount: row.CommentsCount,
+		}
+	}
+
+	return out, nil
+}
+
+// ApplyEngagementEvent updates local recipe read-model counters idempotently.
+func (r *Repository) ApplyEngagementEvent(ctx context.Context, event eventsdomain.Envelope) error {
+	targetID, likesDelta, commentsDelta, err := recipeEventDelta(event)
+	if err != nil {
+		return err
+	}
+	if targetID == 0 || likesDelta == 0 && commentsDelta == 0 {
+		return nil
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Create(&processedEventRow{EventID: event.EventID, EventType: event.EventType}).Error
+		if err != nil {
+			if isDuplicateKey(err) {
+				return nil
+			}
+			return err
+		}
+
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&recipeStatsRow{RecipeID: targetID}).Error; err != nil {
+			return err
+		}
+
+		return tx.Model(&recipeStatsRow{}).
+			Where("recipe_id = ?", targetID).
+			Updates(map[string]any{
+				"likes_count":    gorm.Expr("GREATEST(likes_count + ?, 0)", likesDelta),
+				"comments_count": gorm.Expr("GREATEST(comments_count + ?, 0)", commentsDelta),
+			}).Error
+	})
+}
+
+func recipeEventDelta(event eventsdomain.Envelope) (targetID uint64, likesDelta, commentsDelta int64, err error) {
+	switch event.EventType {
+	case eventsdomain.TypeRecipeLiked:
+		var payload eventsdomain.LikePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, 1, 0, nil
+	case eventsdomain.TypeRecipeUnliked:
+		var payload eventsdomain.LikePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, -1, 0, nil
+	case eventsdomain.TypeRecipeCommentCreated:
+		var payload eventsdomain.CommentCreatedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, 0, 1, nil
+	case eventsdomain.TypeRecipeCommentDeleted:
+		var payload eventsdomain.CommentDeletedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, 0, -payload.DeletedCount, nil
+	default:
+		return 0, 0, 0, nil
+	}
+}
+
 func (r *Repository) loadChildren(ctx context.Context, recipe *recipedomain.Recipe) error {
 	var steps []stepRow
 	if err := r.db.WithContext(ctx).Where("recipe_id = ?", recipe.ID).Order("step_number ASC").Find(&steps).Error; err != nil {
@@ -275,6 +364,15 @@ func mapNotFound(err error) error {
 	}
 
 	return err
+}
+
+func isDuplicateKey(err error) bool {
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }
 
 func toDomainRecipe(row recipeRow) recipedomain.Recipe {

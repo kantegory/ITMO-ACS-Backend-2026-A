@@ -125,8 +125,9 @@ func (r *Repository) CreateComment(ctx context.Context, comment engagementdomain
 }
 
 // DeleteCommentSubtree deletes a comment and replies.
-func (r *Repository) DeleteCommentSubtree(ctx context.Context, id uint64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+func (r *Repository) DeleteCommentSubtree(ctx context.Context, id uint64) (int64, error) {
+	var deleted int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		frontier := []uint64{id}
 		levels := [][]uint64{}
 		for len(frontier) > 0 {
@@ -144,13 +145,17 @@ func (r *Repository) DeleteCommentSubtree(ctx context.Context, id uint64) error 
 		}
 
 		for level := len(levels) - 1; level >= 0; level-- {
-			if err := tx.Delete(&commentRow{}, levels[level]).Error; err != nil {
-				return err
+			result := tx.Delete(&commentRow{}, levels[level])
+			if result.Error != nil {
+				return result.Error
 			}
+			deleted += result.RowsAffected
 		}
 
 		return nil
 	})
+
+	return deleted, err
 }
 
 // Like creates a like.
@@ -170,14 +175,23 @@ func (r *Repository) Like(ctx context.Context, target engagementdomain.TargetTyp
 
 // Unlike deletes a like.
 func (r *Repository) Unlike(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) error {
+	var result *gorm.DB
 	switch target {
 	case engagementdomain.TargetRecipe:
-		return r.db.WithContext(ctx).Where("user_id = ? AND recipe_id = ?", userID, targetID).Delete(&recipeLikeRow{}).Error
+		result = r.db.WithContext(ctx).Where("user_id = ? AND recipe_id = ?", userID, targetID).Delete(&recipeLikeRow{})
 	case engagementdomain.TargetPost:
-		return r.db.WithContext(ctx).Where("user_id = ? AND post_id = ?", userID, targetID).Delete(&postLikeRow{}).Error
+		result = r.db.WithContext(ctx).Where("user_id = ? AND post_id = ?", userID, targetID).Delete(&postLikeRow{})
 	default:
 		return engagementusecase.ErrInvalidInput
 	}
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return engagementusecase.ErrNotFound
+	}
+
+	return nil
 }
 
 // LikesCount returns like count.
