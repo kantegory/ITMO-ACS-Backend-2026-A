@@ -22,6 +22,11 @@ type ServiceConfig struct {
 	Name              string
 	Addr              string
 	DatabaseURL       string
+	IdentityURL       string
+	CatalogURL        string
+	RecipeURL         string
+	BlogURL           string
+	EngagementURL     string
 	JWTAccessSecret   string
 	JWTRefreshSecret  string
 	AccessTTLSeconds  int
@@ -47,6 +52,11 @@ func LoadService(name, defaultAddr string) ServiceConfig {
 		Name:              name,
 		Addr:              firstNonEmpty(os.Getenv(prefix+"_HTTP_ADDR"), os.Getenv("HTTP_ADDR"), defaultAddr),
 		DatabaseURL:       firstNonEmpty(os.Getenv(prefix+"_DATABASE_URL"), os.Getenv("DATABASE_URL"), defaultDatabaseURL),
+		IdentityURL:       cmpOr(os.Getenv("IDENTITY_SERVICE_URL"), "http://127.0.0.1:8081"),
+		CatalogURL:        cmpOr(os.Getenv("CATALOG_SERVICE_URL"), "http://127.0.0.1:8082"),
+		RecipeURL:         cmpOr(os.Getenv("RECIPE_SERVICE_URL"), "http://127.0.0.1:8083"),
+		BlogURL:           cmpOr(os.Getenv("BLOG_SERVICE_URL"), "http://127.0.0.1:8084"),
+		EngagementURL:     cmpOr(os.Getenv("ENGAGEMENT_SERVICE_URL"), "http://127.0.0.1:8085"),
 		JWTAccessSecret:   cmpOr(os.Getenv("JWT_ACCESS_SECRET"), "dev-access-secret-change-me"),
 		JWTRefreshSecret:  cmpOr(os.Getenv("JWT_REFRESH_SECRET"), "dev-refresh-secret-change-me"),
 		AccessTTLSeconds:  atoiDef(os.Getenv("JWT_ACCESS_TTL_SEC"), 3600),
