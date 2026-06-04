@@ -9,6 +9,12 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   auth-db:
     image: postgres:16-alpine
@@ -18,6 +24,12 @@ services:
       POSTGRES_PASSWORD: auth_pass
     volumes:
       - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   users-db:
     image: postgres:16-alpine
@@ -27,6 +39,12 @@ services:
       POSTGRES_PASSWORD: users_pass
     volumes:
       - users_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U users_user -d users_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   workouts-db:
     image: postgres:16-alpine
@@ -36,6 +54,12 @@ services:
       POSTGRES_PASSWORD: workouts_pass
     volumes:
       - workouts_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workouts_user -d workouts_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   user-workouts-db:
     image: postgres:16-alpine
@@ -45,6 +69,13 @@ services:
       POSTGRES_PASSWORD: user_workouts_pass
     volumes:
       - user_workouts_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U user_workouts_user -d user_workouts_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   progress-db:
     image: postgres:16-alpine
@@ -54,6 +85,12 @@ services:
       POSTGRES_PASSWORD: progress_pass
     volumes:
       - progress_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U progress_user -d progress_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   blog-db:
     image: postgres:16-alpine
@@ -63,6 +100,12 @@ services:
       POSTGRES_PASSWORD: blog_pass
     volumes:
       - blog_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blog_user -d blog_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   auth:
     build: ./services/auth
@@ -74,8 +117,10 @@ services:
       JWT_SECRET: fitness-platform-secret
       USERS_SERVICE_URL: http://user:3000
     depends_on:
-      - auth-db
-      - user
+      auth-db:
+        condition: service_healthy
+      user:
+        condition: service_started
 
   user:
     build: ./services/user
@@ -85,7 +130,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://users_user:users_pass@users-db:5432/users_db
     depends_on:
-      - users-db
+      users-db:
+        condition: service_healthy
 
   workout:
     build: ./services/workout
@@ -95,7 +141,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://workouts_user:workouts_pass@workouts-db:5432/workouts_db
     depends_on:
-      - workouts-db
+      workouts-db:
+        condition: service_healthy
 
   userworkouts:
     build: ./services/userworkouts
@@ -108,10 +155,14 @@ services:
       USERS_SERVICE_URL: http://user:3000
       WORKOUTS_SERVICE_URL: http://workout:3000
     depends_on:
-      - user-workouts-db
-      - rabbitmq
-      - user
-      - workout
+      user-workouts-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user:
+        condition: service_started
+      workout:
+        condition: service_started
 
   progress:
     build: ./services/progress
@@ -122,8 +173,10 @@ services:
       DATABASE_URL: postgres://progress_user:progress_pass@progress-db:5432/progress_db
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
-      - progress-db
-      - rabbitmq
+      progress-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   blog:
     build: ./services/blog
@@ -135,9 +188,12 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       USERS_SERVICE_URL: http://user:3000
     depends_on:
-      - blog-db
-      - rabbitmq
-      - user
+      blog-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user:
+        condition: service_started
 
 networks:
   default:
