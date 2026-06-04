@@ -33,14 +33,49 @@ func TestRouterForwardsPublicRoutesToOwners(t *testing.T) {
 		path   string
 		want   string
 	}{
+		{method: http.MethodPost, path: "/api/v1/auth/register", want: "identity /api/v1/auth/register"},
 		{method: http.MethodPost, path: "/api/v1/auth/login", want: "identity /api/v1/auth/login"},
+		{method: http.MethodPost, path: "/api/v1/auth/refresh", want: "identity /api/v1/auth/refresh"},
+		{method: http.MethodPatch, path: "/api/v1/users/me", want: "identity /api/v1/users/me"},
+		{method: http.MethodGet, path: "/api/v1/users/7", want: "identity /api/v1/users/7"},
 		{method: http.MethodGet, path: "/api/v1/users/7/followers", want: "identity /api/v1/users/7/followers"},
-		{method: http.MethodGet, path: "/api/v1/users/7/recipes", want: "recipe /api/v1/users/7/recipes"},
-		{method: http.MethodGet, path: "/api/v1/recipes/11", want: "recipe /api/v1/recipes/11"},
-		{method: http.MethodGet, path: "/api/v1/users/7/posts", want: "blog /api/v1/users/7/posts"},
-		{method: http.MethodGet, path: "/api/v1/posts/12", want: "blog /api/v1/posts/12"},
+		{method: http.MethodGet, path: "/api/v1/users/7/following", want: "identity /api/v1/users/7/following"},
+		{method: http.MethodPost, path: "/api/v1/users/7/follow", want: "identity /api/v1/users/7/follow"},
+		{method: http.MethodDelete, path: "/api/v1/users/7/follow", want: "identity /api/v1/users/7/follow"},
+
+		{method: http.MethodGet, path: "/api/v1/dish-types", want: "catalog /api/v1/dish-types"},
+		{method: http.MethodPost, path: "/api/v1/dish-types", want: "catalog /api/v1/dish-types"},
+		{method: http.MethodGet, path: "/api/v1/difficulties", want: "catalog /api/v1/difficulties"},
 		{method: http.MethodGet, path: "/api/v1/tags", want: "catalog /api/v1/tags"},
+		{method: http.MethodPost, path: "/api/v1/tags", want: "catalog /api/v1/tags"},
+		{method: http.MethodGet, path: "/api/v1/ingredients", want: "catalog /api/v1/ingredients"},
+		{method: http.MethodPost, path: "/api/v1/ingredients", want: "catalog /api/v1/ingredients"},
+
+		{method: http.MethodGet, path: "/api/v1/users/7/recipes", want: "recipe /api/v1/users/7/recipes"},
+		{method: http.MethodGet, path: "/api/v1/recipes", want: "recipe /api/v1/recipes"},
+		{method: http.MethodPost, path: "/api/v1/recipes", want: "recipe /api/v1/recipes"},
+		{method: http.MethodGet, path: "/api/v1/recipes/11", want: "recipe /api/v1/recipes/11"},
+		{method: http.MethodPatch, path: "/api/v1/recipes/11", want: "recipe /api/v1/recipes/11"},
+		{method: http.MethodDelete, path: "/api/v1/recipes/11", want: "recipe /api/v1/recipes/11"},
+
+		{method: http.MethodGet, path: "/api/v1/users/7/posts", want: "blog /api/v1/users/7/posts"},
+		{method: http.MethodGet, path: "/api/v1/posts", want: "blog /api/v1/posts"},
+		{method: http.MethodPost, path: "/api/v1/posts", want: "blog /api/v1/posts"},
+		{method: http.MethodGet, path: "/api/v1/posts/12", want: "blog /api/v1/posts/12"},
+		{method: http.MethodPatch, path: "/api/v1/posts/12", want: "blog /api/v1/posts/12"},
+		{method: http.MethodDelete, path: "/api/v1/posts/12", want: "blog /api/v1/posts/12"},
+
+		{method: http.MethodGet, path: "/api/v1/recipes/11/comments", want: "engagement /api/v1/recipes/11/comments"},
+		{method: http.MethodPost, path: "/api/v1/recipes/11/comments", want: "engagement /api/v1/recipes/11/comments"},
 		{method: http.MethodPost, path: "/api/v1/recipes/11/like", want: "engagement /api/v1/recipes/11/like"},
+		{method: http.MethodDelete, path: "/api/v1/recipes/11/like", want: "engagement /api/v1/recipes/11/like"},
+		{method: http.MethodPost, path: "/api/v1/recipes/11/save", want: "engagement /api/v1/recipes/11/save"},
+		{method: http.MethodDelete, path: "/api/v1/recipes/11/save", want: "engagement /api/v1/recipes/11/save"},
+		{method: http.MethodGet, path: "/api/v1/users/me/saved", want: "engagement /api/v1/users/me/saved"},
+		{method: http.MethodGet, path: "/api/v1/posts/12/comments", want: "engagement /api/v1/posts/12/comments"},
+		{method: http.MethodPost, path: "/api/v1/posts/12/comments", want: "engagement /api/v1/posts/12/comments"},
+		{method: http.MethodPost, path: "/api/v1/posts/12/like", want: "engagement /api/v1/posts/12/like"},
+		{method: http.MethodDelete, path: "/api/v1/posts/12/like", want: "engagement /api/v1/posts/12/like"},
 		{method: http.MethodDelete, path: "/api/v1/comments/3", want: "engagement /api/v1/comments/3"},
 	}
 
