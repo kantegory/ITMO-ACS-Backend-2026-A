@@ -12,9 +12,9 @@ import (
 	"recipehub/internal/infrastructure/clients/recipeclient"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/engagementrepo"
-	engagementhttp "recipehub/internal/interfaces/http/engagement"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
+	engagementhttp "recipehub/internal/transport/http/engagement"
 	engagementusecase "recipehub/internal/usecase/engagement"
 )
 

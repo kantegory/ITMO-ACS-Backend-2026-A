@@ -12,9 +12,9 @@ import (
 	"recipehub/internal/infrastructure/clients/identityclient"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/reciperepo"
-	recipehttp "recipehub/internal/interfaces/http/recipe"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
+	recipehttp "recipehub/internal/transport/http/recipe"
 	recipeusecase "recipehub/internal/usecase/recipe"
 )
 

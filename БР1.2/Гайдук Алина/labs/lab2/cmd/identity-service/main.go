@@ -11,9 +11,9 @@ import (
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/identityrepo"
 	"recipehub/internal/infrastructure/security/tokenmanager"
-	identityhttp "recipehub/internal/interfaces/http/identity"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
+	identityhttp "recipehub/internal/transport/http/identity"
 	identityusecase "recipehub/internal/usecase/identity"
 )
 

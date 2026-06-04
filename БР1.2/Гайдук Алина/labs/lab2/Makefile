@@ -23,7 +23,7 @@ help: ## Список целей
 	@echo Подсказка: curl http://localhost:8080/healthz  ·  Swagger: /swagger/
 
 run: ## Запуск без Docker
-	go run ./cmd/service
+	go run ./cmd/gateway
 
 tidy: ## go mod tidy
 	go mod tidy
@@ -33,7 +33,7 @@ vet: ## go vet ./...
 
 build: ## Сборка bin/recipehub
 	@mkdir -p bin
-	go build -trimpath -ldflags="-s -w" -o bin/recipehub$(EXE) ./cmd/service
+	go build -trimpath -ldflags="-s -w" -o bin/recipehub$(EXE) ./cmd/gateway
 
 verify: vet build ## go vet и сборка бинарника
 
@@ -56,13 +56,13 @@ docker-down-v: ## Остановить и удалить том с данным�
 	docker compose down -v
 
 docker-logs: ## Логи api
-	docker compose logs -f api
+	docker compose logs -f gateway
 
 docker-ps: ## Статус
 	docker compose ps
 
 docker-restart: ## Перезапуск api
-	docker compose restart api
+	docker compose restart gateway
 
 docker-dev: docker-build docker-up ## Сборка и фоновый запуск
 	@echo ''

@@ -8,8 +8,8 @@ import (
 
 	"recipehub/internal/config"
 	infolog "recipehub/internal/infrastructure/logger"
-	gatewayhttp "recipehub/internal/interfaces/http/gateway"
 	"recipehub/internal/platform/server"
+	gatewayhttp "recipehub/internal/transport/http/gateway"
 )
 
 const serviceName = "gateway"

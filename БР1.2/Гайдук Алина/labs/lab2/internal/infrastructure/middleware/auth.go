@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"recipehub/internal/api"
 	"recipehub/internal/infrastructure/security/jwt"
 	"recipehub/internal/pkg/authctx"
+	"recipehub/internal/transport/http/response"
 )
 
 type Auth struct {
@@ -32,13 +32,13 @@ func (a *Auth) Required(next http.Handler) http.Handler {
 		h := r.Header.Get("Authorization")
 		const p = "Bearer "
 		if len(h) <= len(p) || !strings.EqualFold(h[:len(p)], p) {
-			api.RespondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Требуется авторизация")
+			response.RespondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Требуется авторизация")
 			return
 		}
 		tok := strings.TrimSpace(h[len(p):])
 		id, err := jwt.ParseAccessToken(tok, a.AccessSecret)
 		if err != nil {
-			api.RespondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Требуется авторизация")
+			response.RespondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Требуется авторизация")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(authctx.WithUserID(r.Context(), id)))

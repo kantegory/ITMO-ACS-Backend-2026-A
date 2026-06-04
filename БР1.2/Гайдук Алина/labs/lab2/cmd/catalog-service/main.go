@@ -10,9 +10,9 @@ import (
 	"recipehub/internal/config"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/catalogrepo"
-	cataloghttp "recipehub/internal/interfaces/http/catalog"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
+	cataloghttp "recipehub/internal/transport/http/catalog"
 	catalogusecase "recipehub/internal/usecase/catalog"
 )
 

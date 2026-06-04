@@ -11,9 +11,9 @@ import (
 	"recipehub/internal/infrastructure/clients/identityclient"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/blogrepo"
-	bloghttp "recipehub/internal/interfaces/http/blog"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
+	bloghttp "recipehub/internal/transport/http/blog"
 	blogusecase "recipehub/internal/usecase/blog"
 )
 
