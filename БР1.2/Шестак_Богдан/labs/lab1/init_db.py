@@ -37,7 +37,7 @@ def init_db():
                 db.add(skill)
 
         db.commit()
-        print("✓ Skills added")
+        print("Skills added")
 
     except Exception as e:
         db.rollback()

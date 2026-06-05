@@ -36,7 +36,7 @@ class ApplicationStatus(str, Enum):
     rejected = "rejected"
 
 
-# ── Auth ────────────────────────────────────────────
+#Auth
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -61,7 +61,7 @@ class TokenPair(BaseModel):
     expires_in: int
 
 
-# ── User ────────────────────────────────────────────
+#User
 
 class UserShort(BaseModel):
     id: int
@@ -104,7 +104,7 @@ class LoginResponse(BaseModel):
     tokens: TokenPair
 
 
-# ── Skill ────────────────────────────────────────────
+#Skill
 
 class SkillResponse(BaseModel):
     id: int
@@ -126,7 +126,7 @@ class SkillListResponse(BaseModel):
     items: List[SkillResponse]
 
 
-# ── Work Experience ─────────────────────────────────
+#Work Experience
 
 class WorkExperienceResponse(BaseModel):
     id: int
@@ -148,7 +148,7 @@ class CreateExperienceRequest(BaseModel):
     description: Optional[str] = None
 
 
-# ── Education ────────────────────────────────────────
+#Education
 
 class EducationResponse(BaseModel):
     id: int
@@ -170,7 +170,7 @@ class CreateEducationRequest(BaseModel):
     graduated_at: Optional[date] = None
 
 
-# ── Resume ────────────────────────────────────────────
+#Resume
 
 class ResumeShort(BaseModel):
     id: int
@@ -226,7 +226,7 @@ class UpdateSkillsRequest(BaseModel):
     skills: List[SkillEntry]
 
 
-# ── Company ────────────────────────────────────────────
+#Company
 
 class Company(BaseModel):
     id: int
@@ -242,7 +242,7 @@ class Company(BaseModel):
         from_attributes = True
 
 
-# ── Vacancy ────────────────────────────────────────────
+#Vacancy
 
 class VacancyShort(BaseModel):
     id: int
@@ -324,7 +324,7 @@ class VacancyMyListResponse(BaseModel):
     pagination: Pagination
 
 
-# ── Application ────────────────────────────────────────
+#Application
 
 class Application(BaseModel):
     id: int
@@ -352,7 +352,7 @@ class ApplicationListResponse(BaseModel):
     pagination: Pagination
 
 
-# ── Error ────────────────────────────────────────────
+#Error
 
 class ApiError(BaseModel):
     code: str

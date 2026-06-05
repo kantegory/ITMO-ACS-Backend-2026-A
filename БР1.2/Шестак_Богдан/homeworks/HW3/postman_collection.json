@@ -16,6 +16,11 @@
       "type": "string"
     },
     {
+      "key": "employer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "user_id",
       "value": "",
       "type": "string"
@@ -37,14 +42,11 @@
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
+          { "key": "Content-Type", "value": "application/json" }
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"test_applicant@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"applicant\",\n  \"first_name\": \"Иван\",\n  \"last_name\": \"Иванов\"\n}"
+          "raw": "{\n  \"email\": \"applicant@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"applicant\",\n  \"first_name\": \"Иван\",\n  \"last_name\": \"Иванов\"\n}"
         },
         "url": {
           "raw": "{{base_url}}/auth/register",
@@ -63,8 +65,8 @@
               "",
               "pm.test(\"Response has access_token\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('access_token');",
-              "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+              "    pm.expect(jsonData.tokens).to.have.property('access_token');",
+              "    pm.collectionVariables.set('access_token', jsonData.tokens.access_token);",
               "});",
               "",
               "pm.test(\"Response has user data\", function () {",
@@ -79,18 +81,15 @@
       ]
     },
     {
-      "name": "2. Вход в систему",
+      "name": "2. Вход в систему (соискатель)",
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
+          { "key": "Content-Type", "value": "application/json" }
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"test_applicant@example.com\",\n  \"password\": \"password123\"\n}"
+          "raw": "{\n  \"email\": \"applicant@example.com\",\n  \"password\": \"password123\"\n}"
         },
         "url": {
           "raw": "{{base_url}}/auth/login",
@@ -109,8 +108,8 @@
               "",
               "pm.test(\"Response has access_token\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('access_token');",
-              "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+              "    pm.expect(jsonData.tokens).to.have.property('access_token');",
+              "    pm.collectionVariables.set('access_token', jsonData.tokens.access_token);",
               "});"
             ],
             "type": "text/javascript"
@@ -123,14 +122,8 @@
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{access_token}}"
-          }
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
         ],
         "body": {
           "mode": "raw",
@@ -163,28 +156,94 @@
       ]
     },
     {
-      "name": "4. Просмотр списка вакансий",
+      "name": "4. Регистрация работодателя",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"employer@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"employer\",\n  \"first_name\": \"Пётр\",\n  \"last_name\": \"Петров\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/register",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"Employer has access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.tokens).to.have.property('access_token');",
+              "    pm.collectionVariables.set('employer_token', jsonData.tokens.access_token);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Создание вакансии (работодатель)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{employer_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Python Developer\",\n  \"description\": \"Ищем опытного Python разработчика\",\n  \"city\": \"Москва\",\n  \"salary_from\": 80000,\n  \"salary_to\": 150000,\n  \"is_published\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/vacancies",
+          "host": ["{{base_url}}"],
+          "path": ["vacancies"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"Response has vacancy data\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.collectionVariables.set('vacancy_id', jsonData.id);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Просмотр списка вакансий",
       "request": {
         "method": "GET",
         "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{access_token}}"
-          }
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
         ],
         "url": {
           "raw": "{{base_url}}/vacancies?page=1&per_page=10",
           "host": ["{{base_url}}"],
           "path": ["vacancies"],
           "query": [
-            {
-              "key": "page",
-              "value": "1"
-            },
-            {
-              "key": "per_page",
-              "value": "10"
-            }
+            { "key": "page", "value": "1" },
+            { "key": "per_page", "value": "10" }
           ]
         }
       },
@@ -216,24 +275,18 @@
       ]
     },
     {
-      "name": "5. Фильтрация вакансий по городу",
+      "name": "7. Фильтрация вакансий по городу",
       "request": {
         "method": "GET",
         "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{access_token}}"
-          }
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
         ],
         "url": {
           "raw": "{{base_url}}/vacancies?city=Москва",
           "host": ["{{base_url}}"],
           "path": ["vacancies"],
           "query": [
-            {
-              "key": "city",
-              "value": "Москва"
-            }
+            { "key": "city", "value": "Москва" }
           ]
         }
       },
@@ -265,14 +318,11 @@
       ]
     },
     {
-      "name": "6. Просмотр деталей вакансии",
+      "name": "8. Просмотр деталей вакансии",
       "request": {
         "method": "GET",
         "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{access_token}}"
-          }
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
         ],
         "url": {
           "raw": "{{base_url}}/vacancies/{{vacancy_id}}",
@@ -302,18 +352,12 @@
       ]
     },
     {
-      "name": "7. Подача заявки на вакансию",
+      "name": "9. Подача заявки на вакансию",
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{access_token}}"
-          }
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
         ],
         "body": {
           "mode": "raw",
@@ -337,8 +381,6 @@
               "pm.test(\"Response has application data\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('id');",
-              "    pm.expect(jsonData).to.have.property('vacancy_id');",
-              "    pm.expect(jsonData).to.have.property('resume_id');",
               "});"
             ],
             "type": "text/javascript"

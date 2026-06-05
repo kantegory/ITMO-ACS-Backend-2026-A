@@ -1,0 +1,331 @@
+openapi: 3.0.3
+
+info:
+  title: Job Platform — Internal API
+  description: >
+    Внутренние эндпоинты для межсервисного взаимодействия.
+    Недоступны через API Gateway, используются только внутри сети микросервисов.
+  version: 1.0.0
+
+servers:
+  - url: http://auth-service:8001
+    description: auth-service
+  - url: http://vacancy-service:8002
+    description: vacancy-service
+  - url: http://resume-service:8003
+    description: resume-service
+
+tags:
+  - name: auth-service
+    description: Внутренние эндпоинты сервиса аутентификации
+  - name: vacancy-service
+    description: Внутренние эндпоинты сервиса вакансий
+  - name: resume-service
+    description: Внутренние эндпоинты сервиса резюме
+
+paths:
+
+  # auth-service
+  /internal/validate:
+    get:
+      tags:
+        - auth-service
+      summary: Валидация JWT-токена
+      description: >
+        Проверяет переданный access-токен и возвращает данные пользователя.
+        Вызывается vacancy-service, resume-service и application-service
+        при каждом защищённом запросе.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: JWT access-токен из заголовка Authorization клиента
+          schema:
+            type: string
+            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        "200":
+          description: Токен валиден, данные пользователя возвращены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenData"
+              example:
+                user_id: 42
+                email: "ivan@example.com"
+                role: "applicant"
+        "401":
+          description: Токен недействителен или истёк
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Invalid token"
+        "503":
+          description: auth-service недоступен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Auth service unavailable"
+
+  # vacancy-service
+  /internal/vacancies/{vacancy_id}:
+    get:
+      tags:
+        - vacancy-service
+      summary: Получение данных вакансии
+      description: >
+        Возвращает данные вакансии для валидации при создании отклика.
+        Вызывается application-service: проверяет существование вакансии,
+        её активность и данные компании (включая owner_id для авторизации).
+      parameters:
+        - name: vacancy_id
+          in: path
+          required: true
+          description: Идентификатор вакансии
+          schema:
+            type: integer
+            example: 7
+      responses:
+        "200":
+          description: Вакансия найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VacancyInternal"
+              example:
+                id: 7
+                title: "Python Backend Developer"
+                is_active: true
+                company_id: 3
+                company_name: "Yandex"
+                company_logo: "https://cdn.example.com/logo.png"
+                city: "Санкт-Петербург"
+                salary_from: 150000
+                salary_to: 250000
+                experience: "one_to_three"
+                employment_type: "full_time"
+                published_at: "2026-04-01T10:00:00"
+                owner_id: 15
+        "404":
+          description: Вакансия не найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Vacancy not found"
+        "503":
+          description: vacancy-service недоступен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Vacancy service unavailable"
+
+  # resume-service
+  /resumes/internal/{resume_id}:
+    get:
+      tags:
+        - resume-service
+      summary: Получение данных резюме
+      description: >
+        Возвращает данные резюме для валидации при создании отклика.
+        Вызывается application-service: проверяет существование резюме
+        и принадлежность текущему пользователю (сравнение user_id).
+      parameters:
+        - name: resume_id
+          in: path
+          required: true
+          description: Идентификатор резюме
+          schema:
+            type: integer
+            example: 12
+      responses:
+        "200":
+          description: Резюме найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeInternal"
+              example:
+                id: 12
+                user_id: 42
+                title: "Python Developer"
+                desired_position: "Backend Engineer"
+                desired_salary: 180000
+                city: "Москва"
+                is_published: true
+                updated_at: "2026-05-15T14:30:00"
+        "404":
+          description: Резюме не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Resume not found"
+        "503":
+          description: resume-service недоступен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "Resume service unavailable"
+
+
+# Компоненты (переиспользуемые схемы)
+components:
+  schemas:
+
+    TokenData:
+      type: object
+      description: Данные пользователя, извлечённые из JWT-токена
+      required:
+        - user_id
+        - email
+        - role
+      properties:
+        user_id:
+          type: integer
+          description: Идентификатор пользователя
+          example: 42
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+          example: "ivan@example.com"
+        role:
+          type: string
+          enum:
+            - applicant
+            - employer
+          description: Роль пользователя в системе
+          example: "applicant"
+
+    VacancyInternal:
+      type: object
+      description: Данные вакансии для межсервисной валидации
+      required:
+        - id
+        - title
+        - is_active
+        - company_id
+        - company_name
+        - experience
+        - employment_type
+        - published_at
+        - owner_id
+      properties:
+        id:
+          type: integer
+          example: 7
+        title:
+          type: string
+          example: "Python Backend Developer"
+        is_active:
+          type: boolean
+          description: Активна ли вакансия (принимает ли отклики)
+          example: true
+        company_id:
+          type: integer
+          example: 3
+        company_name:
+          type: string
+          example: "Yandex"
+        company_logo:
+          type: string
+          nullable: true
+          example: "https://cdn.example.com/logo.png"
+        city:
+          type: string
+          nullable: true
+          example: "Санкт-Петербург"
+        salary_from:
+          type: integer
+          nullable: true
+          example: 150000
+        salary_to:
+          type: integer
+          nullable: true
+          example: 250000
+        experience:
+          type: string
+          enum:
+            - no_exp
+            - one_to_three
+            - three_to_six
+            - six_plus
+          example: "one_to_three"
+        employment_type:
+          type: string
+          enum:
+            - full_time
+            - part_time
+            - contract
+            - internship
+          example: "full_time"
+        published_at:
+          type: string
+          format: date-time
+          example: "2026-04-01T10:00:00"
+        owner_id:
+          type: integer
+          description: user_id работодателя — владельца вакансии
+          example: 15
+
+    ResumeInternal:
+      type: object
+      description: Данные резюме для межсервисной валидации
+      required:
+        - id
+        - user_id
+        - title
+        - is_published
+        - updated_at
+      properties:
+        id:
+          type: integer
+          example: 12
+        user_id:
+          type: integer
+          description: Идентификатор владельца резюме (из auth-service)
+          example: 42
+        title:
+          type: string
+          example: "Python Developer"
+        desired_position:
+          type: string
+          nullable: true
+          example: "Backend Engineer"
+        desired_salary:
+          type: integer
+          nullable: true
+          example: 180000
+        city:
+          type: string
+          nullable: true
+          example: "Москва"
+        is_published:
+          type: boolean
+          example: true
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-05-15T14:30:00"
+
+    Error:
+      type: object
+      description: Единый формат ошибки
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Описание ошибки
+          example: "Vacancy not found"
