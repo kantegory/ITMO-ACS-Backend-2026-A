@@ -1,0 +1,656 @@
+openapi: 3.0.3
+info:
+  title: RecipeHub — вызовы между микросервисами
+  description: |
+    Это не публичный API для фронта (`/api/v1` живёт отдельно в монолите и потом на gateway).
+    Здесь зафиксировано, **как наши микросервисы дергают друг друга** после распила `labs/lab1`:
+    проверить, что пользователь или рецепт существует, подтянуть короткую карточку для списка,
+    пакетно забрать лайки/комменты — всё то, что раньше делалось одним JOIN в одной базе.
+
+    Префикс `/internal/v1` специально отрезан от внешнего контракта: его не светим наружу,
+    защищаем отдельно (см. security ниже).
+
+    Версия черновика под ДЗ4 — при реализации URL на проде будут свои, главное сохранить пути и смысл.
+  version: 1.0.0
+
+servers:
+  - url: https://identity.internal
+    description: микросервис пользователей (identity), пример хоста в приватной сети
+  - url: https://catalog.internal
+    description: микросервис справочников
+  - url: https://recipe.internal
+    description: микросервис рецептов
+  - url: https://blog.internal
+    description: микросервис постов блога
+  - url: https://engagement.internal
+    description: микросервис лайков, комментариев и сохранённого
+
+tags:
+  - name: Пользователи
+    description: То, что о пользователе нужно recipe, blog, engagement — без лишней утечки полей.
+  - name: Справочники
+    description: Проверка ID из каталога перед сохранением рецепта.
+  - name: Рецепты
+    description: Короткая информация о рецепте и агрегаты для профиля автора.
+  - name: Посты
+    description: То же для поста — в основном для engagement и проверок.
+  - name: Активность
+    description: Лайки и комментарии — отдаём счётчики пачкой, чтобы не долбить сервис по одному id.
+
+security:
+  - ServiceToken: []
+
+components:
+  securitySchemes:
+    ServiceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: |
+        Общий секрет или выпущенный токен «сервис → сервис», не пользовательский JWT.
+        На проде к этому обычно добавляют mTLS или mesh — в OpenAPI 3.0 это не описывается, это на стороне деплоя.
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: Не нашли то, что просили
+            details:
+              type: array
+              items:
+                type: string
+
+    UserShortPreview:
+      type: object
+      description: Минимум полей, чтобы красиво показать автора в списке рецепта. Email сюда не тащим.
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+
+    UserExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+
+    BatchUsersRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          maxItems: 200
+          description: Список user id; дубликаты лучше сжать на стороне вызывающего сервиса.
+
+    BatchUsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserShortPreview"
+
+    CatalogValidateRequest:
+      type: object
+      properties:
+        dish_type_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        difficulty_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        tag_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        ingredient_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        unit_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    CatalogValidateResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        invalid:
+          type: object
+          description: Где именно «плывут» id — чтобы recipe-service мог вернуть 422 человеку.
+          properties:
+            dish_type_ids:
+              type: array
+              items:
+                type: integer
+                format: int64
+            difficulty_ids:
+              type: array
+              items:
+                type: integer
+                format: int64
+            tag_ids:
+              type: array
+              items:
+                type: integer
+                format: int64
+            ingredient_ids:
+              type: array
+              items:
+                type: integer
+                format: int64
+            unit_ids:
+              type: array
+              items:
+                type: integer
+                format: int64
+
+    RecipeBriefCard:
+      type: object
+      description: Обложка и заголовок без полного тела рецепта — хватает для сохранённых и проверок.
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        cover_image_url:
+          type: string
+          nullable: true
+        author_id:
+          type: integer
+          format: int64
+
+    RecipeExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+
+    PostBriefCard:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        author_id:
+          type: integer
+          format: int64
+
+    PostExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+
+    AuthorRecipeCountResponse:
+      type: object
+      description: То же, что в монолите считали UserRecipesCount для карточки профиля.
+      properties:
+        count:
+          type: integer
+          format: int64
+
+    RecipeIdsBatchRequest:
+      type: object
+      required: [recipe_ids]
+      properties:
+        recipe_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          maxItems: 200
+
+    RecipeStatsBatchItem:
+      type: object
+      properties:
+        recipe_id:
+          type: integer
+          format: int64
+        likes_count:
+          type: integer
+          format: int64
+        comments_count:
+          type: integer
+          format: int64
+
+    RecipeStatsBatchResponse:
+      type: object
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeStatsBatchItem"
+
+    PostIdsBatchRequest:
+      type: object
+      required: [post_ids]
+      properties:
+        post_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          maxItems: 200
+
+    PostStatsBatchItem:
+      type: object
+      properties:
+        post_id:
+          type: integer
+          format: int64
+        likes_count:
+          type: integer
+          format: int64
+        comments_count:
+          type: integer
+          format: int64
+
+    PostStatsBatchResponse:
+      type: object
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: "#/components/schemas/PostStatsBatchItem"
+
+paths:
+  /internal/v1/users/{id}/exists:
+    get:
+      tags: [Пользователи]
+      summary: Есть ли такой пользователь
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Нашли
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UserExistsResponse"
+              examples:
+                exists:
+                  value:
+                    data:
+                      exists: true
+        "404":
+          description: Такого id нет
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: NOT_FOUND
+                      message: Пользователь не найден
+
+  /internal/v1/users/{id}:
+    get:
+      tags: [Пользователи]
+      summary: Короткий профиль по id
+      description: Нужен recipe/blog, когда уже знают id, а отображать имя и аватар надо.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UserShortPreview"
+        "404":
+          description: Нет пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/v1/users/batch:
+    post:
+      tags: [Пользователи]
+      summary: Несколько коротких профилей за один запрос
+      description: |
+        Чтобы не делать N отдельных GET на списке рецептов.
+        Что делать с id, которых нет в базе — на ваше усмотрение (не возвращать строку или отдавать пустышки), лучше явно зафиксировать в коде.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchUsersRequest"
+            examples:
+              sample:
+                value:
+                  ids: [1, 2, 42]
+      responses:
+        "200":
+          description: Ок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/BatchUsersResponse"
+              examples:
+                ok:
+                  value:
+                    data:
+                      users:
+                        - id: 1
+                          username: chef_alina
+                          display_name: Алина
+                          avatar_url: null
+        "400":
+          description: Кривой JSON, пустой список или слишком длинный массив
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badRequest:
+                  value:
+                    error:
+                      code: BAD_REQUEST
+                      message: Некорректный список идентификаторов
+                      details:
+                        - Превышен лимит ids
+
+  /internal/v1/catalog/validate-ids:
+    post:
+      tags: [Справочники]
+      summary: Пробегаемся по id справочников
+      description: Recipe-service шлёт сюда всё, что пришло от клиента в теле рецепта, и смотрит, что вернулось в `invalid`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogValidateRequest"
+      responses:
+        "200":
+          description: Ответ всегда 200, если JSON разобрался — смотрите поле `valid`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CatalogValidateResponse"
+              examples:
+                invalid:
+                  value:
+                    data:
+                      valid: false
+                      invalid:
+                        tag_ids: [999]
+        "400":
+          description: Тело запроса вообще не разобралось
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/v1/recipes/{id}/exists:
+    get:
+      tags: [Рецепты]
+      summary: Рецепт с таким id есть или нет
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Есть
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RecipeExistsResponse"
+        "404":
+          description: Нет рецепта
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/v1/recipes/{id}/brief:
+    get:
+      tags: [Рецепты]
+      summary: Укороченная карточка рецепта
+      description: Для «сохранённых», пушей, проверок в engagement — без шагов и ингредиентов.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RecipeBriefCard"
+        "404":
+          description: Не нашли
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/v1/posts/{id}/exists:
+    get:
+      tags: [Посты]
+      summary: Пост существует?
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Да
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PostExistsResponse"
+        "404":
+          description: Нет поста
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/v1/posts/{id}/brief:
+    get:
+      tags: [Посты]
+      summary: Коротко о посте
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PostBriefCard"
+        "404":
+          description: Не нашли
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/v1/authors/{userId}/recipe-count:
+    get:
+      tags: [Рецепты]
+      summary: Сколько рецептов у автора
+      description: Микросервис пользователей дергает recipe, когда собирает профиль и поле вроде `recipes_count`.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AuthorRecipeCountResponse"
+              examples:
+                sample:
+                  value:
+                    data:
+                      count: 8
+
+  /internal/v1/stats/recipes/batch:
+    post:
+      tags: [Активность]
+      summary: Лайки и комменты по списку рецептов
+      description: |
+        Раньше в монолите для каждой строки списка дергали RecipeLikesCount и RecipeCommentsCount.
+        Здесь одним телом — меньше сетевого шума между микросервисами.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipeIdsBatchRequest"
+      responses:
+        "200":
+          description: Ок; если какого-то id нет в engagement — можно не включать строку или вернуть нули (договориться в команде).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RecipeStatsBatchResponse"
+              examples:
+                sample:
+                  value:
+                    data:
+                      stats:
+                        - recipe_id: 10
+                          likes_count: 5
+                          comments_count: 2
+        "400":
+          description: Пустой массив или слишком длинный
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badRequest:
+                  value:
+                    error:
+                      code: BAD_REQUEST
+                      message: Некорректный список recipe_ids
+
+  /internal/v1/stats/posts/batch:
+    post:
+      tags: [Активность]
+      summary: То же для постов
+      description: Аналог PostLikesCount / PostCommentsCount из монолита.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostIdsBatchRequest"
+      responses:
+        "200":
+          description: Ок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PostStatsBatchResponse"
+        "400":
+          description: Кривое тело
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

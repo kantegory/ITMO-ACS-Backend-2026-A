@@ -1,0 +1,316 @@
+{
+  "info": {
+    "_postman_id": "f8c2b110-dz03-4a00-recipe-hub-hw3",
+    "name": "RecipeHub - ДЗ3, один сценарий",
+    "description": "Один проход по основному сценарию: регистрация, справочники, новый рецепт, список с пагинацией, поиск по строке, открыть рецепт из выдачи (или тот что только что создали), написать комментарий.\n\nВ Collection Runner включи все шаги по порядку сверху вниз.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "accessToken", "value": "" },
+    { "key": "dishTypeId", "value": "" },
+    { "key": "difficultyId", "value": "" },
+    { "key": "ingredientId", "value": "" },
+    { "key": "recipeId", "value": "" },
+    { "key": "recipeBrowseId", "value": "" },
+    { "key": "testEmail", "value": "" },
+    { "key": "testUsername", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "ДЗ3 - основной сценарий RecipeHub",
+      "item": [
+        {
+          "name": "01 Сервер жив (healthz)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"В теле status равен ok\", function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.status).to.eql(\"ok\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz"
+          }
+        },
+        {
+          "name": "02 Регистрация",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var id = Date.now();",
+                  "pm.collectionVariables.set(\"testEmail\", \"hw3_\" + id + \"@example.com\");",
+                  "pm.collectionVariables.set(\"testUsername\", \"hw3_\" + id);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Регистрация прошла, код 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var j = pm.response.json();",
+                  "pm.test(\"В ответе есть access_token\", function () {",
+                  "    pm.expect(j.data).to.have.property(\"access_token\");",
+                  "});",
+                  "pm.collectionVariables.set(\"accessToken\", j.data.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"username\": \"{{testUsername}}\",\n  \"password\": \"password12345\",\n  \"display_name\": \"Тест Postman ДЗ3\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          }
+        },
+        {
+          "name": "03 Справочник - типы блюд",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Список типов блюд не пустой\", function () {",
+                  "    pm.expect(j.data).to.be.an(\"array\").that.is.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set(\"dishTypeId\", String(j.data[0].id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/dish-types"
+          }
+        },
+        {
+          "name": "04 Справочник - сложность",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Есть хотя бы один уровень сложности\", function () {",
+                  "    pm.expect(j.data.length).to.be.at.least(1);",
+                  "});",
+                  "pm.collectionVariables.set(\"difficultyId\", String(j.data[0].id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/difficulties"
+          }
+        },
+        {
+          "name": "05 Справочник - ингредиенты (первые 10)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"В выборке есть хотя бы один ингредиент\", function () {",
+                  "    pm.expect(j.data.length).to.be.at.least(1);",
+                  "});",
+                  "pm.collectionVariables.set(\"ingredientId\", String(j.data[0].id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/ingredients?limit=10"
+          }
+        },
+        {
+          "name": "06 Создать рецепт",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Рецепт создался, код 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var j = pm.response.json();",
+                  "pm.test(\"В ответе есть id рецепта\", function () {",
+                  "    pm.expect(j.data).to.have.property(\"id\");",
+                  "});",
+                  "pm.collectionVariables.set(\"recipeId\", String(j.data.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Рецепт для ДЗ3 Postman (HW3)\",\n  \"description\": \"Черновик под автоматический прогон\",\n  \"dish_type_id\": {{dishTypeId}},\n  \"difficulty_id\": {{difficultyId}},\n  \"prep_time_minutes\": 5,\n  \"cook_time_minutes\": 10,\n  \"servings\": 2,\n  \"steps\": [\n    { \"step_number\": 1, \"description\": \"Подготовить продукты\" }\n  ],\n  \"ingredients\": [\n    { \"ingredient_id\": {{ingredientId}}, \"quantity\": 100, \"unit_id\": 1 }\n  ],\n  \"tag_ids\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/recipes"
+          }
+        },
+        {
+          "name": "07 Список рецептов с пагинацией",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Есть массив data и блок pagination\", function () {",
+                  "    pm.expect(j).to.have.keys(\"data\", \"pagination\");",
+                  "    pm.expect(j.data).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/recipes?limit=20&offset=0"
+          }
+        },
+        {
+          "name": "08 Поиск рецептов по строке HW3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Поиск вернул массив в data\", function () {",
+                  "    pm.expect(j.data).to.be.an(\"array\");",
+                  "});",
+                  "var list = j.data || [];",
+                  "var fallback = pm.collectionVariables.get(\"recipeId\");",
+                  "var pickId;",
+                  "if (list.length > 0) {",
+                  "    var idx = Math.floor(Math.random() * list.length);",
+                  "    pickId = String(list[idx].id);",
+                  "} else {",
+                  "    pickId = fallback;",
+                  "}",
+                  "pm.test(\"Есть id рецепта для следующего запроса\", function () {",
+                  "    pm.expect(pickId).to.be.a(\"string\").that.is.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set(\"recipeBrowseId\", pickId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/recipes?search=HW3&limit=50"
+          }
+        },
+        {
+          "name": "09 Открыть рецепт по id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Пришёл ответ 200\", function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"В карточке есть название и состав\", function () {",
+                  "    pm.expect(j.data).to.have.property(\"title\");",
+                  "    pm.expect(j.data).to.have.property(\"ingredients\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/recipes/{{recipeBrowseId}}"
+          }
+        },
+        {
+          "name": "10 Комментарий к рецепту",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Комментарий создался, код 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var j = pm.response.json();",
+                  "pm.test(\"В ответе есть поле content\", function () {",
+                  "    pm.expect(j.data).to.have.property(\"content\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Комментарий из сценария ДЗ3 в Postman\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v1/recipes/{{recipeBrowseId}}/comments"
+          }
+        }
+      ]
+    }
+  ]
+}
