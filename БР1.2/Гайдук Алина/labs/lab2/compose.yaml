@@ -7,6 +7,8 @@ x-service-env: &service-env
   JWT_ACCESS_TTL_SEC: ${JWT_ACCESS_TTL_SEC:-3600}
   JWT_REFRESH_TTL_SEC: ${JWT_REFRESH_TTL_SEC:-604800}
   SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+  EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-recipehub.events}
   IDENTITY_SERVICE_URL: http://identity-service:8080
   CATALOG_SERVICE_URL: http://catalog-service:8080
   RECIPE_SERVICE_URL: http://recipe-service:8080
@@ -41,6 +43,19 @@ services:
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-recipehub} -d $${POSTGRES_DB:-recipehub_admin}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -84,8 +99,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "${IDENTITY_SERVICE_PORT:-8081}:8080"
+    expose:
+      - "8080"
     environment:
       <<: *service-env
       IDENTITY_SERVICE_DATABASE_URL: ${IDENTITY_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_identity?sslmode=disable}
@@ -103,8 +118,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "${CATALOG_SERVICE_PORT:-8082}:8080"
+    expose:
+      - "8080"
     environment:
       <<: *service-env
       CATALOG_SERVICE_DATABASE_URL: ${CATALOG_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_catalog?sslmode=disable}
@@ -124,8 +139,10 @@ services:
         condition: service_healthy
       catalog-service:
         condition: service_healthy
-    ports:
-      - "${RECIPE_SERVICE_PORT:-8083}:8080"
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
     environment:
       <<: *service-env
       RECIPE_SERVICE_DATABASE_URL: ${RECIPE_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_recipe?sslmode=disable}
@@ -145,8 +162,10 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_healthy
-    ports:
-      - "${BLOG_SERVICE_PORT:-8084}:8080"
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
     environment:
       <<: *service-env
       BLOG_SERVICE_DATABASE_URL: ${BLOG_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_blog?sslmode=disable}
@@ -170,8 +189,10 @@ services:
         condition: service_healthy
       blog-service:
         condition: service_healthy
-    ports:
-      - "${ENGAGEMENT_SERVICE_PORT:-8085}:8080"
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
     environment:
       <<: *service-env
       ENGAGEMENT_SERVICE_DATABASE_URL: ${ENGAGEMENT_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub_engagement?sslmode=disable}

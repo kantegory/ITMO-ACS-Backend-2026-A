@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	catalogdomain "recipehub/internal/domain/catalog"
+	eventsdomain "recipehub/internal/domain/events"
 	identitydomain "recipehub/internal/domain/identity"
 	recipedomain "recipehub/internal/domain/recipe"
 )
@@ -26,11 +27,14 @@ var (
 type Repository interface {
 	CreateRecipe(ctx context.Context, recipe recipedomain.Recipe) (recipedomain.Recipe, error)
 	RecipeByID(ctx context.Context, id uint64) (recipedomain.Recipe, error)
+	RecipeBriefsByIDs(ctx context.Context, ids []uint64) ([]recipedomain.Recipe, error)
 	ListRecipes(ctx context.Context, filters recipedomain.Filters) (recipedomain.Page[recipedomain.Recipe], error)
 	UpdateRecipe(ctx context.Context, recipe recipedomain.Recipe) (recipedomain.Recipe, error)
 	DeleteRecipe(ctx context.Context, id uint64) error
 	RecipeExists(ctx context.Context, id uint64) (bool, error)
 	AuthorRecipeCount(ctx context.Context, authorID uint64) (int64, error)
+	EngagementStatsBatch(ctx context.Context, ids []uint64) (map[uint64]recipedomain.EngagementStats, error)
+	ApplyEngagementEvent(ctx context.Context, event eventsdomain.Envelope) error
 }
 
 // IdentityGateway is the identity-service port required by recipe use cases.
@@ -195,9 +199,19 @@ func (s *Service) RecipeBrief(ctx context.Context, id uint64) (recipedomain.Reci
 	return s.repo.RecipeByID(ctx, id)
 }
 
+// RecipeBriefsBatch returns short recipe cards for internal consumers.
+func (s *Service) RecipeBriefsBatch(ctx context.Context, ids []uint64) ([]recipedomain.Recipe, error) {
+	return s.repo.RecipeBriefsByIDs(ctx, ids)
+}
+
 // AuthorRecipeCount returns number of recipes by author.
 func (s *Service) AuthorRecipeCount(ctx context.Context, authorID uint64) (int64, error) {
 	return s.repo.AuthorRecipeCount(ctx, authorID)
+}
+
+// HandleIntegrationEvent applies asynchronous engagement events to recipe projections.
+func (s *Service) HandleIntegrationEvent(ctx context.Context, event eventsdomain.Envelope) error {
+	return s.repo.ApplyEngagementEvent(ctx, event)
 }
 
 func (s *Service) validateCatalogRefs(ctx context.Context, recipe recipedomain.Recipe) error {
@@ -265,13 +279,28 @@ func (s *Service) attachAuthors(ctx context.Context, recipes []recipedomain.Reci
 }
 
 func (s *Service) recipeStats(ctx context.Context, recipes []recipedomain.Recipe, viewerID *uint64) (map[uint64]recipedomain.EngagementStats, error) {
-	if s.engagement == nil || len(recipes) == 0 {
+	if len(recipes) == 0 {
 		return map[uint64]recipedomain.EngagementStats{}, nil
 	}
 
-	stats, err := s.engagement.RecipeStatsBatch(ctx, uniqueRecipeIDs(recipes), viewerID)
+	ids := uniqueRecipeIDs(recipes)
+	stats, err := s.repo.EngagementStatsBatch(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("load recipe engagement stats: %w", err)
+		return nil, fmt.Errorf("load recipe engagement projections: %w", err)
+	}
+	if s.engagement == nil || viewerID == nil {
+		return stats, nil
+	}
+
+	viewerStats, err := s.engagement.RecipeStatsBatch(ctx, ids, viewerID)
+	if err != nil {
+		return nil, fmt.Errorf("load recipe viewer flags: %w", err)
+	}
+	for id, item := range viewerStats {
+		current := stats[id]
+		current.IsLiked = item.IsLiked
+		current.IsSaved = item.IsSaved
+		stats[id] = current
 	}
 
 	return stats, nil

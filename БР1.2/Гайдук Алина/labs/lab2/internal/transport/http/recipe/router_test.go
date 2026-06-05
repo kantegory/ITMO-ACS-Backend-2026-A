@@ -27,6 +27,7 @@ func TestRouterProtectsRecipeMutationsAndInternalRoutes(t *testing.T) {
 		{name: "delete recipe", method: http.MethodDelete, path: "/api/v1/recipes/11"},
 		{name: "recipe exists", method: http.MethodGet, path: "/internal/v1/recipes/11/exists"},
 		{name: "recipe brief", method: http.MethodGet, path: "/internal/v1/recipes/11/brief"},
+		{name: "recipe briefs batch", method: http.MethodPost, path: "/internal/v1/recipes/briefs/batch"},
 		{name: "author recipe count", method: http.MethodGet, path: "/internal/v1/authors/7/recipe-count"},
 	}
 

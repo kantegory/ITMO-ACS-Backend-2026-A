@@ -2,6 +2,7 @@
 package recipeclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -68,6 +69,41 @@ func (c *Client) RecipeBrief(ctx context.Context, recipeID uint64) (recipedomain
 	}, nil
 }
 
+// RecipeBriefsBatch returns short recipe cards for recipe ids.
+func (c *Client) RecipeBriefsBatch(ctx context.Context, ids []uint64) ([]recipedomain.Recipe, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	body := struct {
+		IDs []uint64 `json:"ids"`
+	}{IDs: ids}
+	var response struct {
+		Recipes []struct {
+			ID            uint64  `json:"id"`
+			Title         string  `json:"title"`
+			CoverImageURL *string `json:"cover_image_url"`
+			AuthorID      uint64  `json:"author_id"`
+		} `json:"recipes"`
+	}
+
+	if err := c.doJSON(ctx, http.MethodPost, "/internal/v1/recipes/briefs/batch", body, &response); err != nil {
+		return nil, err
+	}
+
+	out := make([]recipedomain.Recipe, 0, len(response.Recipes))
+	for _, recipe := range response.Recipes {
+		out = append(out, recipedomain.Recipe{
+			ID:            recipe.ID,
+			Title:         recipe.Title,
+			CoverImageURL: recipe.CoverImageURL,
+			AuthorID:      recipe.AuthorID,
+		})
+	}
+
+	return out, nil
+}
+
 // AuthorRecipeCount returns number of recipes by author.
 func (c *Client) AuthorRecipeCount(ctx context.Context, authorID uint64) (int64, error) {
 	var response struct {
@@ -83,16 +119,34 @@ func (c *Client) AuthorRecipeCount(ctx context.Context, authorID uint64) (int64,
 }
 
 func (c *Client) doGET(ctx context.Context, path string, responseBody any) error {
+	return c.doJSON(ctx, http.MethodGet, path, nil, responseBody)
+}
+
+func (c *Client) doJSON(ctx context.Context, method, path string, requestBody, responseBody any) error {
 	endpoint, err := url.JoinPath(c.baseURL, path)
 	if err != nil {
 		return fmt.Errorf("build recipe url: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	var bodyReader *bytes.Reader
+	if requestBody != nil {
+		raw, err := json.Marshal(requestBody)
+		if err != nil {
+			return fmt.Errorf("marshal recipe request: %w", err)
+		}
+		bodyReader = bytes.NewReader(raw)
+	} else {
+		bodyReader = bytes.NewReader(nil)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyReader)
 	if err != nil {
 		return fmt.Errorf("create recipe request: %w", err)
 	}
 	req.Header.Set("X-Service-Token", c.serviceToken)
+	if requestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -104,6 +158,9 @@ func (c *Client) doGET(ctx context.Context, path string, responseBody any) error
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("recipe-service returned status %d", resp.StatusCode)
+	}
+	if responseBody == nil {
+		return nil
 	}
 	if err := json.NewDecoder(resp.Body).Decode(responseBody); err != nil {
 		return fmt.Errorf("decode recipe response: %w", err)

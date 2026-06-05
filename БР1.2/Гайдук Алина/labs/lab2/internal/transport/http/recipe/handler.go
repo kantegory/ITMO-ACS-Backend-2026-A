@@ -15,7 +15,10 @@ import (
 	recipeusecase "recipehub/internal/usecase/recipe"
 )
 
-const defaultRecipeLimit = 20
+const (
+	defaultRecipeLimit       = 20
+	maxRecipeBriefsBatchSize = 500
+)
 
 // Handler exposes recipe use cases over HTTP.
 type Handler struct {
@@ -195,6 +198,30 @@ func (h *Handler) Brief(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.RespondJSON(w, http.StatusOK, toBriefResponse(recipe))
+}
+
+// BriefsBatch handles POST /internal/v1/recipes/briefs/batch.
+func (h *Handler) BriefsBatch(w http.ResponseWriter, r *http.Request) {
+	var body recipeBriefsBatchRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if len(body.IDs) > maxRecipeBriefsBatchSize {
+		response.RespondError(w, http.StatusBadRequest, "BAD_REQUEST", "too many recipe ids")
+		return
+	}
+
+	recipes, err := h.service.RecipeBriefsBatch(r.Context(), body.IDs)
+	if respondRecipeError(w, err) {
+		return
+	}
+
+	out := make([]recipeBriefResponse, 0, len(recipes))
+	for _, recipe := range recipes {
+		out = append(out, toBriefResponse(recipe))
+	}
+
+	response.RespondJSON(w, http.StatusOK, recipeBriefsBatchResponse{Recipes: out})
 }
 
 // AuthorRecipeCount handles GET /internal/v1/authors/{userId}/recipe-count.

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	blogdomain "recipehub/internal/domain/blog"
+	eventsdomain "recipehub/internal/domain/events"
 	identitydomain "recipehub/internal/domain/identity"
 )
 
@@ -29,6 +30,8 @@ type Repository interface {
 	UpdatePost(ctx context.Context, post blogdomain.Post) (blogdomain.Post, error)
 	DeletePost(ctx context.Context, id uint64) error
 	PostExists(ctx context.Context, id uint64) (bool, error)
+	EngagementStatsBatch(ctx context.Context, ids []uint64) (map[uint64]blogdomain.EngagementStats, error)
+	ApplyEngagementEvent(ctx context.Context, event eventsdomain.Envelope) error
 }
 
 // IdentityGateway is the identity-service port required by blog use cases.
@@ -197,6 +200,11 @@ func (s *Service) PostBrief(ctx context.Context, postID uint64) (blogdomain.Post
 	return s.repo.PostByID(ctx, postID)
 }
 
+// HandleIntegrationEvent applies asynchronous engagement events to blog projections.
+func (s *Service) HandleIntegrationEvent(ctx context.Context, event eventsdomain.Envelope) error {
+	return s.repo.ApplyEngagementEvent(ctx, event)
+}
+
 func (s *Service) attachAuthor(ctx context.Context, post blogdomain.Post, viewerID *uint64) (blogdomain.PostWithAuthor, error) {
 	items, err := s.attachAuthors(ctx, []blogdomain.Post{post}, viewerID)
 	if err != nil {
@@ -243,13 +251,27 @@ func (s *Service) attachAuthors(ctx context.Context, posts []blogdomain.Post, vi
 }
 
 func (s *Service) postStats(ctx context.Context, posts []blogdomain.Post, viewerID *uint64) (map[uint64]blogdomain.EngagementStats, error) {
-	if s.engagement == nil || len(posts) == 0 {
+	if len(posts) == 0 {
 		return map[uint64]blogdomain.EngagementStats{}, nil
 	}
 
-	stats, err := s.engagement.PostStatsBatch(ctx, uniquePostIDs(posts), viewerID)
+	ids := uniquePostIDs(posts)
+	stats, err := s.repo.EngagementStatsBatch(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("load post engagement stats: %w", err)
+		return nil, fmt.Errorf("load post engagement projections: %w", err)
+	}
+	if s.engagement == nil || viewerID == nil {
+		return stats, nil
+	}
+
+	viewerStats, err := s.engagement.PostStatsBatch(ctx, ids, viewerID)
+	if err != nil {
+		return nil, fmt.Errorf("load post viewer flags: %w", err)
+	}
+	for id, item := range viewerStats {
+		current := stats[id]
+		current.IsLiked = item.IsLiked
+		stats[id] = current
 	}
 
 	return stats, nil

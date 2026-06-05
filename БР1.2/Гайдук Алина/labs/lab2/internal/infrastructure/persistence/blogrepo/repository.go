@@ -3,15 +3,23 @@ package blogrepo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 
 	blogdomain "recipehub/internal/domain/blog"
+	eventsdomain "recipehub/internal/domain/events"
 	blogusecase "recipehub/internal/usecase/blog"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-const postsTable = "posts"
+const (
+	postsTable           = "posts"
+	postStatsTable       = "post_engagement_stats"
+	processedEventsTable = "processed_events"
+)
 
 var _ blogusecase.Repository = (*Repository)(nil)
 
@@ -82,6 +90,90 @@ func (r *Repository) PostExists(ctx context.Context, id uint64) (bool, error) {
 	return count > 0, nil
 }
 
+// EngagementStatsBatch returns async engagement projections for post ids.
+func (r *Repository) EngagementStatsBatch(ctx context.Context, ids []uint64) (map[uint64]blogdomain.EngagementStats, error) {
+	out := make(map[uint64]blogdomain.EngagementStats, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	var rows []postStatsRow
+	if err := r.db.WithContext(ctx).Where("post_id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.PostID] = blogdomain.EngagementStats{
+			LikesCount:    row.LikesCount,
+			CommentsCount: row.CommentsCount,
+		}
+	}
+
+	return out, nil
+}
+
+// ApplyEngagementEvent updates local post read-model counters idempotently.
+func (r *Repository) ApplyEngagementEvent(ctx context.Context, event eventsdomain.Envelope) error {
+	targetID, likesDelta, commentsDelta, err := postEventDelta(event)
+	if err != nil {
+		return err
+	}
+	if targetID == 0 || likesDelta == 0 && commentsDelta == 0 {
+		return nil
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Create(&processedEventRow{EventID: event.EventID, EventType: event.EventType}).Error
+		if err != nil {
+			if isDuplicateKey(err) {
+				return nil
+			}
+			return err
+		}
+
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&postStatsRow{PostID: targetID}).Error; err != nil {
+			return err
+		}
+
+		return tx.Model(&postStatsRow{}).
+			Where("post_id = ?", targetID).
+			Updates(map[string]any{
+				"likes_count":    gorm.Expr("GREATEST(likes_count + ?, 0)", likesDelta),
+				"comments_count": gorm.Expr("GREATEST(comments_count + ?, 0)", commentsDelta),
+			}).Error
+	})
+}
+
+func postEventDelta(event eventsdomain.Envelope) (targetID uint64, likesDelta, commentsDelta int64, err error) {
+	switch event.EventType {
+	case eventsdomain.TypePostLiked:
+		var payload eventsdomain.LikePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, 1, 0, nil
+	case eventsdomain.TypePostUnliked:
+		var payload eventsdomain.LikePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, -1, 0, nil
+	case eventsdomain.TypePostCommentCreated:
+		var payload eventsdomain.CommentCreatedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, 0, 1, nil
+	case eventsdomain.TypePostCommentDeleted:
+		var payload eventsdomain.CommentDeletedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, 0, 0, err
+		}
+		return payload.TargetID, 0, -payload.DeletedCount, nil
+	default:
+		return 0, 0, 0, nil
+	}
+}
+
 func (r *Repository) list(_ context.Context, query *gorm.DB, limit, offset int) (blogdomain.Page[blogdomain.Post], error) {
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -113,6 +205,15 @@ func mapNotFound(err error) error {
 	}
 
 	return err
+}
+
+func isDuplicateKey(err error) bool {
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }
 
 func toDomainPost(row postRow) blogdomain.Post {

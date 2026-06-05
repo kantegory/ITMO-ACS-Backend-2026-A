@@ -9,5 +9,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&stepRow{},
 		&ingredientRow{},
 		&tagRow{},
+		&recipeStatsRow{},
+		&processedEventRow{},
 	)
 }

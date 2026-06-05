@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"path/filepath"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -10,8 +12,11 @@ import (
 	"recipehub/internal/infrastructure/clients/blogclient"
 	"recipehub/internal/infrastructure/clients/identityclient"
 	"recipehub/internal/infrastructure/clients/recipeclient"
+	"recipehub/internal/infrastructure/events/outboxrelay"
+	"recipehub/internal/infrastructure/events/rabbitpublisher"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/engagementrepo"
+	"recipehub/internal/platform/messaging/rabbitmq"
 	"recipehub/internal/platform/postgres"
 	"recipehub/internal/platform/server"
 	engagementhttp "recipehub/internal/transport/http/engagement"
@@ -38,8 +43,21 @@ func main() {
 		return
 	}
 
+	bus, err := rabbitmq.Dial(cfg.RabbitMQURL, cfg.EventsExchange)
+	if err != nil {
+		slog.Error("rabbitmq connection", "service", cfg.Name, "error", err)
+		return
+	}
+	defer func() { _ = bus.Close() }()
+
+	repo := engagementrepo.New(db)
+	publisher := rabbitpublisher.New(bus)
+	relayCtx, stopRelay := context.WithCancel(context.Background())
+	defer stopRelay()
+	outboxrelay.Start(relayCtx, repo, publisher, time.Second, 25)
+
 	service := engagementusecase.NewService(
-		engagementrepo.New(db),
+		repo,
 		identityclient.New(cfg.IdentityURL, cfg.ServiceToken),
 		recipeclient.New(cfg.RecipeURL, cfg.ServiceToken),
 		blogclient.New(cfg.BlogURL, cfg.ServiceToken),

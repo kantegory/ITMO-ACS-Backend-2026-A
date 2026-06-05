@@ -41,6 +41,7 @@ func NewRouter(cfg config.ServiceConfig, service *recipeusecase.Service) http.Ha
 	router.Route("/internal/v1", func(router chi.Router) {
 		router.With(serviceTokenMw.Required).Get("/recipes/{id}/exists", handler.Exists)
 		router.With(serviceTokenMw.Required).Get("/recipes/{id}/brief", handler.Brief)
+		router.With(serviceTokenMw.Required).Post("/recipes/briefs/batch", handler.BriefsBatch)
 		router.With(serviceTokenMw.Required).Get("/authors/{userId}/recipe-count", handler.AuthorRecipeCount)
 	})
 

@@ -43,3 +43,21 @@ type savedRecipeRow struct {
 func (savedRecipeRow) TableName() string {
 	return savedRecipesTable
 }
+
+type outboxEventRow struct {
+	EventID       string `gorm:"primaryKey;size:64"`
+	EventType     string `gorm:"not null;size:128;index"`
+	OccurredAt    time.Time
+	Payload       []byte `gorm:"not null;type:jsonb"`
+	ClaimedAt     *time.Time
+	PublishedAt   *time.Time
+	NextAttemptAt *time.Time
+	Attempts      int
+	LastError     *string `gorm:"type:text"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (outboxEventRow) TableName() string {
+	return outboxEventsTable
+}
