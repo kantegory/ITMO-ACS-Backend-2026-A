@@ -10,19 +10,18 @@ import (
 	recipedomain "recipehub/internal/domain/recipe"
 )
 
-func TestLikePublishesRecipeLikedEvent(t *testing.T) {
+func TestLikeEnqueuesRecipeLikedEvent(t *testing.T) {
 	repo := &statsRepository{}
-	publisher := &capturePublisher{}
-	service := NewService(repo, nil, targetRecipeGateway{}, nil, publisher)
+	service := NewService(repo, nil, targetRecipeGateway{}, nil)
 
 	if _, err := service.Like(context.Background(), engagementdomain.TargetRecipe, 7, 10); err != nil {
 		t.Fatalf("Like returned error: %v", err)
 	}
 
-	if len(publisher.events) != 1 {
-		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	if len(repo.events) != 1 {
+		t.Fatalf("outbox events = %d, want 1", len(repo.events))
 	}
-	event := publisher.events[0]
+	event := repo.events[0]
 	if event.EventType != eventsdomain.TypeRecipeLiked {
 		t.Fatalf("event type = %s, want %s", event.EventType, eventsdomain.TypeRecipeLiked)
 	}
@@ -36,16 +35,15 @@ func TestLikePublishesRecipeLikedEvent(t *testing.T) {
 	}
 }
 
-func TestLikeDoesNotPublishWhenRepositoryFails(t *testing.T) {
+func TestLikeDoesNotEnqueueWhenRepositoryFails(t *testing.T) {
 	repo := &statsRepository{likeErr: ErrAlreadyExists}
-	publisher := &capturePublisher{}
-	service := NewService(repo, nil, targetRecipeGateway{}, nil, publisher)
+	service := NewService(repo, nil, targetRecipeGateway{}, nil)
 
 	if _, err := service.Like(context.Background(), engagementdomain.TargetRecipe, 7, 10); err == nil {
 		t.Fatal("Like returned nil error, want repository error")
 	}
-	if len(publisher.events) != 0 {
-		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	if len(repo.events) != 0 {
+		t.Fatalf("outbox events = %d, want 0", len(repo.events))
 	}
 }
 
@@ -72,8 +70,8 @@ func TestStatsBatchAddsRecipeViewerFlags(t *testing.T) {
 	if got[1].IsLiked || !got[1].IsSaved {
 		t.Fatalf("recipe 11 flags = liked:%v saved:%v, want liked:false saved:true", got[1].IsLiked, got[1].IsSaved)
 	}
-	if repo.isSavedCalls != 2 {
-		t.Fatalf("IsSaved calls = %d, want 2", repo.isSavedCalls)
+	if repo.savedBatchCalls != 1 {
+		t.Fatalf("SavedRecipeIDs calls = %d, want 1", repo.savedBatchCalls)
 	}
 }
 
@@ -96,17 +94,18 @@ func TestStatsBatchAddsPostViewerFlagsWithoutSavedLookup(t *testing.T) {
 	if got[0].IsSaved {
 		t.Fatal("IsSaved = true, want false for post stats")
 	}
-	if repo.isSavedCalls != 0 {
-		t.Fatalf("IsSaved calls = %d, want 0", repo.isSavedCalls)
+	if repo.savedBatchCalls != 0 {
+		t.Fatalf("SavedRecipeIDs calls = %d, want 0", repo.savedBatchCalls)
 	}
 }
 
 type statsRepository struct {
-	stats        []engagementdomain.Stat
-	liked        map[uint64]bool
-	saved        map[uint64]bool
-	isSavedCalls int
-	likeErr      error
+	stats           []engagementdomain.Stat
+	liked           map[uint64]bool
+	saved           map[uint64]bool
+	savedBatchCalls int
+	likeErr         error
+	events          []eventsdomain.Envelope
 }
 
 func (r *statsRepository) ListComments(context.Context, engagementdomain.TargetType, uint64, int, int) (engagementdomain.Page[engagementdomain.Comment], error) {
@@ -121,19 +120,55 @@ func (r *statsRepository) CommentByID(context.Context, uint64) (engagementdomain
 	return engagementdomain.Comment{}, nil
 }
 
-func (r *statsRepository) CreateComment(_ context.Context, comment engagementdomain.Comment) (engagementdomain.Comment, error) {
+func (r *statsRepository) CreateComment(_ context.Context, comment engagementdomain.Comment, eventType string) (engagementdomain.Comment, error) {
+	event, err := eventsdomain.NewEnvelope(eventType, eventsdomain.CommentCreatedPayload{
+		TargetID:  comment.TargetID,
+		CommentID: comment.ID,
+		AuthorID:  comment.AuthorID,
+	})
+	if err != nil {
+		return engagementdomain.Comment{}, err
+	}
+	r.events = append(r.events, event)
+
 	return comment, nil
 }
 
-func (r *statsRepository) DeleteCommentSubtree(context.Context, uint64) (int64, error) {
-	return 0, nil
+func (r *statsRepository) DeleteCommentSubtree(_ context.Context, comment engagementdomain.Comment, eventType string) (int64, error) {
+	event, err := eventsdomain.NewEnvelope(eventType, eventsdomain.CommentDeletedPayload{
+		TargetID:     comment.TargetID,
+		CommentID:    comment.ID,
+		DeletedCount: 1,
+	})
+	if err != nil {
+		return 0, err
+	}
+	r.events = append(r.events, event)
+
+	return 1, nil
 }
 
-func (r *statsRepository) Like(context.Context, engagementdomain.TargetType, uint64, uint64) error {
-	return r.likeErr
+func (r *statsRepository) Like(_ context.Context, _ engagementdomain.TargetType, userID, targetID uint64, eventType string) error {
+	if r.likeErr != nil {
+		return r.likeErr
+	}
+
+	event, err := eventsdomain.NewEnvelope(eventType, eventsdomain.LikePayload{TargetID: targetID, UserID: userID})
+	if err != nil {
+		return err
+	}
+	r.events = append(r.events, event)
+
+	return nil
 }
 
-func (r *statsRepository) Unlike(context.Context, engagementdomain.TargetType, uint64, uint64) error {
+func (r *statsRepository) Unlike(_ context.Context, _ engagementdomain.TargetType, userID, targetID uint64, eventType string) error {
+	event, err := eventsdomain.NewEnvelope(eventType, eventsdomain.LikePayload{TargetID: targetID, UserID: userID})
+	if err != nil {
+		return err
+	}
+	r.events = append(r.events, event)
+
 	return nil
 }
 
@@ -145,6 +180,15 @@ func (r *statsRepository) IsLiked(_ context.Context, _ engagementdomain.TargetTy
 	return r.liked[targetID], nil
 }
 
+func (r *statsRepository) LikedIDs(_ context.Context, _ engagementdomain.TargetType, _ uint64, targetIDs []uint64) (map[uint64]bool, error) {
+	out := make(map[uint64]bool, len(targetIDs))
+	for _, id := range targetIDs {
+		out[id] = r.liked[id]
+	}
+
+	return out, nil
+}
+
 func (r *statsRepository) SaveRecipe(context.Context, uint64, uint64) error {
 	return nil
 }
@@ -154,9 +198,18 @@ func (r *statsRepository) UnsaveRecipe(context.Context, uint64, uint64) error {
 }
 
 func (r *statsRepository) IsSaved(_ context.Context, _ uint64, recipeID uint64) (bool, error) {
-	r.isSavedCalls++
-
 	return r.saved[recipeID], nil
+}
+
+func (r *statsRepository) SavedRecipeIDs(_ context.Context, _ uint64, recipeIDs []uint64) (map[uint64]bool, error) {
+	r.savedBatchCalls++
+
+	out := make(map[uint64]bool, len(recipeIDs))
+	for _, id := range recipeIDs {
+		out[id] = r.saved[id]
+	}
+
+	return out, nil
 }
 
 func (r *statsRepository) ListSavedRecipes(context.Context, uint64, int, int) (engagementdomain.Page[engagementdomain.SavedRecipe], error) {
@@ -167,16 +220,6 @@ func (r *statsRepository) StatsBatch(context.Context, engagementdomain.TargetTyp
 	return append([]engagementdomain.Stat(nil), r.stats...), nil
 }
 
-type capturePublisher struct {
-	events []eventsdomain.Envelope
-}
-
-func (p *capturePublisher) Publish(_ context.Context, event eventsdomain.Envelope) error {
-	p.events = append(p.events, event)
-
-	return nil
-}
-
 type targetRecipeGateway struct{}
 
 func (targetRecipeGateway) RecipeExists(context.Context, uint64) (bool, error) {
@@ -185,4 +228,8 @@ func (targetRecipeGateway) RecipeExists(context.Context, uint64) (bool, error) {
 
 func (targetRecipeGateway) RecipeBrief(context.Context, uint64) (recipedomain.Recipe, error) {
 	return recipedomain.Recipe{}, nil
+}
+
+func (targetRecipeGateway) RecipeBriefsBatch(context.Context, []uint64) ([]recipedomain.Recipe, error) {
+	return nil, nil
 }

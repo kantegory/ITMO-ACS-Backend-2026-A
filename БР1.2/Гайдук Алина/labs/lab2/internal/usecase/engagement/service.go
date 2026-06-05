@@ -26,17 +26,19 @@ type Repository interface {
 	ListComments(ctx context.Context, target engagementdomain.TargetType, targetID uint64, limit, offset int) (engagementdomain.Page[engagementdomain.Comment], error)
 	CommentDescendants(ctx context.Context, target engagementdomain.TargetType, targetID uint64, rootIDs []uint64) ([]engagementdomain.Comment, error)
 	CommentByID(ctx context.Context, id uint64) (engagementdomain.Comment, error)
-	CreateComment(ctx context.Context, comment engagementdomain.Comment) (engagementdomain.Comment, error)
-	DeleteCommentSubtree(ctx context.Context, id uint64) (int64, error)
+	CreateComment(ctx context.Context, comment engagementdomain.Comment, eventType string) (engagementdomain.Comment, error)
+	DeleteCommentSubtree(ctx context.Context, comment engagementdomain.Comment, eventType string) (int64, error)
 
-	Like(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) error
-	Unlike(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) error
+	Like(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64, eventType string) error
+	Unlike(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64, eventType string) error
 	LikesCount(ctx context.Context, target engagementdomain.TargetType, targetID uint64) (int64, error)
 	IsLiked(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64) (bool, error)
+	LikedIDs(ctx context.Context, target engagementdomain.TargetType, userID uint64, targetIDs []uint64) (map[uint64]bool, error)
 
 	SaveRecipe(ctx context.Context, userID, recipeID uint64) error
 	UnsaveRecipe(ctx context.Context, userID, recipeID uint64) error
 	IsSaved(ctx context.Context, userID, recipeID uint64) (bool, error)
+	SavedRecipeIDs(ctx context.Context, userID uint64, recipeIDs []uint64) (map[uint64]bool, error)
 	ListSavedRecipes(ctx context.Context, userID uint64, limit, offset int) (engagementdomain.Page[engagementdomain.SavedRecipe], error)
 
 	StatsBatch(ctx context.Context, target engagementdomain.TargetType, ids []uint64) ([]engagementdomain.Stat, error)
@@ -51,16 +53,12 @@ type IdentityGateway interface {
 type RecipeGateway interface {
 	RecipeExists(ctx context.Context, recipeID uint64) (bool, error)
 	RecipeBrief(ctx context.Context, recipeID uint64) (recipedomain.Recipe, error)
+	RecipeBriefsBatch(ctx context.Context, recipeIDs []uint64) ([]recipedomain.Recipe, error)
 }
 
 // BlogGateway is the blog-service port required by engagement use cases.
 type BlogGateway interface {
 	PostExists(ctx context.Context, postID uint64) (bool, error)
-}
-
-// EventPublisher publishes integration events after successful state changes.
-type EventPublisher interface {
-	Publish(ctx context.Context, event eventsdomain.Envelope) error
 }
 
 // Service coordinates engagement application scenarios.
@@ -69,17 +67,11 @@ type Service struct {
 	identity IdentityGateway
 	recipe   RecipeGateway
 	blog     BlogGateway
-	events   EventPublisher
 }
 
 // NewService creates engagement use cases.
-func NewService(repo Repository, identity IdentityGateway, recipe RecipeGateway, blog BlogGateway, publishers ...EventPublisher) *Service {
-	var publisher EventPublisher
-	if len(publishers) > 0 {
-		publisher = publishers[0]
-	}
-
-	return &Service{repo: repo, identity: identity, recipe: recipe, blog: blog, events: publisher}
+func NewService(repo Repository, identity IdentityGateway, recipe RecipeGateway, blog BlogGateway) *Service {
+	return &Service{repo: repo, identity: identity, recipe: recipe, blog: blog}
 }
 
 // ListComments returns paginated comments with nested replies.
@@ -132,17 +124,19 @@ func (s *Service) CreateComment(ctx context.Context, target engagementdomain.Tar
 		}
 	}
 
+	eventType, err := commentCreatedEventType(target)
+	if err != nil {
+		return engagementdomain.CommentThread{}, err
+	}
+
 	comment, err := s.repo.CreateComment(ctx, engagementdomain.Comment{
 		AuthorID:        authorID,
 		TargetType:      target,
 		TargetID:        targetID,
 		ParentCommentID: parentID,
 		Content:         content,
-	})
+	}, eventType)
 	if err != nil {
-		return engagementdomain.CommentThread{}, err
-	}
-	if err := s.publishCommentCreated(ctx, comment); err != nil {
 		return engagementdomain.CommentThread{}, err
 	}
 
@@ -164,12 +158,21 @@ func (s *Service) DeleteComment(ctx context.Context, commentID, actorID uint64) 
 		return ErrForbidden
 	}
 
-	deleted, err := s.repo.DeleteCommentSubtree(ctx, commentID)
+	eventType, err := commentDeletedEventType(comment.TargetType)
 	if err != nil {
 		return err
 	}
 
-	return s.publishCommentDeleted(ctx, comment, deleted)
+	deleted, err := s.repo.DeleteCommentSubtree(ctx, comment, eventType)
+	if err != nil {
+		return err
+	}
+
+	if deleted == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 // Like adds a like and returns updated count.
@@ -177,10 +180,11 @@ func (s *Service) Like(ctx context.Context, target engagementdomain.TargetType, 
 	if err := s.ensureTargetExists(ctx, target, targetID); err != nil {
 		return 0, err
 	}
-	if err := s.repo.Like(ctx, target, userID, targetID); err != nil {
+	eventType, err := likeChangedEventType(target, true)
+	if err != nil {
 		return 0, err
 	}
-	if err := s.publishLikeChanged(ctx, target, userID, targetID, true); err != nil {
+	if err := s.repo.Like(ctx, target, userID, targetID, eventType); err != nil {
 		return 0, err
 	}
 
@@ -192,10 +196,11 @@ func (s *Service) Unlike(ctx context.Context, target engagementdomain.TargetType
 	if err := s.ensureTargetExists(ctx, target, targetID); err != nil {
 		return 0, err
 	}
-	if err := s.repo.Unlike(ctx, target, userID, targetID); err != nil {
+	eventType, err := likeChangedEventType(target, false)
+	if err != nil {
 		return 0, err
 	}
-	if err := s.publishLikeChanged(ctx, target, userID, targetID, false); err != nil {
+	if err := s.repo.Unlike(ctx, target, userID, targetID, eventType); err != nil {
 		return 0, err
 	}
 
@@ -227,12 +232,13 @@ func (s *Service) ListSavedRecipes(ctx context.Context, userID uint64, limit, of
 		return engagementdomain.Page[engagementdomain.RecipeBrief]{}, err
 	}
 
-	items := make([]engagementdomain.RecipeBrief, 0, len(page.Items))
-	for _, saved := range page.Items {
-		recipe, err := s.recipe.RecipeBrief(ctx, saved.RecipeID)
-		if err != nil {
-			return engagementdomain.Page[engagementdomain.RecipeBrief]{}, fmt.Errorf("load saved recipe brief: %w", err)
-		}
+	recipes, err := s.recipe.RecipeBriefsBatch(ctx, savedRecipeIDs(page.Items))
+	if err != nil {
+		return engagementdomain.Page[engagementdomain.RecipeBrief]{}, fmt.Errorf("load saved recipe briefs: %w", err)
+	}
+
+	items := make([]engagementdomain.RecipeBrief, 0, len(recipes))
+	for _, recipe := range recipes {
 		items = append(items, engagementdomain.RecipeBrief{
 			ID:            recipe.ID,
 			Title:         recipe.Title,
@@ -244,6 +250,20 @@ func (s *Service) ListSavedRecipes(ctx context.Context, userID uint64, limit, of
 	return engagementdomain.Page[engagementdomain.RecipeBrief]{Items: items, Total: page.Total}, nil
 }
 
+func savedRecipeIDs(items []engagementdomain.SavedRecipe) []uint64 {
+	out := make([]uint64, 0, len(items))
+	seen := make(map[uint64]struct{}, len(items))
+	for _, item := range items {
+		if _, ok := seen[item.RecipeID]; ok {
+			continue
+		}
+		seen[item.RecipeID] = struct{}{}
+		out = append(out, item.RecipeID)
+	}
+
+	return out
+}
+
 // StatsBatch returns likes/comments counts and optional viewer flags for ids.
 func (s *Service) StatsBatch(ctx context.Context, target engagementdomain.TargetType, ids []uint64, viewerID *uint64) ([]engagementdomain.Stat, error) {
 	stats, err := s.repo.StatsBatch(ctx, target, ids)
@@ -251,94 +271,83 @@ func (s *Service) StatsBatch(ctx context.Context, target engagementdomain.Target
 		return stats, err
 	}
 
-	for idx := range stats {
-		liked, err := s.repo.IsLiked(ctx, target, *viewerID, stats[idx].TargetID)
+	targetIDs := statTargetIDs(stats)
+	liked, err := s.repo.LikedIDs(ctx, target, *viewerID, targetIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	var saved map[uint64]bool
+	if target == engagementdomain.TargetRecipe {
+		saved, err = s.repo.SavedRecipeIDs(ctx, *viewerID, targetIDs)
 		if err != nil {
 			return nil, err
 		}
-		stats[idx].IsLiked = liked
+	}
 
+	for idx := range stats {
+		stats[idx].IsLiked = liked[stats[idx].TargetID]
 		if target == engagementdomain.TargetRecipe {
-			saved, err := s.repo.IsSaved(ctx, *viewerID, stats[idx].TargetID)
-			if err != nil {
-				return nil, err
-			}
-			stats[idx].IsSaved = saved
+			stats[idx].IsSaved = saved[stats[idx].TargetID]
 		}
 	}
 
 	return stats, nil
 }
 
-func (s *Service) publishLikeChanged(ctx context.Context, target engagementdomain.TargetType, userID, targetID uint64, liked bool) error {
-	eventType := ""
+func statTargetIDs(stats []engagementdomain.Stat) []uint64 {
+	out := make([]uint64, 0, len(stats))
+	seen := make(map[uint64]struct{}, len(stats))
+	for _, stat := range stats {
+		if _, ok := seen[stat.TargetID]; ok {
+			continue
+		}
+		seen[stat.TargetID] = struct{}{}
+		out = append(out, stat.TargetID)
+	}
+
+	return out
+}
+
+func likeChangedEventType(target engagementdomain.TargetType, liked bool) (string, error) {
 	switch target {
 	case engagementdomain.TargetRecipe:
 		if liked {
-			eventType = eventsdomain.TypeRecipeLiked
-		} else {
-			eventType = eventsdomain.TypeRecipeUnliked
+			return eventsdomain.TypeRecipeLiked, nil
 		}
+
+		return eventsdomain.TypeRecipeUnliked, nil
 	case engagementdomain.TargetPost:
 		if liked {
-			eventType = eventsdomain.TypePostLiked
-		} else {
-			eventType = eventsdomain.TypePostUnliked
+			return eventsdomain.TypePostLiked, nil
 		}
-	default:
-		return ErrInvalidInput
-	}
 
-	return s.publish(ctx, eventType, eventsdomain.LikePayload{TargetID: targetID, UserID: userID})
+		return eventsdomain.TypePostUnliked, nil
+	default:
+		return "", ErrInvalidInput
+	}
 }
 
-func (s *Service) publishCommentCreated(ctx context.Context, comment engagementdomain.Comment) error {
-	eventType := ""
-	switch comment.TargetType {
+func commentCreatedEventType(target engagementdomain.TargetType) (string, error) {
+	switch target {
 	case engagementdomain.TargetRecipe:
-		eventType = eventsdomain.TypeRecipeCommentCreated
+		return eventsdomain.TypeRecipeCommentCreated, nil
 	case engagementdomain.TargetPost:
-		eventType = eventsdomain.TypePostCommentCreated
+		return eventsdomain.TypePostCommentCreated, nil
 	default:
-		return ErrInvalidInput
+		return "", ErrInvalidInput
 	}
-
-	return s.publish(ctx, eventType, eventsdomain.CommentCreatedPayload{
-		TargetID:  comment.TargetID,
-		CommentID: comment.ID,
-		AuthorID:  comment.AuthorID,
-	})
 }
 
-func (s *Service) publishCommentDeleted(ctx context.Context, comment engagementdomain.Comment, deletedCount int64) error {
-	eventType := ""
-	switch comment.TargetType {
+func commentDeletedEventType(target engagementdomain.TargetType) (string, error) {
+	switch target {
 	case engagementdomain.TargetRecipe:
-		eventType = eventsdomain.TypeRecipeCommentDeleted
+		return eventsdomain.TypeRecipeCommentDeleted, nil
 	case engagementdomain.TargetPost:
-		eventType = eventsdomain.TypePostCommentDeleted
+		return eventsdomain.TypePostCommentDeleted, nil
 	default:
-		return ErrInvalidInput
+		return "", ErrInvalidInput
 	}
-
-	return s.publish(ctx, eventType, eventsdomain.CommentDeletedPayload{
-		TargetID:     comment.TargetID,
-		CommentID:    comment.ID,
-		DeletedCount: deletedCount,
-	})
-}
-
-func (s *Service) publish(ctx context.Context, eventType string, payload any) error {
-	if s.events == nil {
-		return nil
-	}
-
-	event, err := eventsdomain.NewEnvelope(eventType, payload)
-	if err != nil {
-		return err
-	}
-
-	return s.events.Publish(ctx, event)
 }
 
 func (s *Service) ensureTargetExists(ctx context.Context, target engagementdomain.TargetType, targetID uint64) error {

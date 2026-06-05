@@ -88,6 +88,14 @@ type recipeBriefResponse struct {
 	AuthorID      uint64  `json:"author_id"`
 }
 
+type recipeBriefsBatchRequest struct {
+	IDs []uint64 `json:"ids"`
+}
+
+type recipeBriefsBatchResponse struct {
+	Recipes []recipeBriefResponse `json:"recipes"`
+}
+
 type existsResponse struct {
 	Exists bool `json:"exists"`
 }

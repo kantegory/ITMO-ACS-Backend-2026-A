@@ -27,6 +27,7 @@ var (
 type Repository interface {
 	CreateRecipe(ctx context.Context, recipe recipedomain.Recipe) (recipedomain.Recipe, error)
 	RecipeByID(ctx context.Context, id uint64) (recipedomain.Recipe, error)
+	RecipeBriefsByIDs(ctx context.Context, ids []uint64) ([]recipedomain.Recipe, error)
 	ListRecipes(ctx context.Context, filters recipedomain.Filters) (recipedomain.Page[recipedomain.Recipe], error)
 	UpdateRecipe(ctx context.Context, recipe recipedomain.Recipe) (recipedomain.Recipe, error)
 	DeleteRecipe(ctx context.Context, id uint64) error
@@ -196,6 +197,11 @@ func (s *Service) RecipeExists(ctx context.Context, id uint64) (bool, error) {
 // RecipeBrief returns short recipe card for internal consumers.
 func (s *Service) RecipeBrief(ctx context.Context, id uint64) (recipedomain.Recipe, error) {
 	return s.repo.RecipeByID(ctx, id)
+}
+
+// RecipeBriefsBatch returns short recipe cards for internal consumers.
+func (s *Service) RecipeBriefsBatch(ctx context.Context, ids []uint64) ([]recipedomain.Recipe, error) {
+	return s.repo.RecipeBriefsByIDs(ctx, ids)
 }
 
 // AuthorRecipeCount returns number of recipes by author.

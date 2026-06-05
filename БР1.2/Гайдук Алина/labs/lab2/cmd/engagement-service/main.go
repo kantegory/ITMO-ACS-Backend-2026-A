@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"path/filepath"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -10,6 +12,7 @@ import (
 	"recipehub/internal/infrastructure/clients/blogclient"
 	"recipehub/internal/infrastructure/clients/identityclient"
 	"recipehub/internal/infrastructure/clients/recipeclient"
+	"recipehub/internal/infrastructure/events/outboxrelay"
 	"recipehub/internal/infrastructure/events/rabbitpublisher"
 	infolog "recipehub/internal/infrastructure/logger"
 	"recipehub/internal/infrastructure/persistence/engagementrepo"
@@ -47,12 +50,17 @@ func main() {
 	}
 	defer func() { _ = bus.Close() }()
 
+	repo := engagementrepo.New(db)
+	publisher := rabbitpublisher.New(bus)
+	relayCtx, stopRelay := context.WithCancel(context.Background())
+	defer stopRelay()
+	outboxrelay.Start(relayCtx, repo, publisher, time.Second, 25)
+
 	service := engagementusecase.NewService(
-		engagementrepo.New(db),
+		repo,
 		identityclient.New(cfg.IdentityURL, cfg.ServiceToken),
 		recipeclient.New(cfg.RecipeURL, cfg.ServiceToken),
 		blogclient.New(cfg.BlogURL, cfg.ServiceToken),
-		rabbitpublisher.New(bus),
 	)
 
 	if err := server.Run(cfg.Name, cfg.Addr, engagementhttp.NewRouter(cfg, service)); err != nil {

@@ -75,6 +75,45 @@ func (r *Repository) RecipeByID(ctx context.Context, id uint64) (recipedomain.Re
 	return recipe, nil
 }
 
+// RecipeBriefsByIDs returns short recipe cards for ids in the requested order.
+func (r *Repository) RecipeBriefsByIDs(ctx context.Context, ids []uint64) ([]recipedomain.Recipe, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	uniqueIDs := uniqueUint64(ids)
+	var rows []recipeRow
+	if err := r.db.WithContext(ctx).Where("id IN ?", uniqueIDs).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	byID := make(map[uint64]recipeRow, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	if len(byID) != len(uniqueIDs) {
+		return nil, recipeusecase.ErrNotFound
+	}
+
+	out := make([]recipedomain.Recipe, 0, len(ids))
+	for _, id := range ids {
+		row, ok := byID[id]
+		if !ok {
+			continue
+		}
+		out = append(out, recipedomain.Recipe{
+			ID:            row.ID,
+			AuthorID:      row.AuthorID,
+			Title:         row.Title,
+			CoverImageURL: row.CoverImageURL,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
+		})
+	}
+
+	return out, nil
+}
+
 // ListRecipes returns paginated recipes.
 func (r *Repository) ListRecipes(ctx context.Context, filters recipedomain.Filters) (recipedomain.Page[recipedomain.Recipe], error) {
 	query := r.db.WithContext(ctx).Model(&recipeRow{})
@@ -425,4 +464,18 @@ func normalizeOffset(offset int) int {
 	}
 
 	return offset
+}
+
+func uniqueUint64(ids []uint64) []uint64 {
+	out := make([]uint64, 0, len(ids))
+	seen := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+
+	return out
 }
