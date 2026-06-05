@@ -1,0 +1,216 @@
+name: recipehub-lab3
+
+x-service-env: &service-env
+  HTTP_ADDR: :8080
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+  JWT_ACCESS_TTL_SEC: ${JWT_ACCESS_TTL_SEC:-3600}
+  JWT_REFRESH_TTL_SEC: ${JWT_REFRESH_TTL_SEC:-604800}
+  SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+  EVENTS_EXCHANGE: ${EVENTS_EXCHANGE:-recipehub.events}
+  IDENTITY_SERVICE_URL: http://identity-service:8080
+  CATALOG_SERVICE_URL: http://catalog-service:8080
+  RECIPE_SERVICE_URL: http://recipe-service:8080
+  BLOG_SERVICE_URL: http://blog-service:8080
+  ENGAGEMENT_SERVICE_URL: http://engagement-service:8080
+
+x-service-healthcheck: &service-healthcheck
+  test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+  interval: 15s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-recipehub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recipehub}
+      POSTGRES_DB: ${POSTGRES_DB:-recipehub_admin}
+    volumes:
+      - recipehub_pg:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-databases.sql:/docker-entrypoint-initdb.d/10-init-multiple-databases.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    networks:
+      - recipehub_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-recipehub} -d $${POSTGRES_DB:-recipehub_admin}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    networks:
+      - recipehub_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/gateway/Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-gateway:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+      blog-service:
+        condition: service_healthy
+      engagement-service:
+        condition: service_healthy
+    ports:
+      - "${RECIPEHUB_PORT:-8080}:8080"
+    environment:
+      <<: *service-env
+    networks:
+      - recipehub_net
+    healthcheck: *service-healthcheck
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: docker/identity-service/Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-identity-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      <<: *service-env
+      IDENTITY_SERVICE_DATABASE_URL: ${IDENTITY_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@postgres:5432/recipehub_identity?sslmode=disable}
+    networks:
+      - recipehub_net
+    healthcheck: *service-healthcheck
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: docker/catalog-service/Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-catalog-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      <<: *service-env
+      CATALOG_SERVICE_DATABASE_URL: ${CATALOG_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@postgres:5432/recipehub_catalog?sslmode=disable}
+    networks:
+      - recipehub_net
+    healthcheck: *service-healthcheck
+
+  recipe-service:
+    build:
+      context: .
+      dockerfile: docker/recipe-service/Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-recipe-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      <<: *service-env
+      RECIPE_SERVICE_DATABASE_URL: ${RECIPE_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@postgres:5432/recipehub_recipe?sslmode=disable}
+    networks:
+      - recipehub_net
+    healthcheck: *service-healthcheck
+
+  blog-service:
+    build:
+      context: .
+      dockerfile: docker/blog-service/Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-blog-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      <<: *service-env
+      BLOG_SERVICE_DATABASE_URL: ${BLOG_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@postgres:5432/recipehub_blog?sslmode=disable}
+    networks:
+      - recipehub_net
+    healthcheck: *service-healthcheck
+
+  engagement-service:
+    build:
+      context: .
+      dockerfile: docker/engagement-service/Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-engagement-service:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+      blog-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      <<: *service-env
+      ENGAGEMENT_SERVICE_DATABASE_URL: ${ENGAGEMENT_SERVICE_DATABASE_URL:-postgres://recipehub:recipehub@postgres:5432/recipehub_engagement?sslmode=disable}
+    networks:
+      - recipehub_net
+    healthcheck: *service-healthcheck
+
+volumes:
+  recipehub_pg: {}
+
+networks:
+  recipehub_net:
+    driver: bridge
