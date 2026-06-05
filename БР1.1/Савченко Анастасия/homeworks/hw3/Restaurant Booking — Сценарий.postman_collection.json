@@ -1,0 +1,624 @@
+{
+  "info": {
+    "_postman_id": "5a893bca-2087-4ab8-a983-8b20cea69f6a",
+    "name": "Restaurant Booking — Сценарий",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "52104339",
+    "_collection_link": "https://go.postman.co/collection/52104339-5a893bca-2087-4ab8-a983-8b20cea69f6a?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "0. Инициализация",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// очищаем переменные перед сценарием\r",
+              "pm.collectionVariables.set(\"token\", \"\");\r",
+              "pm.collectionVariables.set(\"restaurant_id\", \"\");\r",
+              "pm.collectionVariables.set(\"table_id\", \"\");\r",
+              "pm.collectionVariables.set(\"reservation_id\", \"\");\r",
+              "console.log(\"Переменные очищены, сценарий начат\");"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/cuisines",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "cuisines"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "1. Вход — неверный пароль",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 401\", function () {\r",
+              "    pm.response.to.have.status(401);\r",
+              "});\r",
+              "pm.test(\"Token не выдан\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData).to.not.have.property(\"access_token\");\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"wrong_password\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Вход — успешно",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Token получен\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData).to.have.property(\"access_token\");\r",
+              "    pm.collectionVariables.set(\"token\", jsonData.access_token);\r",
+              "    console.log(\"Токен сохранён\");\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"{{password}}\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. Профиль пользователя",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Профиль получен\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData).to.have.property(\"email\");\r",
+              "    pm.expect(jsonData.email).to.eql(pm.collectionVariables.get(\"email\"));\r",
+              "    console.log(\"Пользователь:\", jsonData.name);\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/users/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. История бронирований",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"История получена\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData).to.have.property(\"data\");\r",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");\r",
+              "    console.log(\"Бронирований:\", jsonData.data.length);\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/reservations",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "reservations"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Поиск ресторанов — Итальянская, СПб, mid",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Рестораны найдены\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");\r",
+              "    pm.expect(jsonData.data.length).to.be.at.least(1);\r",
+              "    \r",
+              "    // проверяем фильтры\r",
+              "    jsonData.data.forEach(function(r) {\r",
+              "        pm.expect(r.city_name).to.eql(\"Санкт-Петербург\");\r",
+              "        pm.expect(r.price_tier).to.eql(\"mid\");\r",
+              "        var names = r.cuisines.map(function(c) { return c.cuisine_name; });\r",
+              "        pm.expect(names).to.include(\"Итальянская\");\r",
+              "    });\r",
+              "    \r",
+              "    // сохраняем ID первого ресторана\r",
+              "    pm.collectionVariables.set(\"restaurant_id\", jsonData.data[0].restaurant_id);\r",
+              "    console.log(\"Ресторан ID:\", jsonData.data[0].restaurant_id, jsonData.data[0].name);\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants?price_tier=mid&city_name=Санкт-Петербург&cuisine_name=Итальянская",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "restaurants"
+          ],
+          "query": [
+            {
+              "key": "price_tier",
+              "value": "mid",
+              "type": "text"
+            },
+            {
+              "key": "city_name",
+              "value": "Санкт-Петербург",
+              "type": "text"
+            },
+            {
+              "key": "cuisine_name",
+              "value": "Итальянская",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. Меню выбранного ресторана",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Меню получено\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData).to.have.property(\"data\");\r",
+              "    console.log(\"Блюд в меню:\", jsonData.data.length);\r",
+              "    if (jsonData.data.length > 0) {\r",
+              "        console.log(\"Первое блюдо:\", jsonData.data[0].item_name, jsonData.data[0].cost, \"₽\");\r",
+              "    }\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/dishes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "restaurants",
+            "{{restaurant_id}}",
+            "dishes"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "7. Доступные столики",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Есть доступные столики\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");\r",
+              "    pm.expect(jsonData.data.length).to.be.at.least(1);\r",
+              "    \r",
+              "    // сохраняем ID первого доступного столика\r",
+              "    pm.collectionVariables.set(\"table_id\", jsonData.data[0].table_id);\r",
+              "    console.log(\"Столик:\", jsonData.data[0].table_num, \"на\", jsonData.data[0].capacity, \"чел.\");\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/tables/available?date=2026-06-20&reservation_start=19:00&reservation_end=21:00&party_size=2",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "restaurants",
+            "{{restaurant_id}}",
+            "tables",
+            "available"
+          ],
+          "query": [
+            {
+              "key": "date",
+              "value": "2026-06-20",
+              "type": "text"
+            },
+            {
+              "key": "reservation_start",
+              "value": "19:00",
+              "type": "text"
+            },
+            {
+              "key": "reservation_end",
+              "value": "21:00",
+              "type": "text"
+            },
+            {
+              "key": "party_size",
+              "value": "2",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "8. Создание бронирования",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 201\", function () {\r",
+              "    pm.response.to.have.status(201);\r",
+              "});\r",
+              "pm.test(\"Бронь создана\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData).to.have.property(\"reservation_id\");\r",
+              "    pm.expect(jsonData.status).to.eql(\"pending\");\r",
+              "    \r",
+              "    pm.collectionVariables.set(\"reservation_id\", jsonData.reservation_id);\r",
+              "    console.log(\"Бронь ID:\", jsonData.reservation_id);\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"restaurant_id\": {{restaurant_id}},\r\n  \"table_id\": {{table_id}},\r\n  \"reservation_date\": \"2026-06-20\",\r\n  \"reservation_start\": \"19:00\",\r\n  \"reservation_end\": \"21:00\",\r\n  \"guest_count\": 2,\r\n  \"notes\": \"День рождения\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/reservations",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "reservations"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "9. Отмена бронирования",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Бронь отменена\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    pm.expect(jsonData.status).to.eql(\"cancelled\");\r",
+              "    console.log(\"Бронь\", jsonData.reservation_id, \"отменена\");\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/reservations/{{reservation_id}}/cancel",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "reservations",
+            "{{reservation_id}}",
+            "cancel"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "10. История — после отмены",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status 200\", function () {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "pm.test(\"Отменённая бронь в истории\", function () {\r",
+              "    var jsonData = pm.response.json();\r",
+              "    var cancelled = jsonData.data.filter(function(r) {\r",
+              "        return r.status === \"cancelled\";\r",
+              "    });\r",
+              "    pm.expect(cancelled.length).to.be.at.least(1);\r",
+              "    console.log(\"Отменённых броней:\", cancelled.length);\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/reservations",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "reservations"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "restaurant_id",
+      "value": ""
+    },
+    {
+      "key": "table_id",
+      "value": ""
+    },
+    {
+      "key": "reservation_id",
+      "value": ""
+    }
+  ]
+}
