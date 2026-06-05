@@ -1,0 +1,244 @@
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: docker/api-gateway.Dockerfile
+    container_name: lab2-api-gateway
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+      GATEWAY_PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RECIPE_SERVICE_URL: http://recipe-service:8002
+      INTERACTION_SERVICE_URL: http://interaction-service:8003
+      JWT_SECRET_KEY: change-me-user-jwt-secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      SERVICE_JWT_SECRET: change-me-service-jwt-secret
+      SERVICE_TOKEN_LIFETIME: 300
+    ports:
+      - "8000:8000"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+      interaction-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: docker/auth-service.Dockerfile
+    container_name: lab2-auth-service
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+      AUTH_SERVICE_PORT: 8001
+      JWT_SECRET_KEY: change-me-user-jwt-secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      SERVICE_JWT_SECRET: change-me-service-jwt-secret
+      SERVICE_TOKEN_LIFETIME: 300
+      AUTH_DB_HOST: auth-db
+      AUTH_DB_PORT: 5432
+      AUTH_DB_NAME: auth_db
+      AUTH_DB_USER: auth_db
+      AUTH_DB_PASSWORD: auth_db
+    ports:
+      - "8001:8001"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  recipe-service:
+    build:
+      context: .
+      dockerfile: docker/recipe-service.Dockerfile
+    container_name: lab2-recipe-service
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+      RECIPE_SERVICE_PORT: 8002
+      AUTH_SERVICE_URL: http://auth-service:8001
+      INTERACTION_SERVICE_URL: http://interaction-service:8003
+      JWT_SECRET_KEY: change-me-user-jwt-secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      SERVICE_JWT_SECRET: change-me-service-jwt-secret
+      SERVICE_TOKEN_LIFETIME: 300
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipe-platform.events
+      RABBITMQ_RECIPE_DELETED_QUEUE: interaction.recipe-deleted
+      RABBITMQ_RECIPE_DELETED_ROUTING_KEY: recipe.deleted
+      RECIPE_DB_HOST: recipe-db
+      RECIPE_DB_PORT: 5432
+      RECIPE_DB_NAME: recipe_db
+      RECIPE_DB_USER: recipe_db
+      RECIPE_DB_PASSWORD: recipe_db
+    ports:
+      - "8002:8002"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      recipe-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  interaction-service:
+    build:
+      context: .
+      dockerfile: docker/interaction-service.Dockerfile
+    container_name: lab2-interaction-service
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+      INTERACTION_SERVICE_PORT: 8003
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RECIPE_SERVICE_URL: http://recipe-service:8002
+      JWT_SECRET_KEY: change-me-user-jwt-secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      SERVICE_JWT_SECRET: change-me-service-jwt-secret
+      SERVICE_TOKEN_LIFETIME: 300
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipe-platform.events
+      RABBITMQ_RECIPE_DELETED_QUEUE: interaction.recipe-deleted
+      RABBITMQ_RECIPE_DELETED_ROUTING_KEY: recipe.deleted
+      INTERACTION_DB_HOST: interaction-db
+      INTERACTION_DB_PORT: 5432
+      INTERACTION_DB_NAME: interaction_db
+      INTERACTION_DB_USER: interaction_db
+      INTERACTION_DB_PASSWORD: interaction_db
+    ports:
+      - "8003:8003"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      interaction-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  auth-db:
+    image: postgres:16
+    container_name: lab2-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_db
+      POSTGRES_PASSWORD: auth_db
+    ports:
+      - "15433:5432"
+    volumes:
+      - ./dbs/auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_db -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  recipe-db:
+    image: postgres:16
+    container_name: lab2-recipe-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: recipe_db
+      POSTGRES_USER: recipe_db
+      POSTGRES_PASSWORD: recipe_db
+    ports:
+      - "15434:5432"
+    volumes:
+      - ./dbs/recipe-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recipe_db -d recipe_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  interaction-db:
+    image: postgres:16
+    container_name: lab2-interaction-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: interaction_db
+      POSTGRES_USER: interaction_db
+      POSTGRES_PASSWORD: interaction_db
+    ports:
+      - "15435:5432"
+    volumes:
+      - ./dbs/interaction-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interaction_db -d interaction_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - recipe-platform
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: lab2-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - recipe-platform
+
+networks:
+  recipe-platform:
+    driver: bridge
