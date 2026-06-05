@@ -1,0 +1,208 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rent
+      POSTGRES_PASSWORD: rent
+      POSTGRES_DB: auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - auth_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rent -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  catalog-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rent
+      POSTGRES_PASSWORD: rent
+      POSTGRES_DB: catalog_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - catalog_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rent -d catalog_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  deals-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rent
+      POSTGRES_PASSWORD: rent
+      POSTGRES_DB: deals_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - deals_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rent -d deals_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  messaging-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rent
+      POSTGRES_PASSWORD: rent
+      POSTGRES_DB: messaging_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - messaging_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rent -d messaging_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
+      AUTH_PORT: "3001"
+      AUTH_DB_HOST: auth-db
+      AUTH_DB_PORT: "5432"
+      AUTH_DB_USER: rent
+      AUTH_DB_PASS: rent
+      AUTH_DB_NAME: auth_db
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+
+  catalog:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
+      AUTH_URL: http://auth:3001
+      CATALOG_PORT: "3002"
+      CATALOG_DB_HOST: catalog-db
+      CATALOG_DB_PORT: "5432"
+      CATALOG_DB_USER: rent
+      CATALOG_DB_PASS: rent
+      CATALOG_DB_NAME: catalog_db
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+
+  deals:
+    build:
+      context: .
+      dockerfile: services/deals/Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
+      CATALOG_URL: http://catalog:3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DEALS_PORT: "3003"
+      DEALS_DB_HOST: deals-db
+      DEALS_DB_PORT: "5432"
+      DEALS_DB_USER: rent
+      DEALS_DB_PASS: rent
+      DEALS_DB_NAME: deals_db
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      deals-db:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+
+  messaging:
+    build:
+      context: .
+      dockerfile: services/messaging/Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
+      AUTH_URL: http://auth:3001
+      CATALOG_URL: http://catalog:3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      MESSAGING_PORT: "3004"
+      MESSAGING_DB_HOST: messaging-db
+      MESSAGING_DB_PORT: "5432"
+      MESSAGING_DB_USER: rent
+      MESSAGING_DB_PASS: rent
+      MESSAGING_DB_NAME: messaging_db
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      messaging-db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      catalog:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      GATEWAY_PORT: "3000"
+      AUTH_URL: http://auth:3001
+      CATALOG_URL: http://catalog:3002
+      DEALS_URL: http://deals:3003
+      MESSAGING_URL: http://messaging:3004
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      INTERNAL_KEY: ${INTERNAL_KEY:-dev-internal-key}
+    depends_on:
+      auth:
+        condition: service_started
+      catalog:
+        condition: service_started
+      deals:
+        condition: service_started
+      messaging:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+networks:
+  default:
+    name: rent-lab2
+
+volumes:
+  auth_pg:
+  catalog_pg:
+  deals_pg:
+  messaging_pg:
