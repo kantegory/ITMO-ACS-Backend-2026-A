@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - auth_data:/app
+    environment:
+      - SECRET_KEY=change-me-in-production
+      - DATABASE_URL=sqlite:///./auth.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vacancy-service:
+    build: ./vacancy-service
+    ports:
+      - "8002:8002"
+    volumes:
+      - vacancy_data:/app
+    environment:
+      - DATABASE_URL=sqlite:///./vacancy.db
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  resume-service:
+    build: ./resume-service
+    ports:
+      - "8003:8003"
+    volumes:
+      - resume_data:/app
+    environment:
+      - DATABASE_URL=sqlite:///./resume.db
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  application-service:
+    build: ./application-service
+    ports:
+      - "8004:8004"
+    volumes:
+      - app_data:/app
+    environment:
+      - DATABASE_URL=sqlite:///./application.db
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - VACANCY_SERVICE_URL=http://vacancy-service:8002
+      - RESUME_SERVICE_URL=http://resume-service:8003
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      vacancy-service:
+        condition: service_healthy
+      resume-service:
+        condition: service_healthy
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - VACANCY_SERVICE_URL=http://vacancy-service:8002
+      - RESUME_SERVICE_URL=http://resume-service:8003
+      - APP_SERVICE_URL=http://application-service:8004
+    depends_on:
+      - auth-service
+      - vacancy-service
+      - resume-service
+      - application-service
+
+volumes:
+  auth_data:
+  vacancy_data:
+  resume_data:
+  app_data:
