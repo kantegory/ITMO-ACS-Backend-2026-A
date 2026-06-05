@@ -1,0 +1,140 @@
+name: Deploy Lab2
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "БР1.2/Меньшенин Евгений/labs/lab2/**"
+      - ".github/workflows/deploy-lab2.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-lab2-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  LAB2_DIR: "БР1.2/Меньшенин Евгений/labs/lab2"
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - identity-service
+          - restaurant-service
+          - availability-service
+          - booking-service
+          - feedback-service
+          - api-gateway
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image owner
+        id: meta
+        run: echo "image_owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.LAB2_DIR }}
+          file: ${{ env.LAB2_DIR }}/Dockerfile
+          target: ${{ matrix.service }}
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.image_owner }}/lab2-${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/${{ steps.meta.outputs.image_owner }}/lab2-${{ matrix.service }}:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-images
+
+    env:
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image metadata
+        id: meta
+        run: echo "image_owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Validate secrets
+        run: |
+          missing=()
+          [[ -z "${SSH_HOST}" ]] && missing+=("SSH_HOST")
+          [[ -z "${SSH_USER}" ]] && missing+=("SSH_USER")
+          [[ -z "${secrets.SSH_PRIVATE_KEY}" ]] && missing+=("SSH_PRIVATE_KEY")
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=("DEPLOY_PATH")
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required GitHub secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${SSH_PORT}" -H "${SSH_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Ensure deploy directory exists
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
+            "mkdir -p '${DEPLOY_PATH}/scripts'"
+
+      - name: Upload compose and deploy script
+        run: |
+          scp -i ~/.ssh/deploy_key -P "${SSH_PORT}" \
+            "${{ env.LAB2_DIR }}/docker-compose.deploy.yml" \
+            "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/docker-compose.deploy.yml"
+          scp -i ~/.ssh/deploy_key -P "${SSH_PORT}" \
+            "${{ env.LAB2_DIR }}/scripts/deploy.sh" \
+            "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/scripts/deploy.sh"
+
+      - name: Upload production .env
+        run: |
+          {
+            echo "IMAGE_REGISTRY=ghcr.io"
+            echo "IMAGE_OWNER=${{ steps.meta.outputs.image_owner }}"
+            echo "IMAGE_TAG=${GITHUB_SHA}"
+            echo "REGISTRY_HOST=ghcr.io"
+            echo "REGISTRY_USER=${REGISTRY_USER:-${{ github.actor }}}"
+            echo "REGISTRY_TOKEN=${REGISTRY_TOKEN}"
+            echo "JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}"
+            echo "SERVICE_TOKEN=${SERVICE_TOKEN:-dev-service-token}"
+            echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092"
+            echo "DATABASE_USER=postgres"
+            echo "DATABASE_PASSWORD=${POSTGRES_PASSWORD:-postgres}"
+          } > /tmp/lab2-deploy.env
+          scp -i ~/.ssh/deploy_key -P "${SSH_PORT}" \
+            /tmp/lab2-deploy.env "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/.env"
+
+      - name: Pull images and start stack
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
+            "chmod +x '${DEPLOY_PATH}/scripts/deploy.sh' && bash '${DEPLOY_PATH}/scripts/deploy.sh'"
