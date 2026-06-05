@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    container_name: restaurant-booking-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-restaurant_booking}
+    ports:
+      - "5432:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ../migrations:/migrations:ro
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-restaurant_booking}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    restart: always
+    container_name: restaurant-booking-redis
+    networks:
+      - restaurant-booking
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: always
+    container_name: restaurant-booking-app
+    ports:
+      - "80:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      PORT: "8080"
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-restaurant_booking}
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - restaurant-booking
+
+volumes:
+  dbdata:
+    name: restaurant_booking_dbdata
+
+networks:
+  restaurant-booking:
+    driver: bridge
