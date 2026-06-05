@@ -1,0 +1,56 @@
+# Docker Compose v2+. Скопируйте .env.example → .env.
+name: recipehub
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-recipehub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recipehub}
+      POSTGRES_DB: ${POSTGRES_DB:-recipehub}
+    volumes:
+      - recipehub_pg:/var/lib/postgresql/data
+    ports:
+      # По умолчанию 5433 на хосте: часто 5432 уже занят локальным PostgreSQL (Windows).
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      # Совпадает с POSTGRES_USER / POSTGRES_DB по умолчанию ниже; при смене пользователя поправьте и это.
+      test: ["CMD-SHELL", "pg_isready -U recipehub -d recipehub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${RECIPEHUB_IMAGE_VERSION:-local}
+    image: recipehub-api:${RECIPEHUB_IMAGE_TAG:-local}
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${RECIPEHUB_PORT:-8080}:8080"
+    environment:
+      HTTP_ADDR: :8080
+      DATABASE_URL: ${DATABASE_URL:-postgres://recipehub:recipehub@db:5432/recipehub?sslmode=disable}
+      OPENAPI_SPEC_PATH: /app/docs/openapi.yaml
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      JWT_ACCESS_TTL_SEC: ${JWT_ACCESS_TTL_SEC:-3600}
+      JWT_REFRESH_TTL_SEC: ${JWT_REFRESH_TTL_SEC:-604800}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  recipehub_pg:
+    name: recipehub_pg_data
