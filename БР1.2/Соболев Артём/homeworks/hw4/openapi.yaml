@@ -1,0 +1,2652 @@
+openapi: 3.0.3
+info:
+  title: Fitness API Microservices
+  version: 1.0.0
+servers:
+  - url: http://localhost:8081/api/v1
+    description: user-service
+  - url: http://localhost:8082/api/v1
+    description: media-service
+  - url: http://localhost:8083/api/v1
+    description: training-service
+  - url: http://localhost:8084/api/v1
+    description: blog-service
+  - url: http://localhost:8085/api/v1
+    description: progress-service
+tags:
+  - name: Auth
+    description: user-service
+  - name: Profile
+    description: user-service
+  - name: Video
+    description: media-service
+  - name: Exercise
+    description: training-service
+  - name: Training
+    description: training-service
+  - name: Training Relation
+    description: training-service
+  - name: Tag
+    description: training-service
+  - name: Type
+    description: training-service
+  - name: Article
+    description: blog-service
+  - name: Category
+    description: blog-service
+  - name: Article Comment
+    description: blog-service
+  - name: Progress
+    description: progress-service
+  - name: Favourite Training
+    description: progress-service
+  - name: Training Rating
+    description: progress-service
+  - name: Training Session
+    description: progress-service
+  - name: Training Session Exercise
+    description: progress-service
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Register new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationRequest"
+      responses:
+        "201":
+          description: Account registered
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /auth/login:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Log in to account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /auth/refresh:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Refresh token
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RefreshTokenCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /auth/logout:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Log out current session
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RefreshTokenCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "204":
+          description: Logged out
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/DeleteRefreshCookie"
+  /profiles:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    post:
+      tags: [Profile]
+      operationId: createProfile
+      summary: Create own profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileRequest"
+      responses:
+        "201":
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    patch:
+      tags: [Profile]
+      operationId: updateProfile
+      summary: Update own profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /profiles/me:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    get:
+      tags: [Profile]
+      operationId: getMyProfile
+      summary: Get own profile
+      responses:
+        "200":
+          description: Current user's profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /profiles/{username}:
+    servers:
+      - url: http://localhost:8081/api/v1
+        description: user-service
+    get:
+      tags: [Profile]
+      operationId: getProfileByUsername
+      summary: Get profile by username
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Username"
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /videos:
+    servers:
+      - url: http://localhost:8082/api/v1
+        description: media-service
+    post:
+      tags: [Video]
+      operationId: createVideo
+      summary: Create video
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVideoRequest"
+      responses:
+        "201":
+          description: Video created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /videos/{videoId}:
+    servers:
+      - url: http://localhost:8082/api/v1
+        description: media-service
+    get:
+      tags: [Video]
+      operationId: getVideoById
+      summary: Get video by id
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: Video
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Video]
+      operationId: updateVideo
+      summary: Update video
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVideoRequest"
+      responses:
+        "200":
+          description: Video updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Video]
+      operationId: deleteVideo
+      summary: Delete video
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "204":
+          description: Video deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /exercises:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Exercise]
+      operationId: getExercises
+      summary: Get exercises
+      security: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          example: push
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Exercises
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseSliceResponse"
+    post:
+      tags: [Exercise]
+      operationId: createExercise
+      summary: Create exercise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExerciseRequest"
+      responses:
+        "201":
+          description: Exercise created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /exercises/{exerciseId}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Exercise]
+      operationId: getExerciseById
+      summary: Get exercise by id
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+      responses:
+        "200":
+          description: Exercise
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Exercise]
+      operationId: updateExercise
+      summary: Update exercise
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExerciseRequest"
+      responses:
+        "200":
+          description: Exercise updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Exercise]
+      operationId: deleteExercise
+      summary: Delete exercise
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+      responses:
+        "204":
+          description: Exercise deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /exercises/{exerciseId}/videos/{videoId}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    put:
+      tags: [Exercise]
+      operationId: addVideoToExercise
+      summary: Add video to exercise
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: Exercise updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Exercise]
+      operationId: removeVideoFromExercise
+      summary: Remove video from exercise
+      parameters:
+        - $ref: "#/components/parameters/ExerciseId"
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "204":
+          description: Video removed from exercise
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /tags:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Tag]
+      operationId: getTags
+      summary: Get tags
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagSliceResponse"
+    post:
+      tags: [Tag]
+      operationId: createTag
+      summary: Create tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagRequest"
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /tags/{slug}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Tag]
+      operationId: getTagBySlug
+      summary: Get tag by slug
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: Tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Tag]
+      operationId: updateTag
+      summary: Update tag
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTagRequest"
+      responses:
+        "200":
+          description: Tag updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Tag]
+      operationId: deleteTag
+      summary: Delete tag
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "204":
+          description: Tag deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /types:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Type]
+      operationId: getTypes
+      summary: Get types
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypeSliceResponse"
+    post:
+      tags: [Type]
+      operationId: createType
+      summary: Create type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTypeRequest"
+      responses:
+        "201":
+          description: Type created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /types/{slug}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Type]
+      operationId: getTypeBySlug
+      summary: Get type by slug
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [Type]
+      operationId: updateType
+      summary: Update type
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTypeRequest"
+      responses:
+        "200":
+          description: Type updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Type]
+      operationId: deleteType
+      summary: Delete type
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "204":
+          description: Type deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /trainings:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Training]
+      operationId: getTrainings
+      summary: Get trainings
+      security: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          example: cardio
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Trainings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSliceResponse"
+    post:
+      tags: [Training]
+      operationId: createTraining
+      summary: Create training
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrainingRequest"
+      responses:
+        "201":
+          description: Training created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /trainings/{trainingId}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    get:
+      tags: [Training]
+      operationId: getTrainingById
+      summary: Get training by id
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "200":
+          description: Training
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Training]
+      operationId: updateTraining
+      summary: Update training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTrainingRequest"
+      responses:
+        "200":
+          description: Training updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Training]
+      operationId: deleteTraining
+      summary: Delete training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "204":
+          description: Training deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /trainings/{trainingId}/tags/{slug}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    put:
+      tags: [Training Relation]
+      operationId: addTagToTraining
+      summary: Add tag to training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: Training updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Training Relation]
+      operationId: removeTagFromTraining
+      summary: Remove tag from training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "204":
+          description: Tag removed from training
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /trainings/{trainingId}/types/{slug}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    put:
+      tags: [Training Relation]
+      operationId: addTypeToTraining
+      summary: Add type to training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: Training updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Training Relation]
+      operationId: removeTypeFromTraining
+      summary: Remove type from training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "204":
+          description: Type removed from training
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /trainings/{trainingId}/exercises/{exerciseId}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    put:
+      tags: [Training Relation]
+      operationId: addExerciseToTraining
+      summary: Add exercise to training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/ExerciseId"
+      responses:
+        "200":
+          description: Training updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /trainings/{trainingId}/exercise-items/{trainingExerciseId}:
+    servers:
+      - url: http://localhost:8083/api/v1
+        description: training-service
+    delete:
+      tags: [Training Relation]
+      operationId: removeExerciseFromTraining
+      summary: Remove exercise from training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/TrainingExerciseId"
+      responses:
+        "204":
+          description: Exercise removed from training
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /categories:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    get:
+      tags: [Category]
+      operationId: getCategories
+      summary: Get categories
+      security: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          example: healthy
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategorySliceResponse"
+    post:
+      tags: [Category]
+      operationId: createCategory
+      summary: Create category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryRequest"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /categories/{slug}:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    get:
+      tags: [Category]
+      operationId: getCategoryBySlug
+      summary: Get category by slug
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: Category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Category]
+      operationId: updateCategory
+      summary: Update category
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryRequest"
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Category]
+      operationId: deleteCategory
+      summary: Delete category
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "204":
+          description: Category deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /articles:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    get:
+      tags: [Article]
+      operationId: getArticles
+      summary: Get articles
+      security: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          example: healthy
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Articles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleSliceResponse"
+    post:
+      tags: [Article]
+      operationId: createArticle
+      summary: Create article
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArticleRequest"
+      responses:
+        "201":
+          description: Article created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /articles/{articleId}:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    get:
+      tags: [Article]
+      operationId: getArticleById
+      summary: Get article by id
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      responses:
+        "200":
+          description: Article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Article]
+      operationId: updateArticle
+      summary: Update article
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateArticleRequest"
+      responses:
+        "200":
+          description: Article updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Article]
+      operationId: deleteArticle
+      summary: Delete article
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      responses:
+        "204":
+          description: Article deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /articles/{articleId}/categories/{categoryId}:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    post:
+      tags: [Article]
+      operationId: addCategoryToArticle
+      summary: Add category to article
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+        - $ref: "#/components/parameters/CategoryId"
+      responses:
+        "200":
+          description: Article updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Article]
+      operationId: removeCategoryFromArticle
+      summary: Remove category from article
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+        - $ref: "#/components/parameters/CategoryId"
+      responses:
+        "204":
+          description: Category removed from article
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /articles/{articleId}/videos/{videoId}:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    post:
+      tags: [Article]
+      operationId: addVideoToArticle
+      summary: Add video to article
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: Article updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Article]
+      operationId: removeVideoFromArticle
+      summary: Remove video from article
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "204":
+          description: Video removed from article
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /articles/{articleId}/comments:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    get:
+      tags: [Article Comment]
+      operationId: getArticleComments
+      summary: Get article comments
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentSliceResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Article Comment]
+      operationId: createArticleComment
+      summary: Create article comment
+      parameters:
+        - $ref: "#/components/parameters/ArticleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentRequest"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /comments/{commentId}:
+    servers:
+      - url: http://localhost:8084/api/v1
+        description: blog-service
+    patch:
+      tags: [Article Comment]
+      operationId: updateComment
+      summary: Update article comment
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommentRequest"
+      responses:
+        "200":
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Article Comment]
+      operationId: deleteComment
+      summary: Delete article comment
+      parameters:
+        - $ref: "#/components/parameters/CommentId"
+      responses:
+        "204":
+          description: Comment deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /progress/me:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Progress]
+      operationId: getMyProgress
+      summary: Get own progress
+      responses:
+        "200":
+          description: Current user's progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProgressResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /profiles/me/progress:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Progress]
+      operationId: getMyProfileProgress
+      summary: Get own progress
+      responses:
+        "200":
+          description: Current user's progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProgressResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /training/:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Favourite Training]
+      operationId: getFavouriteTrainings
+      summary: Get own favourite trainings
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Favourite trainings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingFavouriteSliceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /training/{trainingId}:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    post:
+      tags: [Favourite Training]
+      operationId: addFavouriteTraining
+      summary: Add training to favourite
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "201":
+          description: Favourite training created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingFavouriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Favourite Training]
+      operationId: deleteFavouriteTraining
+      summary: Delete favourite training
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "204":
+          description: Favourite training deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training/{trainingId}/ratings:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Training Rating]
+      operationId: getTrainingRatings
+      summary: Get ratings
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Training ratings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingRatingSliceResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Training Rating]
+      operationId: createTrainingRating
+      summary: Create rating
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrainingRatingRequest"
+      responses:
+        "201":
+          description: Rating created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingRatingResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Training Rating]
+      operationId: deleteTrainingRating
+      summary: Delete rating
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "204":
+          description: Rating deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-sessions:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Training Session]
+      operationId: getTrainingSessions
+      summary: Get all sessions for current user
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Training sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionSliceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /training-sessions/{sessionId}:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Training Session]
+      operationId: getTrainingSessionById
+      summary: Get concrete session for current user
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Training session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /trainings/{trainingId}/sessions:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    post:
+      tags: [Training Session]
+      operationId: createTrainingSession
+      summary: Create training session
+      parameters:
+        - $ref: "#/components/parameters/TrainingId"
+      responses:
+        "201":
+          description: Training session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-sessions/{sessionId}/complete:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    patch:
+      tags: [Training Session]
+      operationId: completeTrainingSession
+      summary: Complete training session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Training session completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-sessions/{sessionId}/abandon:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    patch:
+      tags: [Training Session]
+      operationId: abandonTrainingSession
+      summary: Abandon training session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Training session abandoned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-sessions/{sessionId}/exercises:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Training Session Exercise]
+      operationId: getTrainingSessionExercises
+      summary: Get exercises by training session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - $ref: "#/components/parameters/Sort"
+      responses:
+        "200":
+          description: Training session exercises
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionExerciseSliceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-session-exercises/{sessionExerciseId}:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    get:
+      tags: [Training Session Exercise]
+      operationId: getTrainingSessionExerciseById
+      summary: Get training session exercise
+      parameters:
+        - $ref: "#/components/parameters/SessionExerciseId"
+      responses:
+        "200":
+          description: Training session exercise
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionExerciseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-session-exercises/{sessionExerciseId}/start:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    post:
+      tags: [Training Session Exercise]
+      operationId: startTrainingSessionExercise
+      summary: Start training session exercise
+      parameters:
+        - $ref: "#/components/parameters/SessionExerciseId"
+      responses:
+        "200":
+          description: Training session exercise started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionExerciseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-session-exercises/{sessionExerciseId}/complete:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    post:
+      tags: [Training Session Exercise]
+      operationId: completeTrainingSessionExercise
+      summary: Complete training session exercise
+      parameters:
+        - $ref: "#/components/parameters/SessionExerciseId"
+      responses:
+        "200":
+          description: Training session exercise completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionExerciseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /training-session-exercises/{sessionExerciseId}/skip:
+    servers:
+      - url: http://localhost:8085/api/v1
+        description: progress-service
+    post:
+      tags: [Training Session Exercise]
+      operationId: skipTrainingSessionExercise
+      summary: Skip training session exercise
+      parameters:
+        - $ref: "#/components/parameters/SessionExerciseId"
+      responses:
+        "200":
+          description: Training session exercise skipped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionExerciseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Authorization: Bearer <accessToken>"
+  headers:
+    RefreshCookie:
+      description: HttpOnly cookie with refresh token
+      schema:
+        type: string
+        example: refresh_token=abc123; Path=/api/v1/auth; HttpOnly; SameSite=Lax
+    DeleteRefreshCookie:
+      description: Deletes refresh token cookie
+      schema:
+        type: string
+        example: refresh_token=; Max-Age=0; Path=/api/v1/auth; HttpOnly; SameSite=Lax
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 20
+    Sort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example: ["id,asc"]
+    RefreshTokenCookie:
+      name: refresh_token
+      in: cookie
+      required: false
+      schema:
+        type: string
+    Username:
+      name: username
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 64
+      example: user1
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      example: healthy
+    VideoId:
+      name: videoId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    ExerciseId:
+      name: exerciseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    TrainingId:
+      name: trainingId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    TrainingExerciseId:
+      name: trainingExerciseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    ArticleId:
+      name: articleId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+    SessionExerciseId:
+      name: sessionExerciseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 1
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Role:
+      type: string
+      enum: [USER, TRAINER, ADMIN]
+    TrainingLevel:
+      type: string
+      enum: [BEGINNER, INTERMEDIATE, ADVANCED]
+    MuscleGroup:
+      type: string
+      enum: [CHEST, LEGS, CORE, FULL_BODY]
+    TrainingStatus:
+      type: string
+      enum: [IN_PROGRESS, COMPLETED, ABANDONED]
+    ExerciseStatus:
+      type: string
+      enum: [NOT_STARTED, IN_PROGRESS, COMPLETED, SKIPPED]
+    RegistrationRequest:
+      type: object
+      required: [username, email, password, confirmPassword]
+      properties:
+        username:
+          type: string
+          maxLength: 64
+          example: user1
+        email:
+          type: string
+          format: email
+          example: user1@example.com
+        password:
+          type: string
+          format: password
+          example: StrongPass123
+        confirmPassword:
+          type: string
+          format: password
+          example: StrongPass123
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 64
+          example: user1
+        password:
+          type: string
+          format: password
+          example: StrongPass123
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          example: Hf5K4v2Q7m9R8s1T6u3W0x4Y2z8AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRr
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserInfo"
+    UserInfo:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+    CreateProfileRequest:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        firstName:
+          type: string
+          maxLength: 30
+          example: Ivan
+        lastName:
+          type: string
+          maxLength: 30
+          example: Ivanov
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          maxLength: 30
+          nullable: true
+        lastName:
+          type: string
+          maxLength: 30
+          nullable: true
+    ProfileResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+        lastName:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserResponse"
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+    CreateVideoRequest:
+      type: object
+      required: [title, url]
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          example: Push-up technique
+        url:
+          type: string
+          format: uri
+          example: https://example.com/videos/push-up
+    UpdateVideoRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          nullable: true
+        url:
+          type: string
+          format: uri
+          nullable: true
+    VideoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+    CreateExerciseRequest:
+      type: object
+      required: [title, muscleGroup, trainingLevel]
+      properties:
+        title:
+          type: string
+          maxLength: 50
+          example: Push-up
+        description:
+          type: string
+          nullable: true
+        muscleGroup:
+          $ref: "#/components/schemas/MuscleGroup"
+        trainingLevel:
+          $ref: "#/components/schemas/TrainingLevel"
+    UpdateExerciseRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 50
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        muscleGroup:
+          allOf:
+            - $ref: "#/components/schemas/MuscleGroup"
+          nullable: true
+        trainingLevel:
+          allOf:
+            - $ref: "#/components/schemas/TrainingLevel"
+          nullable: true
+    ExerciseResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        videoIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: integer
+            format: int64
+        muscleGroup:
+          $ref: "#/components/schemas/MuscleGroup"
+        trainingLevel:
+          $ref: "#/components/schemas/TrainingLevel"
+        authorId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateTagRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          maxLength: 30
+          example: Cardio
+        slug:
+          type: string
+          maxLength: 30
+          example: cardio
+    UpdateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 30
+          nullable: true
+        slug:
+          type: string
+          maxLength: 30
+          nullable: true
+    TagResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        slug:
+          type: string
+    CreateTypeRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          maxLength: 30
+          example: Strength
+        slug:
+          type: string
+          maxLength: 30
+          example: strength
+    UpdateTypeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 30
+          nullable: true
+        slug:
+          type: string
+          maxLength: 30
+          nullable: true
+    TypeResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        slug:
+          type: string
+    CreateTrainingRequest:
+      type: object
+      required: [title, trainingLevel]
+      properties:
+        title:
+          type: string
+          maxLength: 50
+          example: Morning cardio
+        description:
+          type: string
+          nullable: true
+        trainingLevel:
+          $ref: "#/components/schemas/TrainingLevel"
+    UpdateTrainingRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 50
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        trainingLevel:
+          allOf:
+            - $ref: "#/components/schemas/TrainingLevel"
+          nullable: true
+    TrainingExerciseResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        exerciseId:
+          type: integer
+          format: int64
+        orderIndex:
+          type: integer
+    TrainingResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingExerciseResponse"
+        authorId:
+          type: integer
+          format: int64
+        types:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/TypeResponse"
+        tags:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/TagResponse"
+        trainingLevel:
+          $ref: "#/components/schemas/TrainingLevel"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateCategoryRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          maxLength: 40
+          example: Healthy
+        slug:
+          type: string
+          maxLength: 40
+          example: healthy
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 40
+          nullable: true
+        slug:
+          type: string
+          maxLength: 40
+          nullable: true
+    CategoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        slug:
+          type: string
+    CreateArticleRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          example: Healthy food
+        description:
+          type: string
+          nullable: true
+          example: Description of the article content
+    UpdateArticleRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    ArticleResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        videoIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: integer
+            format: int64
+        categories:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/CategoryResponse"
+        authorId:
+          type: integer
+          format: int64
+    CreateCommentRequest:
+      type: object
+      required: [comment]
+      properties:
+        comment:
+          type: string
+          example: Message
+    UpdateCommentRequest:
+      type: object
+      required: [comment]
+      properties:
+        comment:
+          type: string
+          example: Message
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        comment:
+          type: string
+        userId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UserProgressResponse:
+      type: object
+      properties:
+        totalSessions:
+          type: integer
+          format: int64
+        activeSessions:
+          type: integer
+          format: int64
+        completedSessions:
+          type: integer
+          format: int64
+        abandonedSessions:
+          type: integer
+          format: int64
+        totalExercises:
+          type: integer
+          format: int64
+        notStartedExercises:
+          type: integer
+          format: int64
+        inProgressExercises:
+          type: integer
+          format: int64
+        completedExercises:
+          type: integer
+          format: int64
+        skippedExercises:
+          type: integer
+          format: int64
+    TrainingFavouriteResponse:
+      type: object
+      properties:
+        trainingId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+    CreateTrainingRatingRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          nullable: true
+    TrainingRatingResponse:
+      type: object
+      properties:
+        trainingId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    TrainingSessionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        trainingId:
+          type: integer
+          format: int64
+        trainingStatus:
+          $ref: "#/components/schemas/TrainingStatus"
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    TrainingSessionExerciseResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        trainingSessionId:
+          type: integer
+          format: int64
+        trainingExerciseId:
+          type: integer
+          format: int64
+        exerciseStatus:
+          $ref: "#/components/schemas/ExerciseStatus"
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    BaseSliceResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        numberOfElements:
+          type: integer
+        hasNext:
+          type: boolean
+        first:
+          type: boolean
+        last:
+          type: boolean
+    ExerciseSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/ExerciseResponse"
+    TagSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TagResponse"
+    TypeSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TypeResponse"
+    TrainingSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainingResponse"
+    CategorySliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/CategoryResponse"
+    ArticleSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/ArticleResponse"
+    CommentSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/CommentResponse"
+    TrainingFavouriteSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainingFavouriteResponse"
+    TrainingRatingSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainingRatingResponse"
+    TrainingSessionSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainingSessionResponse"
+    TrainingSessionExerciseSliceResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseSliceResponse"
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainingSessionExerciseResponse"
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 404
+        error:
+          type: string
+          example: Not Found
+        errorCode:
+          type: string
+          example: RESOURCE_NOT_FOUND
+        message:
+          type: string
+          example: Requested resource was not found
+        path:
+          type: string
+          example: /api/v1/resources/1
+    ValidationErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: Invalid request body
+        path:
+          type: string
+          example: /api/v1/resources/1
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationFieldError"
+    ValidationFieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          example: title
+        message:
+          type: string
+          example: must not be blank
