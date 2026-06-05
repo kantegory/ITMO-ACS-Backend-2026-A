@@ -1,0 +1,425 @@
+{
+  "info": {
+    "name": "Rental API",
+    "description": "Postman-коллекция для ЛР1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080/api/v1" },
+    { "key": "landlord_email", "value": "" },
+    { "key": "tenant_email", "value": "" },
+    { "key": "landlord_token", "value": "" },
+    { "key": "tenant_token", "value": "" },
+    { "key": "property_id", "value": "" },
+    { "key": "rental_id", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('landlord_email')) {",
+          "  const stamp = Date.now();",
+          "  pm.collectionVariables.set('landlord_email', `landlord_${stamp}@test.com`);",
+          "  pm.collectionVariables.set('tenant_email', `tenant_${stamp}@test.com`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Register landlord",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{landlord_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Иван Арендодатель\",\n  \"role\": \"landlord\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 201', () => pm.response.to.have.status(201));",
+          "const j = pm.response.json();",
+          "pm.test('token returned', () => pm.expect(j.access_token).to.be.a('string').and.not.empty);",
+          "pm.test('user role landlord', () => pm.expect(j.user.role).to.eql('landlord'));",
+          "pm.collectionVariables.set('landlord_token', j.access_token);"
+        ]}
+      }]
+    },
+    {
+      "name": "02. Register tenant",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Пётр Арендатор\",\n  \"role\": \"tenant\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 201', () => pm.response.to.have.status(201));",
+          "const j = pm.response.json();",
+          "pm.test('user role tenant', () => pm.expect(j.user.role).to.eql('tenant'));"
+        ]}
+      }]
+    },
+    {
+      "name": "03. Login tenant",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"password123\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('token returned', () => pm.expect(j.access_token).to.be.a('string').and.not.empty);",
+          "pm.test('token_type is Bearer', () => pm.expect(j.token_type).to.eql('Bearer'));",
+          "pm.collectionVariables.set('tenant_token', j.access_token);"
+        ]}
+      }]
+    },
+    {
+      "name": "04. Login with wrong password (negative)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"wrong-password\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 401', () => pm.response.to.have.status(401));",
+          "pm.test('error body', () => pm.expect(pm.response.json().error).to.eql('unauthorized'));"
+        ]}
+      }]
+    },
+    {
+      "name": "05. Get /users/me (tenant)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('email matches', () => pm.expect(j.email).to.eql(pm.collectionVariables.get('tenant_email')));"
+        ]}
+      }]
+    },
+    {
+      "name": "06. Get property types",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/property-types", "host": ["{{base_url}}"], "path": ["property-types"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('has items', () => pm.expect(j).to.be.an('array').and.not.empty);"
+        ]}
+      }]
+    },
+    {
+      "name": "07. Get amenities",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/amenities", "host": ["{{base_url}}"], "path": ["amenities"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('has items', () => pm.expect(j).to.be.an('array').and.not.empty);",
+          "pm.test('has Wi-Fi', () => pm.expect(j.map(a => a.name)).to.include('Wi-Fi'));"
+        ]}
+      }]
+    },
+    {
+      "name": "08. Create property (landlord)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Уютная квартира в центре\",\n  \"description\": \"Двушка с видом на парк\",\n  \"property_type_id\": 1,\n  \"price_per_month\": 45000,\n  \"area_sqm\": 65.5,\n  \"rooms\": 2,\n  \"rental_conditions\": \"Без животных, залог 1 месяц\",\n  \"location\": {\n    \"city\": \"Санкт-Петербург\",\n    \"district\": \"Центральный\",\n    \"address\": \"ул. Пушкина, д. 10\"\n  },\n  \"amenity_ids\": [1, 2, 3]\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 201', () => pm.response.to.have.status(201));",
+          "const j = pm.response.json();",
+          "pm.test('has id', () => pm.expect(j.id).to.be.a('number'));",
+          "pm.test('amenities saved', () => pm.expect(j.amenities.map(a => a.id)).to.have.members([1,2,3]));",
+          "pm.test('is_available true', () => pm.expect(j.is_available).to.be.true);",
+          "pm.collectionVariables.set('property_id', j.id);"
+        ]}
+      }]
+    },
+    {
+      "name": "09. Tenant tries to create property (forbidden)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"hack\",\n  \"description\": \"x\",\n  \"property_type_id\": 1,\n  \"price_per_month\": 1,\n  \"location\": {\"city\": \"X\", \"address\": \"Y\"}\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 403', () => pm.response.to.have.status(403));"
+        ]}
+      }]
+    },
+    {
+      "name": "10. Search properties (без фильтров)",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('page structure', () => {",
+          "  pm.expect(j).to.have.property('content');",
+          "  pm.expect(j).to.have.property('total_elements');",
+          "});",
+          "pm.test('at least one property', () => pm.expect(j.total_elements).to.be.above(0));"
+        ]}
+      }]
+    },
+    {
+      "name": "11. Search properties (фильтр по городу и удобствам)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/properties?city=Санкт-Петербург&amenity_ids=1&amenity_ids=2&sort_by=price_desc",
+          "host": ["{{base_url}}"],
+          "path": ["properties"],
+          "query": [
+            { "key": "city", "value": "Санкт-Петербург" },
+            { "key": "amenity_ids", "value": "1" },
+            { "key": "amenity_ids", "value": "2" },
+            { "key": "sort_by", "value": "price_desc" }
+          ]
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('found at least 1', () => pm.expect(j.total_elements).to.be.above(0));",
+          "pm.test('all results have required amenities', () => {",
+          "  j.content.forEach(p => {",
+          "    const ids = p.amenities.map(a => a.id);",
+          "    pm.expect(ids).to.include(1);",
+          "    pm.expect(ids).to.include(2);",
+          "  });",
+          "});",
+          "pm.test('all results are in requested city', () => {",
+          "  j.content.forEach(p => pm.expect(p.location.city).to.eql('Санкт-Петербург'));",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "12. Get property detail (из результата поиска)",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('has owner', () => pm.expect(j.owner).to.have.property('email'));",
+          "pm.test('has photos array', () => pm.expect(j.photos).to.be.an('array'));",
+          "pm.test('has rental_conditions', () => pm.expect(j.rental_conditions).to.be.a('string'));"
+        ]}
+      }]
+    },
+    {
+      "name": "13. Start rental (tenant)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/rentals", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","rentals"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start_date\": \"2026-05-01\",\n  \"end_date\": \"2026-11-01\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 201', () => pm.response.to.have.status(201));",
+          "const j = pm.response.json();",
+          "pm.test('status active', () => pm.expect(j.status).to.eql('active'));",
+          "pm.test('tenant matches', () => pm.expect(j.tenant.email).to.eql(pm.collectionVariables.get('tenant_email')));",
+          "pm.collectionVariables.set('rental_id', j.id);"
+        ]}
+      }]
+    },
+    {
+      "name": "14. Send message (tenant)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Здравствуйте, интересует аренда с мая.\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 201', () => pm.response.to.have.status(201));",
+          "const j = pm.response.json();",
+          "pm.test('sender is tenant', () => pm.expect(j.sender.email).to.eql(pm.collectionVariables.get('tenant_email')));"
+        ]}
+      }]
+    },
+    {
+      "name": "15. Reply from landlord",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Добрый день, можно заселяться.\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 201', () => pm.response.to.have.status(201));"
+        ]}
+      }]
+    },
+    {
+      "name": "16. Get rental messages",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('at least 2 messages', () => pm.expect(j.total_elements).to.be.at.least(2));",
+          "pm.test('messages sorted ascending', () => {",
+          "  const ts = j.content.map(m => new Date(m.created_at).getTime());",
+          "  for (let i = 1; i < ts.length; i++) pm.expect(ts[i]).to.be.at.least(ts[i-1]);",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "17. Complete rental (landlord)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/complete", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","complete"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "pm.test('status completed', () => pm.expect(pm.response.json().status).to.eql('completed'));"
+        ]}
+      }]
+    },
+    {
+      "name": "18. Cannot complete twice (negative)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/complete", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","complete"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 400', () => pm.response.to.have.status(400));"
+        ]}
+      }]
+    },
+    {
+      "name": "19. Unauthorized access (negative)",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 401', () => pm.response.to.have.status(401));"
+        ]}
+      }]
+    },
+    {
+      "name": "20. Not found (negative)",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/properties/99999999", "host": ["{{base_url}}"], "path": ["properties","99999999"] }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 404', () => pm.response.to.have.status(404));"
+        ]}
+      }]
+    }
+  ]
+}
