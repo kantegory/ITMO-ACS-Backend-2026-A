@@ -1,0 +1,199 @@
+openapi: "3.0.3"
+info:
+  title: User Service — Internal API
+  version: "1.0.0"
+  description: Внутренние эндпоинты User Service. Доступны только через внутреннюю сеть.
+
+paths:
+  /internal/users:
+    post:
+      summary: Создать профиль пользователя
+      description: Вызывается Auth Service сразу после регистрации для создания профильных данных.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, first_name, last_name]
+              properties:
+                id:
+                  type: integer
+                  description: ID, сгенерированный Auth Service
+                  example: 42
+                first_name:
+                  type: string
+                  example: "Иван"
+                last_name:
+                  type: string
+                  example: "Иванов"
+                phone:
+                  type: string
+                  example: "+79001234567"
+      responses:
+        "201":
+          description: Профиль создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Некорректные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "Field 'first_name' is required"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      summary: Пакетное получение профилей по списку ID
+      security:
+        - serviceToken: []
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID через запятую (не более 100)
+          schema:
+            type: string
+            example: "1,2,42"
+      responses:
+        "200":
+          description: Список профилей
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Список ids пуст или содержит некорректные значения
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "Query param 'ids' is required and must not be empty"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/users/{id}:
+    get:
+      summary: Получить профиль пользователя по ID
+      security:
+        - serviceToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 42
+      responses:
+        "200":
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Некорректный id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "Path param 'id' must be a positive integer"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "User with id 42 not found"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        first_name:
+          type: string
+          example: "Иван"
+        last_name:
+          type: string
+          example: "Иванов"
+        phone:
+          type: string
+          example: "+79001234567"
+        avatar_url:
+          type: string
+          example: "https://cdn.example.com/avatars/42.jpg"
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["renter"]
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "NOT_FOUND"
+        message:
+          type: string
+          example: "User with id 42 not found"

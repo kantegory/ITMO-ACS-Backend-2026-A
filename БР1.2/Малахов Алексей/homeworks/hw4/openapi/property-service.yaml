@@ -1,0 +1,167 @@
+openapi: "3.0.3"
+info:
+  title: Property Service — Internal API
+  version: "1.0.0"
+  description: Внутренние эндпоинты Property Service. Доступны только через внутреннюю сеть.
+
+paths:
+  /internal/properties/{id}:
+    get:
+      summary: Получить данные объекта недвижимости
+      security:
+        - serviceToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 7
+      responses:
+        "200":
+          description: Данные объекта
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+        "400":
+          description: Некорректный id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "Property with id 7 not found"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/properties/{id}/status:
+    patch:
+      summary: Обновить статус объекта
+      description: Вызывается Rental Service при активации или завершении аренды.
+      security:
+        - serviceToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 7
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, rented, archived]
+                  example: "rented"
+      responses:
+        "200":
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 7
+                  status:
+                    type: string
+                    enum: [active, rented, archived]
+                    example: "rented"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Недопустимый переход статуса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "UNPROCESSABLE_ENTITY"
+                message: "Cannot transition from 'archived' to 'rented'"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  schemas:
+    Property:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 7
+        owner_id:
+          type: integer
+          example: 42
+        title:
+          type: string
+          example: "Студия в центре"
+        type:
+          type: string
+          example: "studio"
+        status:
+          type: string
+          enum: [active, rented, archived]
+          example: "active"
+        price_per_month:
+          type: string
+          example: "35000.00"
+        currency:
+          type: string
+          example: "RUB"
+        city:
+          type: string
+          example: "Санкт-Петербург"
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "NOT_FOUND"
+        message:
+          type: string
+          example: "Property with id 7 not found"

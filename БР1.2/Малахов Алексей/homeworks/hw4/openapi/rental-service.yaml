@@ -1,0 +1,149 @@
+openapi: "3.0.3"
+info:
+  title: Rental Service — Internal API
+  version: "1.0.0"
+  description: Внутренние эндпоинты Rental Service. Доступны только через внутреннюю сеть.
+
+paths:
+  /internal/rentals/{id}:
+    get:
+      summary: Получить данные аренды по ID
+      security:
+        - serviceToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 3
+      responses:
+        "200":
+          description: Данные аренды
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rental"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Аренда не найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "NOT_FOUND"
+                message: "Rental with id 3 not found"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/rentals/check:
+    get:
+      summary: Проверить наличие завершённой аренды
+      description: >
+        Review Service вызывает этот эндпоинт перед созданием отзыва,
+        чтобы убедиться, что арендатор действительно арендовал объект
+        у данного арендодателя и аренда завершена.
+      security:
+        - serviceToken: []
+      parameters:
+        - name: renter_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 42
+        - name: owner_id
+          in: query
+          required: true
+          description: ID арендодателя (property.owner_id)
+          schema:
+            type: integer
+            example: 15
+      responses:
+        "200":
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_completed_rental:
+                    type: boolean
+                    example: true
+                  rental_id:
+                    type: integer
+                    nullable: true
+                    example: 3
+        "400":
+          description: Отсутствуют обязательные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: "BAD_REQUEST"
+                message: "Query params 'renter_id' and 'owner_id' are required"
+        "401":
+          description: Отсутствует или недействителен X-Service-Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  schemas:
+    Rental:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        property_id:
+          type: integer
+          example: 7
+        renter_id:
+          type: integer
+          example: 42
+        status:
+          type: string
+          enum: [pending, active, completed, cancelled]
+          example: "completed"
+        start_date:
+          type: string
+          format: date
+          example: "2025-01-01"
+        end_date:
+          type: string
+          format: date
+          example: "2025-06-30"
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "NOT_FOUND"
+        message:
+          type: string
+          example: "Rental with id 3 not found"
