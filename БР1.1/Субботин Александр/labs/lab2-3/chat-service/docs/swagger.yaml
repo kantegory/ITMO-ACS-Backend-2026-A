@@ -1,0 +1,219 @@
+basePath: /api/v1
+definitions:
+  model.Chat:
+    properties:
+      booking_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      property_id:
+        type: string
+    type: object
+  model.CreateChatRequest:
+    properties:
+      booking_id:
+        type: string
+      participant_id:
+        type: string
+      property_id:
+        type: string
+    required:
+    - participant_id
+    type: object
+  model.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      details: {}
+      message:
+        type: string
+    type: object
+  model.Message:
+    properties:
+      chat_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_read:
+        type: boolean
+      sender_id:
+        type: string
+      text:
+        type: string
+    type: object
+  model.PaginatedResponse:
+    properties:
+      items: {}
+      pagination:
+        $ref: '#/definitions/model.Pagination'
+    type: object
+  model.Pagination:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  model.SendMessageRequest:
+    properties:
+      text:
+        type: string
+    required:
+    - text
+    type: object
+host: localhost:8084
+info:
+  contact: {}
+  description: Сервис чатов и сообщений
+  title: Chat Service API
+  version: "1.0"
+paths:
+  /chats:
+    get:
+      parameters:
+      - default: 20
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PaginatedResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Список чатов
+      tags:
+      - chats
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные чата
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateChatRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Chat'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создать чат
+      tags:
+      - chats
+  /chats/{chatId}/messages:
+    get:
+      parameters:
+      - description: ID чата
+        in: path
+        name: chatId
+        required: true
+        type: string
+      - default: 50
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PaginatedResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Сообщения чата
+      tags:
+      - chats
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID чата
+        in: path
+        name: chatId
+        required: true
+        type: string
+      - description: Текст сообщения
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.SendMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Message'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Отправить сообщение
+      tags:
+      - chats
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите токен в формате: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
