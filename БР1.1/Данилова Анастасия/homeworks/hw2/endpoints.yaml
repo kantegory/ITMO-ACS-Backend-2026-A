@@ -1,0 +1,932 @@
+openapi: 3.0.0
+info:
+  title: Rental Service API
+  version: 1.0.0
+  description: API для сервиса аренды недвижимости (по ER-диаграмме из hw1)
+
+servers:
+  - url: http://localhost:5000
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Properties
+  - name: PropertyImages
+  - name: Rentals
+  - name: Chats
+  - name: Messages
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Авторизация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить текущего пользователя
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserFull"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Users]
+      summary: Обновить данные текущего пользователя
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUser"
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserFull"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/dashboard:
+    get:
+      tags: [Users]
+      summary: Личный кабинет (арендую / сдаю)
+      description: Возвращает договоры, связанные с пользователем как арендатором и как арендодателем (через объекты).
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDashboard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /properties:
+    get:
+      tags: [Properties]
+      summary: Поиск недвижимости (с фильтрами)
+      parameters:
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: type
+          schema: { $ref: "#/components/schemas/PropertyType" }
+        - in: query
+          name: min_price_per_month
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: max_price_per_month
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: is_verified
+          schema: { type: boolean }
+        - in: query
+          name: is_vacant
+          schema: { type: boolean }
+        - in: query
+          name: owner_id
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Список объектов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Property"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+    post:
+      tags: [Properties]
+      summary: Создать объявление (объект недвижимости)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProperty"
+      responses:
+        "201":
+          description: Объект создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyFull"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /properties/{property_id}:
+    parameters:
+      - $ref: "#/components/parameters/PropertyId"
+    get:
+      tags: [Properties]
+      summary: Получить объект недвижимости (полное описание)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyFull"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Properties]
+      summary: Обновить объект недвижимости
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProperty"
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyFull"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Properties]
+      summary: Удалить объект недвижимости
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Удалено
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /properties/{property_id}/images:
+    parameters:
+      - $ref: "#/components/parameters/PropertyId"
+    get:
+      tags: [PropertyImages]
+      summary: Получить фото объекта
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropertyImage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [PropertyImages]
+      summary: Добавить фото к объекту
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePropertyImage"
+      responses:
+        "201":
+          description: Добавлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyImage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /images/{image_id}:
+    delete:
+      tags: [PropertyImages]
+      summary: Удалить фото
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: image_id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204":
+          description: Удалено
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /rentals:
+    get:
+      tags: [Rentals]
+      summary: Получить список договоров (мои)
+      description: По умолчанию возвращает договоры, где пользователь арендатор или арендодатель (через property.owner_id).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: role
+          description: Фильтр, как смотреть договоры относительно текущего пользователя.
+          schema:
+            type: string
+            enum: [tenant, landlord, all]
+            default: all
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/RentalStatus" }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Список договоров
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Rental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Rentals]
+      summary: Создать договор аренды
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRental"
+      responses:
+        "201":
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RentalFull"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /rentals/{rental_id}:
+    parameters:
+      - $ref: "#/components/parameters/RentalId"
+    get:
+      tags: [Rentals]
+      summary: Получить договор аренды
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RentalFull"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /rentals/{rental_id}/status:
+    put:
+      tags: [Rentals]
+      summary: Обновить статус договора
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRentalStatus"
+      responses:
+        "200":
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RentalFull"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /chats:
+    get:
+      tags: [Chats]
+      summary: Получить чаты пользователя
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: property_id
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Список чатов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Chat"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Chats]
+      summary: Создать чат по объекту
+      description: Создаёт чат между tenant (текущий пользователь) и landlord (владелец объекта) по property_id.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChat"
+      responses:
+        "201":
+          description: Чат создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /chats/{chat_id}:
+    get:
+      tags: [Chats]
+      summary: Получить чат
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: chat_id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /chats/{chat_id}/messages:
+    parameters:
+      - in: path
+        name: chat_id
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [Messages]
+      summary: Получить сообщения чата
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      tags: [Messages]
+      summary: Отправить сообщение в чат
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessage"
+      responses:
+        "201":
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /messages/{message_id}:
+    parameters:
+      - in: path
+        name: message_id
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      tags: [Messages]
+      summary: Обновить сообщение
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessage"
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Messages]
+      summary: Удалить сообщение
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Удалено
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PropertyId:
+      in: path
+      name: property_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+    RentalId:
+      in: path
+      name: rental_id
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    BadRequest:
+      description: Ошибка валидации / некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Нет прав
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Конфликт (например, ресурс уже существует)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        code: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    Role:
+      type: string
+      enum: [TENANT, LANDLORD, BOTH]
+
+    PropertyType:
+      type: string
+      enum: [APARTMENT, HOUSE, ROOM, STUDIO]
+
+    RentalStatus:
+      type: string
+      enum: [PENDING, ACTIVE, COMPLETED, CANCELED]
+
+    User:
+      type: object
+      required: [id, role, email, first_name, last_name, is_verified, is_active, created_at, updated_at]
+      properties:
+        id: { type: integer, minimum: 1 }
+        role: { $ref: "#/components/schemas/Role" }
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        is_verified: { type: boolean }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UserFull:
+      allOf:
+        - $ref: "#/components/schemas/User"
+
+    UpdateUser:
+      type: object
+      additionalProperties: false
+      properties:
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, first_name, last_name, role]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        first_name: { type: string }
+        last_name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    AuthResponse:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+
+    Property:
+      type: object
+      required:
+        - id
+        - owner_id
+        - title
+        - type
+        - city
+        - address
+        - latitude
+        - longitude
+        - description
+        - price_per_month
+        - deposit
+        - commission
+        - area
+        - prepayment
+        - min_rental_period
+        - is_verified
+        - is_vacant
+        - created_at
+        - updated_at
+      properties:
+        id: { type: integer, minimum: 1 }
+        owner_id: { type: integer, minimum: 1, description: UserID (владелец/арендодатель) }
+        title: { type: string }
+        type: { $ref: "#/components/schemas/PropertyType" }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: float }
+        longitude: { type: number, format: float }
+        description: { type: string }
+        price_per_month: { type: integer, minimum: 0 }
+        deposit: { type: integer, minimum: 0 }
+        commission: { type: integer, minimum: 0 }
+        area: { type: integer, minimum: 0 }
+        prepayment: { type: string }
+        min_rental_period: { type: string }
+        is_verified: { type: boolean }
+        is_vacant: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PropertyImage:
+      type: object
+      required: [id, property_id, image_url]
+      properties:
+        id: { type: integer, minimum: 1 }
+        property_id: { type: integer, minimum: 1 }
+        image_url: { type: string }
+
+    PropertyFull:
+      allOf:
+        - $ref: "#/components/schemas/Property"
+        - type: object
+          required: [images]
+          properties:
+            images:
+              type: array
+              items:
+                $ref: "#/components/schemas/PropertyImage"
+
+    CreateProperty:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - type
+        - city
+        - address
+        - latitude
+        - longitude
+        - description
+        - price_per_month
+        - deposit
+        - commission
+        - area
+        - prepayment
+        - min_rental_period
+      properties:
+        title: { type: string }
+        type: { $ref: "#/components/schemas/PropertyType" }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: float }
+        longitude: { type: number, format: float }
+        description: { type: string }
+        price_per_month: { type: integer, minimum: 0 }
+        deposit: { type: integer, minimum: 0 }
+        commission: { type: integer, minimum: 0 }
+        area: { type: integer, minimum: 0 }
+        prepayment: { type: string }
+        min_rental_period: { type: string }
+
+    UpdateProperty:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        type: { $ref: "#/components/schemas/PropertyType" }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: float }
+        longitude: { type: number, format: float }
+        description: { type: string }
+        price_per_month: { type: integer, minimum: 0 }
+        deposit: { type: integer, minimum: 0 }
+        commission: { type: integer, minimum: 0 }
+        area: { type: integer, minimum: 0 }
+        prepayment: { type: string }
+        min_rental_period: { type: string }
+        is_verified: { type: boolean }
+        is_vacant: { type: boolean }
+
+    CreatePropertyImage:
+      type: object
+      additionalProperties: false
+      required: [image_url]
+      properties:
+        image_url: { type: string }
+
+    Rental:
+      type: object
+      required: [id, property_id, tenant_id, start_date, end_date, status, created_at]
+      properties:
+        id: { type: integer, minimum: 1 }
+        property_id: { type: integer, minimum: 1 }
+        tenant_id: { type: integer, minimum: 1 }
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/RentalStatus" }
+        created_at: { type: string, format: date-time }
+
+    RentalFull:
+      allOf:
+        - $ref: "#/components/schemas/Rental"
+        - type: object
+          required: [property]
+          properties:
+            property:
+              $ref: "#/components/schemas/Property"
+
+    CreateRental:
+      type: object
+      additionalProperties: false
+      required: [property_id, start_date, end_date]
+      properties:
+        property_id: { type: integer, minimum: 1 }
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time }
+
+    UpdateRentalStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/RentalStatus" }
+
+    Chat:
+      type: object
+      required: [id, tenant_id, landlord_id, property_id, created_at]
+      properties:
+        id: { type: integer, minimum: 1 }
+        tenant_id: { type: integer, minimum: 1 }
+        landlord_id: { type: integer, minimum: 1 }
+        property_id: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+
+    CreateChat:
+      type: object
+      additionalProperties: false
+      required: [property_id]
+      properties:
+        property_id: { type: integer, minimum: 1 }
+
+    Message:
+      type: object
+      required: [id, chat_id, sender_id, text, created_at]
+      properties:
+        id: { type: integer, minimum: 1 }
+        chat_id: { type: integer, minimum: 1 }
+        sender_id: { type: integer, minimum: 1 }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+
+    CreateMessage:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { type: string }
+
+    UpdateMessage:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { type: string }
+
+    UserDashboard:
+      type: object
+      required: [as_tenant, as_landlord]
+      properties:
+        as_tenant:
+          type: array
+          items:
+            $ref: "#/components/schemas/RentalFull"
+        as_landlord:
+          type: array
+          items:
+            $ref: "#/components/schemas/RentalFull"
