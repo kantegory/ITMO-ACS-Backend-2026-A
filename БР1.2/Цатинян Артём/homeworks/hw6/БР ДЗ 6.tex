@@ -1,0 +1,246 @@
+\documentclass[14pt,a4paper]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{cmap}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\geometry{left=30mm,right=15mm,top=20mm,bottom=20mm}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2em}
+\renewcommand{\arraystretch}{1.35}
+\sloppy
+
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\pathcode}[1]{{\footnotesize\nolinkurl{#1}}}
+
+\lstdefinestyle{codestyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        САНКТ-ПЕТЕРБУРГСКИЙ НАЦИОНАЛЬНЫЙ\\
+        ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО
+
+        \vspace{1.5cm}
+        Дисциплина: Бэк-энд разработка
+
+        \vspace{1.5cm}
+        \textbf{Отчет}
+
+        \vspace{0.5cm}
+        Домашнее задание 6
+
+        \vspace{0.5cm}
+        \textbf{Настройка CI/CD для автоматического развёртывания backend-приложения}
+
+        \vfill
+
+        \begin{flushright}
+            Выполнил:\\
+            Цатинян Артём\\
+            Группа БР1.2
+
+            \vspace{0.8cm}
+            Проверил:\\
+            Добряков Д. И.
+        \end{flushright}
+
+        \vfill
+        Санкт-Петербург\\
+        2026 г.
+    \end{center}
+\end{titlepage}
+
+\section{Задача}
+
+В рамках домашнего задания требовалось настроить автоматическое развёртывание backend-приложения на удалённый сервер с использованием GitHub Actions или другой CI/CD-системы. Автодеплой должен запускаться при обновлении кода в выбранной ветке репозитория.
+
+\section{Ход работы}
+
+\subsection{Выбор подхода}
+
+Для CI/CD была выбрана GitHub Actions, так как проект хранится в GitHub-репозитории. Развёртываемое приложение --- микросервисная версия сервиса бронирования ресторанов из ЛР2-ЛР4.
+
+Во время ручного деплоя было выявлено, что сборка Gradle на сервере с 2 GB RAM работает слишком медленно и создаёт высокую нагрузку. Поэтому pipeline построен так, чтобы тяжёлая часть выполнялась на GitHub runner:
+
+\begin{enumerate}[nosep]
+    \item GitHub Actions получает код репозитория.
+    \item На runner устанавливается Java 21.
+    \item Выполняется сборка Spring Boot jar-файлов.
+    \item Готовые jar-файлы архивируются.
+    \item Архив передаётся на сервер по SSH/SCP.
+    \item На сервере архив распаковывается, после чего systemd-сервисы перезапускаются.
+\end{enumerate}
+
+Такой подход экономит ресурсы VPS: сервер не компилирует Kotlin-проект, а только запускает готовые jar-файлы.
+
+\subsection{Workflow GitHub Actions}
+
+Файл workflow добавлен по пути:
+
+\begin{lstlisting}[style=codestyle]
+.github/workflows/deploy-lab2.yml
+\end{lstlisting}
+
+Workflow запускается при push в ветку \code{lab4-dz6}, а также вручную через \code{workflow_dispatch}.
+
+\begin{lstlisting}[style=codestyle]
+on:
+  push:
+    branches:
+      - lab4-dz6
+  workflow_dispatch:
+\end{lstlisting}
+
+\subsection{Сборка приложения}
+
+В CI используется Java 21:
+
+\begin{lstlisting}[style=codestyle]
+- name: Set up Java
+  uses: actions/setup-java@v4
+  with:
+    distribution: temurin
+    java-version: "21"
+\end{lstlisting}
+
+Далее выполняется сборка:
+
+В workflow рабочей директорией указан каталог \code{labs/lab2} внутри папки студента. Команда сборки:
+
+\begin{lstlisting}[style=codestyle]
+chmod +x ./gradlew
+./gradlew --console=plain bootJar
+\end{lstlisting}
+
+После сборки создаётся архив с нужными артефактами:
+
+\begin{lstlisting}[style=codestyle]
+tar -czf lab2-jars.tar.gz \
+  deploy-systemd.sh \
+  identity-service/build/libs/identity-service.jar \
+  catalog-service/build/libs/catalog-service.jar \
+  booking-service/build/libs/booking-service.jar \
+  review-service/build/libs/review-service.jar
+\end{lstlisting}
+
+\subsection{Передача артефактов на сервер}
+
+Для загрузки архива используется action \code{appleboy/scp-action}. Он подключается к серверу по SSH и кладёт архив в \code{/tmp/lab2-jars.tar.gz}.
+
+Для подключения используются secrets репозитория:
+
+\begin{longtable}{|L{0.3\textwidth}|L{0.48\textwidth}|}
+\hline
+\textbf{Secret} & \textbf{Назначение} \\
+\hline
+\code{DEPLOY_HOST} & IP-адрес сервера: \code{186.246.13.204} \\
+\hline
+\code{DEPLOY_USER} & Пользователь SSH: \code{root} \\
+\hline
+\code{DEPLOY_PASSWORD} & Пароль SSH пользователя \\
+\hline
+\code{DEPLOY_PORT} & SSH-порт, необязательный secret, по умолчанию 22 \\
+\hline
+\code{DEPLOY_PATH} & Путь установки, необязательный secret, по умолчанию \pathcode{/opt/restaurant-booking-lab2} \\
+\hline
+\end{longtable}
+
+\subsection{Перезапуск сервисов}
+
+После загрузки артефактов запускается SSH-шаг:
+
+\begin{lstlisting}[style=codestyle]
+mkdir -p "$APP_DIR"
+tar -xzf /tmp/lab2-jars.tar.gz -C "$APP_DIR"
+cd "$APP_DIR"
+sed -i 's/\r$//' deploy-systemd.sh
+chmod +x deploy-systemd.sh
+./deploy-systemd.sh
+\end{lstlisting}
+
+Скрипт \code{deploy-systemd.sh} создаёт и обновляет unit-файлы systemd для четырёх сервисов:
+
+\begin{longtable}{|L{0.42\textwidth}|L{0.35\textwidth}|}
+\hline
+\textbf{Systemd unit} & \textbf{Сервис} \\
+\hline
+\pathcode{restaurant-booking-identity.service} & \code{identity-service} \\
+\hline
+\pathcode{restaurant-booking-catalog.service} & \code{catalog-service} \\
+\hline
+\pathcode{restaurant-booking-booking.service} & \code{booking-service} \\
+\hline
+\pathcode{restaurant-booking-review.service} & \code{review-service} \\
+\hline
+\end{longtable}
+
+Сервисы включаются в автозагрузку и перезапускаются:
+
+\begin{lstlisting}[style=codestyle]
+systemctl daemon-reload
+systemctl enable restaurant-booking-identity restaurant-booking-catalog restaurant-booking-booking restaurant-booking-review
+systemctl restart restaurant-booking-identity
+systemctl restart restaurant-booking-catalog
+systemctl restart restaurant-booking-booking
+systemctl restart restaurant-booking-review
+\end{lstlisting}
+
+\subsection{Проверка после деплоя}
+
+В конце workflow выполняется smoke-check OpenAPI endpoints:
+
+\begin{lstlisting}[style=codestyle]
+curl -fsS http://localhost:8081/v3/api-docs >/dev/null
+curl -fsS http://localhost:8082/v3/api-docs >/dev/null
+curl -fsS http://localhost:8083/v3/api-docs >/dev/null
+curl -fsS http://localhost:8084/v3/api-docs >/dev/null
+\end{lstlisting}
+
+Если хотя бы один сервис не запустился, команда \code{curl -fsS} завершится с ошибкой, и GitHub Actions пометит деплой как неуспешный.
+
+\subsection{Результат}
+
+После настройки сервер содержит рабочую ручную инсталляцию приложения, а pipeline автоматизирует повторный деплой при обновлении ветки \code{lab4-dz6}. Сервисы доступны по публичным адресам:
+
+\begin{longtable}{|L{0.28\textwidth}|L{0.55\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Swagger UI} \\
+\hline
+\code{identity-service} & \pathcode{https://ezhidze.ru/identity/swagger-ui/index.html} \\
+\hline
+\code{catalog-service} & \pathcode{https://ezhidze.ru/catalog/swagger-ui/index.html} \\
+\hline
+\code{booking-service} & \pathcode{https://ezhidze.ru/booking/swagger-ui/index.html} \\
+\hline
+\code{review-service} & \pathcode{https://ezhidze.ru/review/swagger-ui/index.html} \\
+\hline
+\end{longtable}
+
+\section{Вывод}
+
+В рамках домашнего задания был настроен CI/CD pipeline на GitHub Actions. Pipeline автоматически собирает микросервисное backend-приложение, передаёт готовые jar-файлы на сервер и перезапускает systemd-сервисы. Такой вариант учитывает ограниченные ресурсы VPS и переносит тяжёлую сборку на GitHub runner.
+
+В результате обновление ветки \code{lab4-dz6} может автоматически приводить к обновлению работающего приложения на удалённом сервере.
+
+\end{document}

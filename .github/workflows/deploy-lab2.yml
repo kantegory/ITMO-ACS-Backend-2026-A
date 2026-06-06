@@ -1,0 +1,71 @@
+name: Deploy lab2 services
+
+on:
+  push:
+    branches:
+      - lab4-dz6
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build service jars
+        working-directory: БР1.2/Цатинян Артём/labs/lab2
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --console=plain bootJar -x liquibaseUpdate -x generateJooq
+
+      - name: Pack deployment artifacts
+        working-directory: БР1.2/Цатинян Артём/labs/lab2
+        run: |
+          tar -czf "$GITHUB_WORKSPACE/lab2-jars.tar.gz" \
+            deploy-systemd.sh \
+            identity-service/build/libs/identity-service.jar \
+            catalog-service/build/libs/catalog-service.jar \
+            booking-service/build/libs/booking-service.jar \
+            review-service/build/libs/review-service.jar
+
+      - name: Upload artifacts to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          source: lab2-jars.tar.gz
+          target: /tmp
+
+      - name: Restart services on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          script: |
+            set -e
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "$APP_DIR" ]; then APP_DIR="/opt/restaurant-booking-lab2"; fi
+
+            mkdir -p "$APP_DIR"
+            tar -xzf /tmp/lab2-jars.tar.gz -C "$APP_DIR"
+            cd "$APP_DIR"
+            sed -i 's/\r$//' deploy-systemd.sh
+            chmod +x deploy-systemd.sh
+            ./deploy-systemd.sh
+
+            curl -fsS http://localhost:8081/v3/api-docs >/dev/null
+            curl -fsS http://localhost:8082/v3/api-docs >/dev/null
+            curl -fsS http://localhost:8083/v3/api-docs >/dev/null
+            curl -fsS http://localhost:8084/v3/api-docs >/dev/null
