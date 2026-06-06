@@ -38,6 +38,10 @@ docker-build rental-service:
 docker-up:
 	docker compose -f deploy/docker-compose.yml up -d --build
 
+docker-reset:
+	docker compose -f deploy/docker-compose.yml down -v --remove-orphans
+	docker compose -f deploy/docker-compose.yml up -d --build --remove-orphans
+
 docker-down:
 	docker compose -f deploy/docker-compose.yml down
 

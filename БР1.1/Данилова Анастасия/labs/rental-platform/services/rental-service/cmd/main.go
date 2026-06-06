@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"rental-platform/services/rental-service/internal/clients"
 	"rental-platform/services/rental-service/internal/config"
@@ -36,7 +37,7 @@ func main() {
 	var publisher *rabbitmq.Publisher
 	var amqpConn *amqp.Connection
 	if cfg.RabbitMQURL != "" {
-		conn, err := rabbitmq.Connect(cfg.RabbitMQURL)
+		conn, err := rabbitmq.ConnectWithRetry(cfg.RabbitMQURL, 30, 2*time.Second)
 		if err != nil {
 			log.Printf("rabbitmq connect failed: %v", err)
 		} else {

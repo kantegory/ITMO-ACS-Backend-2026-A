@@ -7,24 +7,28 @@ services:
       POSTGRES_DB: postgres
     volumes:
       - pg_data:/var/lib/postgresql/data
-    entrypoint: >
-      sh -c "
-      (sleep 5 && 
-       psql -U admin -d postgres -c 'CREATE DATABASE auth_db;' || true &&
-       psql -U admin -d postgres -c 'CREATE DATABASE property_db;' || true &&
-       psql -U admin -d postgres -c 'CREATE DATABASE rental_db;' || true &&
-       psql -U admin -d postgres -c 'CREATE DATABASE chat_db;' || true) &
-       exec docker-entrypoint.sh postgres"
+      - ../infra/docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     networks:
       - rental-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U admin -d postgres && psql -U admin -d postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='auth'\" | grep -q 1",
+        ]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 15s
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    hostname: rabbitmq
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - rental-net
     healthcheck:
@@ -46,6 +50,7 @@ services:
         condition: service_healthy
     networks:
       - rental-net
+    restart: unless-stopped
 
   property-service:
     build:
@@ -58,8 +63,11 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      auth-service:
+        condition: service_started
     networks:
       - rental-net
+    restart: unless-stopped
 
   rental-service:
     build:
@@ -70,8 +78,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
     networks:
       - rental-net
+    restart: unless-stopped
 
   chat-service:
     build:
@@ -82,8 +97,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
     networks:
       - rental-net
+    restart: unless-stopped
 
   api-gateway:
     image: nginx:1.27-alpine
@@ -91,6 +113,7 @@ services:
       - "8080:80"
     volumes:
       - ../infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../infra/nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       - auth-service
       - property-service
@@ -98,6 +121,7 @@ services:
       - chat-service
     networks:
       - rental-net
+    restart: unless-stopped
 
 networks:
   rental-net:
@@ -105,3 +129,4 @@ networks:
 
 volumes:
   pg_data:
+  rabbitmq_data:
