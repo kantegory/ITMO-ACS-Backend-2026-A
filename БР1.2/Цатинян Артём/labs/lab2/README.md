@@ -151,6 +151,61 @@ Useful database/codegen commands:
 .\gradlew.bat --console=plain :review-service:liquibaseUpdate :review-service:generateJooq
 ```
 
+## Docker Compose
+
+Lab 3 adds Dockerfiles for all services and a single `docker-compose.yml` for the whole application.
+
+Start the full stack:
+
+```powershell
+docker compose up --build
+```
+
+If the Docker Compose plugin is not installed, use the standalone command:
+
+```powershell
+docker-compose up --build
+```
+
+Run in the background:
+
+```powershell
+docker compose up --build -d
+```
+
+Stop the stack:
+
+```powershell
+docker compose down
+```
+
+Stop the stack and remove PostgreSQL data:
+
+```powershell
+docker compose down -v
+```
+
+The compose stack starts:
+
+| Container service | External port | Internal name used by services |
+| --- | ---: | --- |
+| `postgres` | `5432` | `postgres:5432` |
+| `rabbitmq` | `5672`, `15672` | `rabbitmq:5672` |
+| `identity-service` | `8081` | `identity-service:8081` |
+| `catalog-service` | `8082` | `catalog-service:8082` |
+| `booking-service` | `8083` | `booking-service:8083` |
+| `review-service` | `8084` | `review-service:8084` |
+
+The service containers override local `localhost` settings through environment variables:
+
+- `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/storage_local`
+- `SPRING_RABBITMQ_HOST=rabbitmq`
+- `SERVICES_IDENTITY_BASE_URL=http://identity-service:8081`
+- `SERVICES_CATALOG_BASE_URL=http://catalog-service:8082`
+- `SERVICES_BOOKING_BASE_URL=http://booking-service:8083`
+
+Docker images build application jars inside container build stages. The Dockerfiles use already generated jOOQ sources and skip `liquibaseUpdate`/`generateJooq` during image build, because migrations are applied when each service starts inside the compose network.
+
 ## Run
 
 Start PostgreSQL first, then run the services in separate terminals:
