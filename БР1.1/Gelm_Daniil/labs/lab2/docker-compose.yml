@@ -1,3 +1,13 @@
+x-app-env: &app-env
+  JWT_SECRET: lab2_secret
+  SERVICE_TOKEN: lab2_service_secret
+
+x-db-env: &db-env
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,9 +18,169 @@ services:
       - "5434:5432"
     volumes:
       - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3001
+      SERVICE_NAME: auth
+      DB_NAME: auth_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  company:
+    build:
+      context: .
+      dockerfile: services/company/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3002
+      SERVICE_NAME: company
+      DB_NAME: company_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  skills:
+    build:
+      context: .
+      dockerfile: services/skills/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3003
+      SERVICE_NAME: skills
+      DB_NAME: skills_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  resume:
+    build:
+      context: .
+      dockerfile: services/resume/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3004
+      SERVICE_NAME: resume
+      DB_NAME: resume_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  vacancy:
+    build:
+      context: .
+      dockerfile: services/vacancy/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3005
+      SERVICE_NAME: vacancy
+      DB_NAME: vacancy_db
+      COMPANY_SERVICE_URL: http://company:3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      company:
+        condition: service_started
+
+  application:
+    build:
+      context: .
+      dockerfile: services/application/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3006
+      SERVICE_NAME: application
+      DB_NAME: application_db
+      VACANCY_SERVICE_URL: http://vacancy:3005
+      RESUME_SERVICE_URL: http://resume:3004
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      vacancy:
+        condition: service_started
+      resume:
+        condition: service_started
+
+  favorites:
+    build:
+      context: .
+      dockerfile: services/favorites/Dockerfile
+    environment:
+      <<: [*app-env, *db-env]
+      PORT: 3007
+      SERVICE_NAME: favorites
+      DB_NAME: favorites_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    environment:
+      PORT: 3008
+      SERVICE_NAME: notification
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "3008:3008"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      <<: *app-env
+      PORT: 3000
+      SERVICE_NAME: gateway
+      AUTH_SERVICE_URL: http://auth:3001
+      COMPANY_SERVICE_URL: http://company:3002
+      SKILLS_SERVICE_URL: http://skills:3003
+      RESUME_SERVICE_URL: http://resume:3004
+      VACANCY_SERVICE_URL: http://vacancy:3005
+      APPLICATION_SERVICE_URL: http://application:3006
+      FAVORITES_SERVICE_URL: http://favorites:3007
+    ports:
+      - "3000:3000"
+    depends_on:
+      auth:
+        condition: service_started
+      company:
+        condition: service_started
+      skills:
+        condition: service_started
+      resume:
+        condition: service_started
+      vacancy:
+        condition: service_started
+      application:
+        condition: service_started
+      favorites:
+        condition: service_started
