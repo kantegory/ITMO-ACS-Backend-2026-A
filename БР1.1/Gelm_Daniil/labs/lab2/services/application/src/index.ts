@@ -3,6 +3,8 @@ import express from "express";
 import { z } from "zod";
 import { authRequired, roleRequired } from "../../../shared/auth.js";
 import { createApp, listen } from "../../../shared/create-app.js";
+import type { ApplicationCreatedEvent, ApplicationStatusChangedEvent } from "../../../shared/events.js";
+import { publishEvent } from "../../../shared/rabbitmq.js";
 import { serviceGet } from "../../../shared/service-client.js";
 import { parseBody } from "../../../shared/validation.js";
 import type { ApplicationStatus, Resume, Vacancy } from "../../../shared/types.js";
@@ -58,6 +60,17 @@ api.post("/vacancies/:vacancyId/applications", authRequired, roleRequired(["appl
     coverLetter: body.coverLetter,
     status: "sent" as ApplicationStatus,
   }));
+
+  const event: ApplicationCreatedEvent = {
+    type: "application.created",
+    applicationId: saved.id,
+    vacancyId: saved.vacancyId,
+    resumeId: saved.resumeId,
+    applicantUserId: resumeRes.data.userId,
+    createdAt: saved.createdAt.toISOString(),
+  };
+  await publishEvent("application.created", event);
+
   return res.status(201).json(saved);
 });
 
@@ -88,8 +101,22 @@ api.patch("/applications/:applicationId/status", authRequired, roleRequired(["em
   const application = await repo.findOne({ where: { id: applicationId } });
   if (!application) return res.status(404).json({ code: "NOT_FOUND", message: "Отклик не найден" });
 
+  const oldStatus = application.status;
   application.status = body.status as ApplicationStatus;
-  return res.json(await repo.save(application));
+  const saved = await repo.save(application);
+
+  const event: ApplicationStatusChangedEvent = {
+    type: "application.status_changed",
+    applicationId: saved.id,
+    vacancyId: saved.vacancyId,
+    resumeId: saved.resumeId,
+    oldStatus,
+    newStatus: saved.status,
+    changedAt: new Date().toISOString(),
+  };
+  await publishEvent("application.status_changed", event);
+
+  return res.json(saved);
 });
 
 app.use("/api/v1", api);
