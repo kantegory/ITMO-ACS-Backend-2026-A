@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "Vacancies API (Microservices)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "vacancyId", "value": "" },
+    { "key": "resumeId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Сценарий: кандидат",
+      "item": [
+        {
+          "name": "1. Register candidate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Has access_token', () => pm.expect(j.access_token).to.be.a('string'));",
+                  "pm.collectionVariables.set('accessToken', j.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"candidate-{{$timestamp}}@test.com\",\n  \"password\": \"password12345\",\n  \"full_name\": \"Иван Кандидат\",\n  \"role\": \"candidate\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "2. GET /me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Role candidate', () => pm.expect(pm.response.json().role).to.eql('candidate'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/me"
+          }
+        },
+        {
+          "name": "3. PUT /me/profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"city\": \"Москва\",\n  \"phone\": \"+79001234567\",\n  \"about\": \"Go developer\"\n}"
+            },
+            "url": "{{baseUrl}}/me/profile"
+          }
+        },
+        {
+          "name": "4. POST /me/resumes (title only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('resumeId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend Go Developer\",\n  \"experience_level\": \"middle\"\n}"
+            },
+            "url": "{{baseUrl}}/me/resumes"
+          }
+        },
+        {
+          "name": "5. PUT /me/resumes/{id}/summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"3 years Go, PostgreSQL, microservices\"\n}"
+            },
+            "url": "{{baseUrl}}/me/resumes/{{resumeId}}/summary"
+          }
+        },
+        {
+          "name": "6. PUT /me/resumes/{id}/skills",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skills\": [\"Go\", \"PostgreSQL\", \"Gin\"]\n}"
+            },
+            "url": "{{baseUrl}}/me/resumes/{{resumeId}}/skills"
+          }
+        },
+        {
+          "name": "7. GET /me/resumes/{id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Has summary', () => pm.expect(r.summary).to.be.an('object'));",
+                  "pm.test('Has skills', () => pm.expect(r.skills).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/me/resumes/{{resumeId}}"
+          }
+        },
+        {
+          "name": "8. GET /vacancies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const items = pm.response.json().items;",
+                  "if (items && items.length) {",
+                  "  pm.collectionVariables.set('vacancyId', items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/vacancies"
+          }
+        },
+        {
+          "name": "9. GET /vacancies/{id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.collectionVariables.get('vacancyId')) {",
+                  "  pm.test('Status 200 or 404', () => pm.expect([200,404]).to.include(pm.response.code));",
+                  "} else { pm.test('Skip - no vacancy', () => pm.expect(true).to.be.true); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/vacancies/{{vacancyId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Сценарий: работодатель",
+      "item": [
+        {
+          "name": "1. Register employer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('accessToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"employer-{{$timestamp}}@test.com\",\n  \"password\": \"password12345\",\n  \"full_name\": \"ООО Работодатель\",\n  \"role\": \"employer\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "2. PUT /employer/company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tech Corp\",\n  \"description\": \"IT company\",\n  \"website\": \"https://example.com\",\n  \"industry\": \"IT\"\n}"
+            },
+            "url": "{{baseUrl}}/employer/company"
+          }
+        },
+        {
+          "name": "3. POST /employer/vacancies (published)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('vacancyId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Go Developer\",\n  \"description\": \"Backend team\",\n  \"requirements\": \"Go 2+ years\",\n  \"industry\": \"IT\",\n  \"salary_from\": 180000,\n  \"salary_to\": 250000,\n  \"experience_level\": \"middle\",\n  \"location\": \"Москва\",\n  \"employment_type\": \"full_time\",\n  \"status\": \"published\"\n}"
+            },
+            "url": "{{baseUrl}}/employer/vacancies"
+          }
+        },
+        {
+          "name": "4. GET /vacancies (public list)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has items', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/vacancies?industry=IT"
+          }
+        }
+      ]
+    }
+  ]
+}

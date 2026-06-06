@@ -1,0 +1,17 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const vacancy_controller_1 = require("../controllers/vacancy.controller");
+const auth_1 = require("../middleware/auth");
+const router = (0, express_1.Router)();
+router.get("/vacancies", vacancy_controller_1.VacancyController.listPublic);
+router.get("/vacancies/:id", vacancy_controller_1.VacancyController.getPublic);
+const employer = (0, express_1.Router)();
+employer.use(auth_1.authMiddleware);
+employer.use((0, auth_1.requireRole)("employer"));
+employer.put("/company", vacancy_controller_1.VacancyController.upsertCompany);
+employer.get("/vacancies", vacancy_controller_1.VacancyController.employerList);
+employer.post("/vacancies", vacancy_controller_1.VacancyController.create);
+employer.put("/vacancies/:id", vacancy_controller_1.VacancyController.update);
+router.use("/employer", employer);
+exports.default = router;

@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_controller_1 = require("../controllers/auth.controller");
+const serviceToken_1 = require("../middleware/serviceToken");
+const router = (0, express_1.Router)();
+router.use(serviceToken_1.serviceTokenMiddleware);
+router.get("/users/:id", auth_controller_1.InternalController.getUser);
+router.get("/users/:id/validate", auth_controller_1.InternalController.validateUser);
+exports.default = router;
