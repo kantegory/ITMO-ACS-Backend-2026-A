@@ -1,0 +1,466 @@
+{
+  "info": {
+    "_postman_id": "dz3-job-search-2026",
+    "name": "DZ3 — сценарий (поиск работы)",
+    "description": "Комплексный сценарий тестирования API сайта поиска работы. Импортируйте окружение DZ3_Local или задайте host и baseUrl.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "host", "value": "http://localhost:3000" },
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" }
+  ],
+  "item": [
+    {
+      "name": "Комплексный сценарий",
+      "item": [
+        {
+          "name": "01 Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Статус 200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('status ok', function () { pm.expect(j.status).to.eql('ok'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{host}}/health"
+          }
+        },
+        {
+          "name": "02 Register employer",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('employerEmail', 'dz3-emp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9) + '@itmo.ru');",
+                  "pm.collectionVariables.set('employerPassword', 'Dz3TestPass1');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Регистрация работодателя 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Есть JWT', function () { pm.expect(j.accessToken).to.be.a('string'); });",
+                  "pm.collectionVariables.set('employerToken', j.accessToken);",
+                  "pm.collectionVariables.set('employerUserId', String(j.user.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{employerPassword}}\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"Employer\",\n  \"role\": \"employer\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "03 Login employer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Вход работодателя 200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('employerToken', j.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{employerPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "04 Create company",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Компания 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Есть id компании', function () { pm.expect(j.id).to.be.a('number'); });",
+                  "pm.collectionVariables.set('companyId', String(j.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"DZ3 ITMO Tech\",\n  \"description\": \"Тестовая компания для Postman\",\n  \"website\": \"https://itmo.ru\",\n  \"location\": \"Saint Petersburg\"\n}"
+            },
+            "url": "{{baseUrl}}/companies"
+          }
+        },
+        {
+          "name": "05 Create vacancy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Вакансия 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Есть id вакансии', function () { pm.expect(j.id).to.be.a('number'); });",
+                  "pm.collectionVariables.set('vacancyId', String(j.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": {{companyId}},\n  \"title\": \"Backend Developer (DZ3)\",\n  \"description\": \"Node.js, TypeORM, REST\",\n  \"salaryFrom\": 90000,\n  \"salaryTo\": 150000,\n  \"experienceRequired\": 1,\n  \"employmentType\": \"full_time\",\n  \"location\": \"Saint Petersburg\"\n}"
+            },
+            "url": "{{baseUrl}}/vacancies"
+          }
+        },
+        {
+          "name": "06 Register applicant",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('applicantEmail', 'dz3-app-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9) + '@itmo.ru');",
+                  "pm.collectionVariables.set('applicantPassword', 'Dz3TestPass1');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Регистрация соискателя 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Роль applicant', function () { pm.expect(j.user.role).to.eql('applicant'); });",
+                  "pm.collectionVariables.set('applicantToken', j.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{applicantEmail}}\",\n  \"password\": \"{{applicantPassword}}\",\n  \"firstName\": \"Daniil\",\n  \"lastName\": \"Gelm\",\n  \"role\": \"applicant\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "07 Login applicant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Вход соискателя 200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('applicantToken', j.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{applicantEmail}}\",\n  \"password\": \"{{applicantPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "08 Me applicant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Профиль 200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Роль applicant', function () { pm.expect(j.role).to.eql('applicant'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/me"
+          }
+        },
+        {
+          "name": "09 Create resume",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Резюме 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('resumeId', String(j.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend Engineer\",\n  \"about\": \"Node.js, TypeScript, PostgreSQL\",\n  \"experienceYears\": 2,\n  \"education\": \"ИТМО\",\n  \"desiredSalary\": 130000\n}"
+            },
+            "url": "{{baseUrl}}/resumes"
+          }
+        },
+        {
+          "name": "10 List vacancies filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Список вакансий 200', function () { pm.response.to.have.status(200); });",
+                  "const arr = pm.response.json();",
+                  "pm.test('Массив', function () { pm.expect(arr).to.be.an('array'); });",
+                  "pm.test('Есть вакансии после создания', function () { pm.expect(arr.length).to.be.at.least(1); });",
+                  "const vid = pm.collectionVariables.get('vacancyId');",
+                  "const found = arr.some(function (v) { return String(v.id) === String(vid); });",
+                  "pm.test('Созданная вакансия в списке', function () { pm.expect(found).to.be.true; });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/vacancies?location=Saint&salaryFrom=50000&experienceRequired=5"
+          }
+        },
+        {
+          "name": "11 List companies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Компании 200', function () { pm.response.to.have.status(200); });",
+                  "const arr = pm.response.json();",
+                  "pm.test('Содержит нашу компанию', function () {",
+                  "  const cid = pm.collectionVariables.get('companyId');",
+                  "  pm.expect(arr.some(function (c) { return String(c.id) === String(cid); })).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/companies"
+          }
+        },
+        {
+          "name": "12 Apply to vacancy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Отклик 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Статус sent', function () { pm.expect(j.status).to.eql('sent'); });",
+                  "pm.collectionVariables.set('applicationId', String(j.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resumeId\": {{resumeId}},\n  \"coverLetter\": \"Отклик из сценария DZ3 Postman\"\n}"
+            },
+            "url": "{{baseUrl}}/vacancies/{{vacancyId}}/applications"
+          }
+        },
+        {
+          "name": "13 Add favorite",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Избранное 201', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('ok true', function () { pm.expect(j.ok).to.eql(true); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/vacancies/{{vacancyId}}/favorite"
+          }
+        },
+        {
+          "name": "14 List favorites",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Список избранного 200', function () { pm.response.to.have.status(200); });",
+                  "const arr = pm.response.json();",
+                  "pm.test('Вакансия в избранном', function () {",
+                  "  const vid = pm.collectionVariables.get('vacancyId');",
+                  "  pm.expect(arr.some(function (v) { return String(v.id) === String(vid); })).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/favorites"
+          }
+        },
+        {
+          "name": "15 My applications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Мои отклики 200', function () { pm.response.to.have.status(200); });",
+                  "const arr = pm.response.json();",
+                  "pm.test('Есть отклик', function () {",
+                  "  const aid = pm.collectionVariables.get('applicationId');",
+                  "  pm.expect(arr.some(function (a) { return String(a.id) === String(aid); })).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/applications/my"
+          }
+        },
+        {
+          "name": "16 Employer update application status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Обновление статуса 200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('Статус viewed', function () { pm.expect(j.status).to.eql('viewed'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"viewed\"\n}"
+            },
+            "url": "{{baseUrl}}/applications/{{applicationId}}/status"
+          }
+        }
+      ]
+    }
+  ]
+}
