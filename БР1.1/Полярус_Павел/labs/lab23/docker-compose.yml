@@ -1,0 +1,245 @@
+version: '3.9'
+
+networks:
+  jobby_net:
+    driver: bridge
+
+# ─────────────────────────────────────────────
+# БАЗЫ ДАННЫХ
+# ─────────────────────────────────────────────
+services:
+  db-user:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jobby_user
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    networks:
+      - jobby_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jobby_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-vacancy:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jobby_vacancy
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    networks:
+      - jobby_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jobby_vacancy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-resume:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jobby_resume
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    networks:
+      - jobby_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jobby_resume"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-app:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jobby_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5436:5432"
+    networks:
+      - jobby_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jobby_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-dict:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jobby_dict
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5437:5432"
+    networks:
+      - jobby_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jobby_dict"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─────────────────────────────────────────────
+  # RABBITMQ
+  # ─────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - jobby_net
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─────────────────────────────────────────────
+  # СЕРВИСЫ
+  # ─────────────────────────────────────────────
+  dictionary-service:
+    build: ./dictionary-service
+    ports:
+      - "3005:3000"
+    environment:
+      NODE_ENV: production
+      DB_HOST: db-dict
+      DB_PORT: 5432
+      DB_NAME: jobby_dict
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      INTERNAL_SECRET: internal_secret_change_in_prod
+    networks:
+      - jobby_net
+    depends_on:
+      db-dict:
+        condition: service_healthy
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: production
+      DB_HOST: db-user
+      DB_PORT: 5432
+      DB_NAME: jobby_user
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: jobby_secret_change_in_prod
+      JWT_EXPIRES_IN: 7d
+      JWT_TEMP_EXPIRES_IN: 15m
+      BCRYPT_ROUNDS: 10
+      INTERNAL_SECRET: internal_secret_change_in_prod
+      DICTIONARY_SERVICE_URL: http://dictionary-service:3000
+    networks:
+      - jobby_net
+    depends_on:
+      db-user:
+        condition: service_healthy
+      dictionary-service:
+        condition: service_started
+
+  vacancy-service:
+    build: ./vacancy-service
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: production
+      DB_HOST: db-vacancy
+      DB_PORT: 5432
+      DB_NAME: jobby_vacancy
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: jobby_secret_change_in_prod
+      INTERNAL_SECRET: internal_secret_change_in_prod
+      USER_SERVICE_URL: http://user-service:3000
+      DICTIONARY_SERVICE_URL: http://dictionary-service:3000
+    networks:
+      - jobby_net
+    depends_on:
+      db-vacancy:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      dictionary-service:
+        condition: service_started
+
+  resume-service:
+    build: ./resume-service
+    ports:
+      - "3003:3000"
+    environment:
+      NODE_ENV: production
+      DB_HOST: db-resume
+      DB_PORT: 5432
+      DB_NAME: jobby_resume
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: jobby_secret_change_in_prod
+      INTERNAL_SECRET: internal_secret_change_in_prod
+      USER_SERVICE_URL: http://user-service:3000
+      DICTIONARY_SERVICE_URL: http://dictionary-service:3000
+    networks:
+      - jobby_net
+    depends_on:
+      db-resume:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      dictionary-service:
+        condition: service_started
+
+  application-service:
+    build: ./application-service
+    ports:
+      - "3004:3000"
+    environment:
+      NODE_ENV: production
+      DB_HOST: db-app
+      DB_PORT: 5432
+      DB_NAME: jobby_app
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: jobby_secret_change_in_prod
+      INTERNAL_SECRET: internal_secret_change_in_prod
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:3000
+      RESUME_SERVICE_URL: http://resume-service:3000
+      VACANCY_SERVICE_URL: http://vacancy-service:3000
+    networks:
+      - jobby_net
+    depends_on:
+      db-app:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      resume-service:
+        condition: service_started
+      vacancy-service:
+        condition: service_started
+
+  notification-service:
+    build: ./notification-service
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    networks:
+      - jobby_net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
