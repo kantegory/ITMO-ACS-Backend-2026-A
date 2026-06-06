@@ -41,13 +41,41 @@ install_service restaurant-booking-catalog catalog-service/build/libs/catalog-se
 install_service restaurant-booking-booking booking-service/build/libs/booking-service.jar booking-service
 install_service restaurant-booking-review review-service/build/libs/review-service.jar review-service
 
+wait_for_service() {
+  local service_name="$1"
+  local port="$2"
+  local url="http://localhost:${port}/v3/api-docs"
+
+  echo "Waiting for ${service_name} on port ${port}..."
+  for attempt in $(seq 1 90); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "${service_name} is ready"
+      return 0
+    fi
+
+    if ! systemctl is-active --quiet "$service_name"; then
+      echo "${service_name} is not active"
+      systemctl --no-pager --full status "$service_name" || true
+      return 1
+    fi
+
+    sleep 1
+  done
+
+  echo "${service_name} did not become ready in time"
+  systemctl --no-pager --full status "$service_name" || true
+  journalctl -u "$service_name" --no-pager -n 80 || true
+  return 1
+}
+
 systemctl daemon-reload
 systemctl enable restaurant-booking-identity restaurant-booking-catalog restaurant-booking-booking restaurant-booking-review
 systemctl restart restaurant-booking-identity
-sleep 8
+wait_for_service restaurant-booking-identity 8081
 systemctl restart restaurant-booking-catalog
-sleep 8
+wait_for_service restaurant-booking-catalog 8082
 systemctl restart restaurant-booking-booking
-sleep 8
+wait_for_service restaurant-booking-booking 8083
 systemctl restart restaurant-booking-review
+wait_for_service restaurant-booking-review 8084
 systemctl --no-pager --full status restaurant-booking-identity restaurant-booking-catalog restaurant-booking-booking restaurant-booking-review
