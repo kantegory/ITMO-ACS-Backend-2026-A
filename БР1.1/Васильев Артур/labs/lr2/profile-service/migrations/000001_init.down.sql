@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS educations;
+DROP TABLE IF EXISTS work_experiences;
+DROP TABLE IF EXISTS resumes;
+DROP TABLE IF EXISTS employers;
+DROP TABLE IF EXISTS candidates;

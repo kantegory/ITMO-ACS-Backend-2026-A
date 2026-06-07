@@ -1,0 +1,145 @@
+services:
+  postgres-auth:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth
+      POSTGRES_DB: auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-profile:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: profile
+      POSTGRES_PASSWORD: profile
+      POSTGRES_DB: profile
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profile -d profile"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-vacancy:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vacancy
+      POSTGRES_PASSWORD: vacancy
+      POSTGRES_DB: vacancy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vacancy -d vacancy"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        rpk topic create user.created -p 1 -r 1 --brokers redpanda:9092 || true
+        rpk topic create vacancy.published -p 1 -r 1 --brokers redpanda:9092 || true
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: "no"
+
+  auth-service:
+    build: ./auth-service
+    environment:
+      DATABASE_URL: postgres://auth:auth@postgres-auth:5432/auth?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: "8081"
+      MIGRATIONS_PATH: file:///app/migrations
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      KAFKA_BROKER: redpanda:9092
+      KAFKA_USER_CREATED_TOPIC: user.created
+      LOG_LEVEL: debug
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      profile-service:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  profile-service:
+    build: ./profile-service
+    environment:
+      DATABASE_URL: postgres://profile:profile@postgres-profile:5432/profile?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: "8082"
+      MIGRATIONS_PATH: file:///app/migrations
+      KAFKA_BROKER: redpanda:9092
+      KAFKA_USER_CREATED_TOPIC: user.created
+      KAFKA_CONSUMER_GROUP: profile-service
+      LOG_LEVEL: debug
+    depends_on:
+      postgres-profile:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  vacancy-service:
+    build: ./vacancy-service
+    environment:
+      DATABASE_URL: postgres://vacancy:vacancy@postgres-vacancy:5432/vacancy?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: "8083"
+      MIGRATIONS_PATH: file:///app/migrations
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      KAFKA_BROKER: redpanda:9092
+      KAFKA_VACANCY_PUBLISHED_TOPIC: vacancy.published
+      LOG_LEVEL: debug
+    depends_on:
+      postgres-vacancy:
+        condition: service_healthy
+      profile-service:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      VACANCY_SERVICE_URL: http://vacancy-service:8083
+      PORT: "8080"
+      LOG_LEVEL: debug
+    depends_on:
+      - auth-service
+      - profile-service
+      - vacancy-service
