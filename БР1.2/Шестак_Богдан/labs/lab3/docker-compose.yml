@@ -1,0 +1,163 @@
+version: "3.9"
+
+# ── Общая сеть для всех сервисов ─────────────────────────────────────────────
+networks:
+  job_network:
+    driver: bridge
+
+# ── Именованные тома для SQLite баз данных ───────────────────────────────────
+volumes:
+  auth_data:
+  vacancy_data:
+  resume_data:
+  app_data:
+  rabbitmq_data:
+
+services:
+
+  # ── RabbitMQ ────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI → http://localhost:15672 (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - job_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── auth-service ────────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=sqlite:////data/auth.db
+      - SECRET_KEY=change-me-in-production
+    volumes:
+      - auth_data:/data
+    networks:
+      - job_network
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── vacancy-service ─────────────────────────────────────────────────────────
+  vacancy-service:
+    build:
+      context: ./vacancy-service
+      dockerfile: Dockerfile
+    container_name: vacancy-service
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=sqlite:////data/vacancy.db
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    volumes:
+      - vacancy_data:/data
+    networks:
+      - job_network
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── resume-service ──────────────────────────────────────────────────────────
+  resume-service:
+    build:
+      context: ./resume-service
+      dockerfile: Dockerfile
+    container_name: resume-service
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=sqlite:////data/resume.db
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    volumes:
+      - resume_data:/data
+    networks:
+      - job_network
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── application-service ─────────────────────────────────────────────────────
+  application-service:
+    build:
+      context: ./application-service
+      dockerfile: Dockerfile
+    container_name: application-service
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=sqlite:////data/application.db
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - VACANCY_SERVICE_URL=http://vacancy-service:8002
+      - RESUME_SERVICE_URL=http://resume-service:8003
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    volumes:
+      - app_data:/data
+    networks:
+      - job_network
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      vacancy-service:
+        condition: service_healthy
+      resume-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ── api-gateway ─────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - VACANCY_SERVICE_URL=http://vacancy-service:8002
+      - RESUME_SERVICE_URL=http://resume-service:8003
+      - APP_SERVICE_URL=http://application-service:8004
+    networks:
+      - job_network
+    depends_on:
+      - auth-service
+      - vacancy-service
+      - resume-service
+      - application-service
