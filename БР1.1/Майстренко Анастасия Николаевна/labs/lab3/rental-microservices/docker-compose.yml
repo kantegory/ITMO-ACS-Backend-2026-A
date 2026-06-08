@@ -1,0 +1,140 @@
+services:
+  # ---------- Инфраструктура ----------
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: maindb
+      POSTGRES_PASSWORD: maindb
+      POSTGRES_DB: maindb
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rental-net]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "15672:15672"   # веб-панель (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [rental-net]
+
+  # ---------- Микросервисы ----------
+  identity:
+    build:
+      context: .
+      dockerfile: services/identity/Dockerfile
+    restart: always
+    environment:
+      IDENTITY_PORT: 8001
+      DB_TYPE: postgres
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: maindb
+      PG_PASSWORD: maindb
+      JWT_SECRET_KEY: super-secret-change-me
+      INTERNAL_TOKEN: internal-secret
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [rental-net]
+
+  catalog:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    restart: always
+    environment:
+      CATALOG_PORT: 8002
+      DB_TYPE: postgres
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: maindb
+      PG_PASSWORD: maindb
+      JWT_SECRET_KEY: super-secret-change-me
+      INTERNAL_TOKEN: internal-secret
+      AMQP_URL: amqp://rabbitmq:5672
+    depends_on:
+      db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [rental-net]
+
+  booking:
+    build:
+      context: .
+      dockerfile: services/booking/Dockerfile
+    restart: always
+    environment:
+      BOOKING_PORT: 8003
+      DB_TYPE: postgres
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: maindb
+      PG_PASSWORD: maindb
+      JWT_SECRET_KEY: super-secret-change-me
+      INTERNAL_TOKEN: internal-secret
+      AMQP_URL: amqp://rabbitmq:5672
+      CATALOG_URL: http://catalog:8002
+    depends_on:
+      db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [rental-net]
+
+  messaging:
+    build:
+      context: .
+      dockerfile: services/messaging/Dockerfile
+    restart: always
+    environment:
+      MESSAGING_PORT: 8004
+      DB_TYPE: postgres
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: maindb
+      PG_PASSWORD: maindb
+      JWT_SECRET_KEY: super-secret-change-me
+      INTERNAL_TOKEN: internal-secret
+      AMQP_URL: amqp://rabbitmq:5672
+    depends_on:
+      db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [rental-net]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    restart: always
+    environment:
+      GATEWAY_PORT: 8000
+      IDENTITY_URL: http://identity:8001
+      CATALOG_URL: http://catalog:8002
+      BOOKING_URL: http://booking:8003
+      MESSAGING_URL: http://messaging:8004
+    ports:
+      - "8000:8000"     # единственная точка входа наружу
+    depends_on:
+      - identity
+      - catalog
+      - booking
+      - messaging
+    networks: [rental-net]
+
+# Общая bridge-сеть: сервисы обращаются друг к другу по именам (db, rabbitmq, catalog, ...)
+networks:
+  rental-net:
+    driver: bridge
+
+volumes:
+  pgdata:
