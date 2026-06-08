@@ -1,0 +1,34 @@
+flowchart LR
+    Client[Клиент Web/Mobile]
+    Gateway[API Gateway :3000]
+    Broker[(RabbitMQ<br/>exchange: events)]
+
+    Auth[Auth Service :3001<br/>auth_db]
+    Profile[Profile Service :3002<br/>profile_db]
+    Catalog[Catalog Service :3003<br/>catalog_db]
+    Plan[Plan Service :3004<br/>plan_db]
+    Progress[Progress Service :3005<br/>progress_db]
+    Blog[Blog Service :3006<br/>blog_db]
+    Notify[Notification :3007<br/>notification_db]
+
+    Client -->|HTTPS| Gateway
+    Gateway -->|/api/auth/*| Auth
+    Gateway -->|/api/users/*| Profile
+    Gateway -->|/api/workouts/*| Catalog
+    Gateway -->|/api/workout-plans/*| Plan
+    Gateway -->|/api/progress/*| Progress
+    Gateway -->|/api/blog/*| Blog
+
+    Plan -.->|sync HTTP<br/>GET /internal/workouts/:id| Catalog
+    Progress -.->|sync HTTP<br/>workout snapshot| Catalog
+    Blog -.->|sync HTTP<br/>POST /internal/auth/users/batch| Auth
+
+    Auth ==>|user.created<br/>user.deleted| Broker
+    Catalog ==>|workout.created<br/>workout.updated<br/>workout.deleted| Broker
+    Progress ==>|workout.completed| Broker
+
+    Broker ==>|user.created| Profile
+    Broker ==>|user.created<br/>workout.completed| Notify
+    Broker ==>|user.deleted| Plan
+    Broker ==>|user.deleted| Progress
+    Broker ==>|workout.updated<br/>workout.deleted| Plan
