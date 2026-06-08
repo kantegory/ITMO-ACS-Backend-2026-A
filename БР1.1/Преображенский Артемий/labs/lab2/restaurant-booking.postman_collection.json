@@ -1,0 +1,564 @@
+{
+  "info": {
+    "name": "restaurant-booking (lab2)",
+    "_postman_id": "b7d6d2b8-9f1f-4d62-9c5b-4b6a2f2a1d2f",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "authBaseUrl", "value": "http://localhost:8081" },
+    { "key": "catalogBaseUrl", "value": "http://localhost:8082" },
+    { "key": "bookingBaseUrl", "value": "http://localhost:8083" },
+    { "key": "token", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "restaurantId", "value": "" },
+    { "key": "tableId", "value": "" },
+    { "key": "menuItemId", "value": "" },
+    { "key": "reviewId", "value": "" },
+    { "key": "bookingId", "value": "" },
+    { "key": "email", "value": "" },
+    { "key": "password", "value": "pass123456" },
+    { "key": "fullName", "value": "Demo User" },
+    { "key": "phone", "value": "" },
+    { "key": "startTime", "value": "2026-05-10T18:00:00Z" },
+    { "key": "endTime", "value": "2026-05-10T20:00:00Z" },
+    { "key": "guestsCount", "value": "2" }
+  ],
+  "item": [
+    {
+      "name": "Auth Service",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"{{fullName}}\",\n  \"phone\": \"{{phone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/auth/register",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('email', 'user_' + Date.now() + '@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && json.token) pm.collectionVariables.set('token', json.token);",
+                  "if (json && json.user && json.user.id) pm.collectionVariables.set('userId', json.user.id);",
+                  "if (pm.response.code === 201 && json && json.user && json.user.email) {",
+                  "  pm.collectionVariables.set('email', json.user.email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/auth/login",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && json.token) pm.collectionVariables.set('token', json.token);",
+                  "if (json && json.user && json.user.id) pm.collectionVariables.set('userId', json.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{authBaseUrl}}/api/auth/me",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && json.id) pm.collectionVariables.set('userId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Service: Get user by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{authBaseUrl}}/service/users/{{userId}}",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["service", "users", "{{userId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog Service",
+      "item": [
+        {
+          "name": "Create restaurant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Restaurant\",\n  \"description\": \"Test restaurant for defense\",\n  \"city\": \"Saint Petersburg\",\n  \"address\": \"Nevsky prospect, 1\",\n  \"cuisine_type\": \"european\",\n  \"price_category\": \"medium\",\n  \"photos\": [\"photo1\"]\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && json.id) pm.collectionVariables.set('restaurantId', json.id);",
+                  "if (json && json.restaurant && json.restaurant.id) pm.collectionVariables.set('restaurantId', json.restaurant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List restaurants",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && Array.isArray(json.restaurants) && json.restaurants.length > 0) {",
+                  "  const r = json.restaurants[0];",
+                  "  if (r && r.id) pm.collectionVariables.set('restaurantId', r.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get restaurant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Create table",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table_number\": 1,\n  \"seats_count\": 2\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/tables",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "tables"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && json.id) pm.collectionVariables.set('tableId', json.id);",
+                  "if (json && json.table && json.table.id) pm.collectionVariables.set('tableId', json.table.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tables",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/tables",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "tables"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const items = json && (json.Items || json.items);",
+                  "if (Array.isArray(items) && items.length > 0) {",
+                  "  const t = items[0];",
+                  "  if (t && t.id) pm.collectionVariables.set('tableId', t.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create menu item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo dish\",\n  \"description\": \"Demo dish for defense\",\n  \"price\": 500,\n  \"category\": \"main\",\n  \"is_available\": true,\n  \"proteins\": 10,\n  \"fats\": 10,\n  \"carbs\": 10\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/menu",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "menu"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (json && json.id) pm.collectionVariables.set('menuItemId', json.id);",
+                  "if (json && json.item && json.item.id) pm.collectionVariables.set('menuItemId', json.item.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List menu",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/menu",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "menu"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const items = json && (json.Items || json.items);",
+                  "if (Array.isArray(items) && items.length > 0) {",
+                  "  const m = items[0];",
+                  "  if (m && m.id) pm.collectionVariables.set('menuItemId', m.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create review",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Rating\": 5,\n  \"Text\": \"Great place for defense\"\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "reviews"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const rev = json && (json.Review || json.review);",
+                  "if (rev && rev.id) pm.collectionVariables.set('reviewId', rev.id);",
+                  "if (rev && typeof rev.author_name === 'string' && rev.author_name.length > 0) {",
+                  "  pm.test('Review has author_name', function () { pm.expect(rev.author_name).to.be.a('string'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get review",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews/{{reviewId}}",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "reviews", "{{reviewId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const it = json && (json.Item || json.item);",
+                  "if (it && typeof it.author_name === 'string' && it.author_name.length > 0) {",
+                  "  pm.test('Review item has author_name', function () { pm.expect(it.author_name).to.be.a('string'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List reviews",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "restaurants", "{{restaurantId}}", "reviews"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const items = json && (json.Items || json.items);",
+                  "if (Array.isArray(items) && items.length > 0) {",
+                  "  const r = items[0];",
+                  "  if (r && r.id) pm.collectionVariables.set('reviewId', r.id);",
+                  "  if (r && typeof r.author_name === 'string' && r.author_name.length > 0) {",
+                  "    pm.test('List review has author_name', function () { pm.expect(r.author_name).to.be.a('string'); });",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Service: Get table brief",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{catalogBaseUrl}}/service/restaurants/{{restaurantId}}/tables/{{tableId}}",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["service", "restaurants", "{{restaurantId}}", "tables", "{{tableId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Booking Service",
+      "item": [
+        {
+          "name": "Check availability",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/restaurants/{{restaurantId}}/tables/{{tableId}}/availability?start_time={{startTime}}&end_time={{endTime}}",
+              "host": ["{{bookingBaseUrl}}"],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables",
+                "{{tableId}}",
+                "availability"
+              ],
+              "query": [
+                { "key": "start_time", "value": "{{startTime}}" },
+                { "key": "end_time", "value": "{{endTime}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": \"{{restaurantId}}\",\n  \"table_id\": \"{{tableId}}\",\n  \"start_time\": \"{{startTime}}\",\n  \"end_time\": \"{{endTime}}\",\n  \"guests_count\": {{guestsCount}}\n}"
+            },
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/bookings",
+              "host": ["{{bookingBaseUrl}}"],
+              "path": ["api", "bookings"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const b = json && (json.Booking || json.booking);",
+                  "if (b && b.id) pm.collectionVariables.set('bookingId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my bookings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/me/bookings",
+              "host": ["{{bookingBaseUrl}}"],
+              "path": ["api", "me", "bookings"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "const list = json && (json.Bookings || json.bookings);",
+                  "if (Array.isArray(list) && list.length > 0) {",
+                  "  const b = list[0];",
+                  "  if (b && b.id) pm.collectionVariables.set('bookingId', b.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get my booking",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/me/bookings/{{bookingId}}",
+              "host": ["{{bookingBaseUrl}}"],
+              "path": ["api", "me", "bookings", "{{bookingId}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel my booking",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/me/bookings/{{bookingId}}",
+              "host": ["{{bookingBaseUrl}}"],
+              "path": ["api", "me", "bookings", "{{bookingId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

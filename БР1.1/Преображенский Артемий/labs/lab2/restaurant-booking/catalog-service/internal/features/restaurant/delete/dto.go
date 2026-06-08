@@ -1,0 +1,11 @@
+package delete
+
+import "restaurant-booking/catalog-service/internal/domain"
+
+type Input struct {
+	ID string `json:"id"`
+}
+
+type Output struct {
+	Restaurant domain.Restaurant `json:"restaurant"`
+}
