@@ -1,0 +1,69 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: lab2-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline
+      args:
+        SERVICE: auth-service
+    container_name: lab2-auth-service
+    ports:
+      - "8081:8081"
+
+  recipe-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline
+      args:
+        SERVICE: recipe-service
+    container_name: lab2-recipe-service
+    ports:
+      - "8082:8082"
+    environment:
+      RABBITMQ_API_URL: http://rabbitmq:15672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      RABBITMQ_QUEUE: recipe-events
+    depends_on:
+      - rabbitmq
+
+  social-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline
+      args:
+        SERVICE: social-service
+    container_name: lab2-social-service
+    ports:
+      - "8083:8083"
+    environment:
+      RABBITMQ_API_URL: http://rabbitmq:15672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      RABBITMQ_QUEUE: recipe-events
+    depends_on:
+      - rabbitmq
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline
+      args:
+        SERVICE: api-gateway
+    container_name: lab2-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      RECIPE_SERVICE_URL: http://recipe-service:8082
+      SOCIAL_SERVICE_URL: http://social-service:8083
+    depends_on:
+      - auth-service
+      - recipe-service
+      - social-service
