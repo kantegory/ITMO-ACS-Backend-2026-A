@@ -13,6 +13,7 @@ import dataSource from '../config/data-source';
 import { User } from '../models/user.entity';
 import { roleMiddleware } from '../middlewares/role.middleware';
 import { extractUserMiddleware } from '../middlewares/extract-user.middleware';
+import rabbitMQService from '../utils/rabbitmq';
 
 @JsonController('/admin')
 @UseBefore(extractUserMiddleware)
@@ -34,19 +35,12 @@ export class AdminController {
 
         user.is_banned = true;
         await this.userRepo.save(user);
+
         await this.userRepo.softDelete(id);
 
-        // Сообщаем другим сервисам, что контент нужно скрыть
-        try {
-            await axios.delete(
-                `${this.recipeUrl}/internal/recipes/by-author/${id}`,
-            );
-            await axios.delete(
-                `${this.socialUrl}/internal/social/by-user/${id}`,
-            );
-        } catch (err) {
-            console.error('Ошибка каскадного удаления контента', err);
-        }
+        await rabbitMQService.publish('user_events', 'user.deleted', {
+            userId: id,
+        });
 
         return null;
     }

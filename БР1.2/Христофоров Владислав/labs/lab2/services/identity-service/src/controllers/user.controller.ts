@@ -16,6 +16,7 @@ import { User } from '../models/user.entity';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { Request } from 'express';
 import { extractUserMiddleware } from '../middlewares/extract-user.middleware';
+import rabbitMQService from '../utils/rabbitmq';
 
 @JsonController('/users')
 @UseBefore(extractUserMiddleware)
@@ -59,19 +60,9 @@ export class UserController {
 
         await this.userRepo.softDelete(userId);
 
-        try {
-            await axios.delete(
-                `${this.recipeUrl}/internal/recipes/by-author/${userId}`,
-            );
-            await axios.delete(
-                `${this.socialUrl}/internal/social/by-user/${userId}`,
-            );
-        } catch (err) {
-            console.error(
-                'Ошибка каскадного удаления контента при удалении профиля',
-                err,
-            );
-        }
+        await rabbitMQService.publish('user_events', 'user.deleted', {
+            userId: userId,
+        });
 
         return null;
     }

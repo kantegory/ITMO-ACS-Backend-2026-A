@@ -3,32 +3,40 @@ import {
     PrimaryGeneratedColumn,
     Column,
     CreateDateColumn,
+    UpdateDateColumn,
+    DeleteDateColumn,
     ManyToOne,
     JoinColumn,
-} from "typeorm";
-import { BlogPost } from "./blog-post.entity";
+} from 'typeorm';
+import { BlogPost } from './blog-post.entity';
 
-@Entity("comments")
+@Entity('comments')
 export class Comment {
-    @PrimaryGeneratedColumn("uuid")
+    @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ type: "text" })
+    @Column({ type: 'text' })
     content: string;
 
-    @Column({ type: "uuid" })
+    @Column({ type: 'uuid' })
     user_id: string;
 
-    @Column({ type: "uuid", nullable: true })
+    @Column({ type: 'uuid', nullable: true })
     recipe_id: string;
 
     @ManyToOne(() => BlogPost, (blog_post) => blog_post.comments, {
         nullable: true,
-        onDelete: "CASCADE",
+        onDelete: 'CASCADE',
     })
-    @JoinColumn({ name: "blog_post_id" })
+    @JoinColumn({ name: 'blog_post_id' })
     blog_post: BlogPost;
 
     @CreateDateColumn()
     created_at: Date;
+
+    @UpdateDateColumn()
+    updated_at: Date;
+
+    @DeleteDateColumn()
+    deleted_at: Date;
 }
