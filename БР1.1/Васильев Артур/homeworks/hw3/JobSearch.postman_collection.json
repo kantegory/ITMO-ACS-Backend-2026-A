@@ -1,0 +1,1561 @@
+{
+  "info": {
+    "_postman_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "name": "JobSearch E2E",
+    "description": "Комплексная коллекция для защиты проекта «Сайт для поиска работы».\n\n**Импорт:** File → Import → выберите этот файл и `local-jobsearch.postman_environment.json`.\n\n**Запуск:** Collection Runner → Environment `local-jobsearch` → Run.\n\nРаботает с **lab1** (монолит) и **lr2** (микросервисы через API Gateway) на `http://localhost:8080`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 — Подготовка",
+      "item": [
+        {
+          "name": "Health Check (Gateway)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Сервис отвечает ok', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('ok');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/health",
+              "host": ["{{gatewayUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Проверка, что backend поднят. Для lab1 без gateway используйте GET {{baseUrl}}/industries как smoke-test."
+          },
+          "response": []
+        },
+        {
+          "name": "Init — уникальные email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const ts = Date.now();",
+                  "pm.environment.set('employerEmail', 'employer_' + ts + '@mail.com');",
+                  "pm.environment.set('candidateEmail', 'candidate_' + ts + '@mail.com');",
+                  "",
+                  "pm.test('Email работодателя задан', function () {",
+                  "    pm.expect(pm.environment.get('employerEmail')).to.include('@mail.com');",
+                  "});",
+                  "",
+                  "pm.test('Email соискателя задан', function () {",
+                  "    pm.expect(pm.environment.get('candidateEmail')).to.include('@mail.com');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/industries",
+              "host": ["{{baseUrl}}"],
+              "path": ["industries"]
+            },
+            "description": "Инициализация переменных окружения с уникальными email для каждого прогона."
+          },
+          "response": []
+        }
+      ],
+      "description": "Проверка доступности API и инициализация переменных."
+    },
+    {
+      "name": "01 — E2E основной сценарий",
+      "item": [
+        {
+          "name": "1. Регистрация работодателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Есть JWT токен', function () {",
+                  "    pm.expect(json.token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('Роль employer', function () {",
+                  "    pm.expect(json.user.role).to.eql('employer');",
+                  "});",
+                  "",
+                  "pm.environment.set('employerToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{password}}\",\n  \"company_name\": \"Tech Corp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/employer",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register", "employer"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Вход работодателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Токен получен', function () {",
+                  "    pm.expect(json.token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.environment.set('employerToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. Получить отрасли",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const arr = pm.response.json();",
+                  "",
+                  "pm.test('Есть минимум одна отрасль', function () {",
+                  "    pm.expect(arr).to.be.an('array').with.lengthOf.at.least(1);",
+                  "});",
+                  "",
+                  "const industryId = arr[0].id || arr[0].ID;",
+                  "pm.test('industryId — UUID', function () {",
+                  "    pm.expect(industryId).to.match(/^[0-9a-f-]{36}$/i);",
+                  "});",
+                  "",
+                  "pm.environment.set('industryId', industryId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/industries",
+              "host": ["{{baseUrl}}"],
+              "path": ["industries"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4. Получить уровни опыта",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const arr = pm.response.json();",
+                  "",
+                  "pm.test('Есть минимум один уровень', function () {",
+                  "    pm.expect(arr).to.be.an('array').with.lengthOf.at.least(1);",
+                  "});",
+                  "",
+                  "const experienceLevelId = arr[0].id || arr[0].ID;",
+                  "pm.test('experienceLevelId — UUID', function () {",
+                  "    pm.expect(experienceLevelId).to.match(/^[0-9a-f-]{36}$/i);",
+                  "});",
+                  "",
+                  "pm.environment.set('experienceLevelId', experienceLevelId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/experience-levels",
+              "host": ["{{baseUrl}}"],
+              "path": ["experience-levels"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5. Создать вакансию (черновик)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Вакансия не опубликована', function () {",
+                  "    pm.expect(json.is_published).to.eql(false);",
+                  "});",
+                  "",
+                  "pm.test('Заголовок сохранён', function () {",
+                  "    pm.expect(json.title).to.eql('Go Backend Developer');",
+                  "});",
+                  "",
+                  "pm.environment.set('vacancyId', json.id);",
+                  "pm.environment.set('draftVacancyId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Go Backend Developer\",\n  \"description\": \"Разработка микросервисов на Go\",\n  \"requirements\": \"Go, SQL, Docker\",\n  \"industry_id\": \"{{industryId}}\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 150000,\n  \"salary_to\": 250000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Москва\",\n  \"is_published\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "6. Опубликовать вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Вакансия опубликована', function () {",
+                  "    pm.expect(json.is_published).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies/{{vacancyId}}/publish",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies", "{{vacancyId}}", "publish"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7. Регистрация соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Роль candidate', function () {",
+                  "    pm.expect(json.user.role).to.eql('candidate');",
+                  "});",
+                  "",
+                  "pm.environment.set('candidateToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{candidateEmail}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"Иван Соискатель\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/candidate",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register", "candidate"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "8. Вход соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('candidateToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{candidateEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "9. Поиск вакансий с фильтрами",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Есть items и total', function () {",
+                  "    pm.expect(json).to.have.property('items');",
+                  "    pm.expect(json).to.have.property('total');",
+                  "});",
+                  "",
+                  "pm.test('Найдена хотя бы одна вакансия', function () {",
+                  "    pm.expect(json.items.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "const idx = Math.floor(Math.random() * json.items.length);",
+                  "pm.environment.set('vacancyId', json.items[idx].id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies?industry_id={{industryId}}&experience_level_id={{experienceLevelId}}&salary_min=120000&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["vacancies"],
+              "query": [
+                {"key": "industry_id", "value": "{{industryId}}"},
+                {"key": "experience_level_id", "value": "{{experienceLevelId}}"},
+                {"key": "salary_min", "value": "120000"},
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10. Просмотр деталей вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Обязательные поля присутствуют', function () {",
+                  "    pm.expect(json).to.have.property('title');",
+                  "    pm.expect(json).to.have.property('description');",
+                  "    pm.expect(json).to.have.property('requirements');",
+                  "    pm.expect(json).to.have.property('employer');",
+                  "});",
+                  "",
+                  "pm.test('Вакансия опубликована', function () {",
+                  "    pm.expect(json.is_published).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vacancies", "{{vacancyId}}"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Полный бизнес-сценарий: работодатель → вакансия → соискатель → поиск."
+    },
+    {
+      "name": "02 — Профили и CRUD",
+      "item": [
+        {
+          "name": "GET профиль работодателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Название компании', function () {",
+                  "    pm.expect(json.company_name).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT обновить профиль работодателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Описание обновлено', function () {",
+                  "    pm.expect(json.company_description).to.include('IT-компания');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Tech Corp Updated\",\n  \"company_description\": \"IT-компания полного цикла\",\n  \"website\": \"https://techcorp.example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET список вакансий работодателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Есть вакансии работодателя', function () {",
+                  "    pm.expect(json.items.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET вакансию работодателя по ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('ID совпадает', function () {",
+                  "    pm.expect(json.id).to.eql(pm.environment.get('vacancyId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies/{{vacancyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies", "{{vacancyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT обновить вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Зарплата обновлена', function () {",
+                  "    pm.expect(json.salary_from).to.eql(160000);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Senior Go Backend Developer\",\n  \"description\": \"Разработка микросервисов на Go\",\n  \"requirements\": \"Go, SQL, Docker, Kafka\",\n  \"industry_id\": \"{{industryId}}\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 160000,\n  \"salary_to\": 280000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Москва\",\n  \"is_published\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies/{{vacancyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies", "{{vacancyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET профиль соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('ФИО задано', function () {",
+                  "    pm.expect(json.full_name).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{candidateToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/candidate/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["candidate", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT обновить профиль соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Город обновлён', function () {",
+                  "    pm.expect(json.city).to.eql('Санкт-Петербург');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{candidateToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Иван Соискатель\",\n  \"phone\": \"+79001234567\",\n  \"city\": \"Санкт-Петербург\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/candidate/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["candidate", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT резюме соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Резюме сохранено', function () {",
+                  "    pm.expect(json.title).to.eql('Backend Go Developer');",
+                  "    pm.expect(json.skills).to.include('Go');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{candidateToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend Go Developer\",\n  \"summary\": \"3 года опыта в backend-разработке\",\n  \"skills\": \"Go, PostgreSQL, Docker, REST\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/candidate/resume",
+              "host": ["{{baseUrl}}"],
+              "path": ["candidate", "resume"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET резюме соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Навыки на месте', function () {",
+                  "    pm.expect(json.skills).to.include('Go');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{candidateToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/candidate/resume",
+              "host": ["{{baseUrl}}"],
+              "path": ["candidate", "resume"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Дополнительные эндпоинты для демонстрации полноты API."
+    },
+    {
+      "name": "03 — Негативные тесты (ошибки)",
+      "item": [
+        {
+          "name": "[400] Регистрация — короткий пароль",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Код ошибки VALIDATION_ERROR', function () {",
+                  "    pm.expect(json.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"short_pass@mail.com\",\n  \"password\": \"123\",\n  \"full_name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/candidate",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register", "candidate"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[400] Регистрация — невалидный email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Есть сообщение об ошибке', function () {",
+                  "    pm.expect(json.message || json.error).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"Password123!\",\n  \"full_name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/candidate",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register", "candidate"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[409] Регистрация — дубликат email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Код CONFLICT или email exists', function () {",
+                  "    const code = json.code || '';",
+                  "    const msg = (json.message || '').toLowerCase();",
+                  "    pm.expect(code === 'CONFLICT' || msg.includes('exist') || msg.includes('already')).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{password}}\",\n  \"company_name\": \"Duplicate Corp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register/employer",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register", "employer"]
+            },
+            "description": "Повторная регистрация с тем же email, что в шаге 1 E2E. Запускайте после папки 01."
+          },
+          "response": []
+        },
+        {
+          "name": "[401] Вход — неверный пароль",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Код UNAUTHORIZED', function () {",
+                  "    pm.expect(json.code).to.eql('UNAUTHORIZED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"WrongPassword999!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[401] Вход — несуществующий пользователь",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ghost_user_999@mail.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[401] Профиль без токена",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employer/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[401] Создание вакансии без токена",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test\",\n  \"description\": \"Test\",\n  \"requirements\": \"Test\",\n  \"industry_id\": \"{{industryId}}\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 100000,\n  \"salary_to\": 200000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Москва\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[403] Соискатель создаёт вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 Forbidden', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Код FORBIDDEN', function () {",
+                  "    pm.expect(json.code).to.eql('FORBIDDEN');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{candidateToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Forbidden Vacancy\",\n  \"description\": \"Test\",\n  \"requirements\": \"Test\",\n  \"industry_id\": \"{{industryId}}\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 100000,\n  \"salary_to\": 200000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Москва\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[403] Работодатель — профиль соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 Forbidden', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/candidate/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["candidate", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[400] Вакансия — невалидный UUID industry_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Ошибка валидации UUID', function () {",
+                  "    const text = JSON.stringify(json).toLowerCase();",
+                  "    pm.expect(text).to.satisfy(function (t) {",
+                  "        return t.includes('uuid') || t.includes('validation') || t.includes('industry');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad UUID Test\",\n  \"description\": \"Test\",\n  \"requirements\": \"Test\",\n  \"industry_id\": \"1\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 100000,\n  \"salary_to\": 200000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Москва\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[400] Вакансия — несуществующий industry_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Fake Industry Test\",\n  \"description\": \"Test\",\n  \"requirements\": \"Test\",\n  \"industry_id\": \"00000000-0000-0000-0000-000000000099\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 100000,\n  \"salary_to\": 200000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Москва\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[404] Публичная вакансия — не существует",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Код NOT_FOUND', function () {",
+                  "    pm.expect(json.code).to.eql('NOT_FOUND');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/00000000-0000-0000-0000-000000000001",
+              "host": ["{{baseUrl}}"],
+              "path": ["vacancies", "00000000-0000-0000-0000-000000000001"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[201] Создать черновик для проверки 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Черновик не опубликован', function () {",
+                  "    pm.expect(json.is_published).to.eql(false);",
+                  "});",
+                  "",
+                  "pm.environment.set('draftVacancyId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Draft Only Vacancy\",\n  \"description\": \"Не должна быть видна публично\",\n  \"requirements\": \"Test\",\n  \"industry_id\": \"{{industryId}}\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"salary_from\": 100000,\n  \"salary_to\": 150000,\n  \"salary_currency\": \"RUB\",\n  \"location\": \"Казань\",\n  \"is_published\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies"]
+            },
+            "description": "Создаёт черновик. Следующий запрос проверяет, что он не виден публично."
+          },
+          "response": []
+        },
+        {
+          "name": "[404] GET черновик через публичный API",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Код NOT_FOUND', function () {",
+                  "    pm.expect(json.code).to.eql('NOT_FOUND');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{draftVacancyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vacancies", "{{draftVacancyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[404] DELETE несуществующей вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies/00000000-0000-0000-0000-000000000002",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies", "00000000-0000-0000-0000-000000000002"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[200] Поиск — пустая выдача (высокая зарплата)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('Пустой список при нереалистичном фильтре', function () {",
+                  "    pm.expect(json.items).to.be.an('array');",
+                  "    pm.expect(json.items.length).to.eql(0);",
+                  "    pm.expect(json.total).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies?salary_min=999999999&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["vacancies"],
+              "query": [
+                {"key": "salary_min", "value": "999999999"},
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"}
+              ]
+            },
+            "description": "Корректная обработка фильтра без результатов — не ошибка, а пустой список."
+          },
+          "response": []
+        }
+      ],
+      "description": "Демонстрация корректной обработки ошибок на защите. Запускайте после папки 01 (нужны токены и industryId)."
+    },
+    {
+      "name": "04 — Очистка (опционально)",
+      "item": [
+        {
+          "name": "DELETE опубликованной вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content или 200 OK', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer/vacancies/{{vacancyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["employer", "vacancies", "{{vacancyId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET удалённой вакансии — 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["vacancies", "{{vacancyId}}"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Удаление тестовых данных. Можно не запускать на защите."
+    }
+  ],
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "password",
+      "value": "Password123!"
+    }
+  ]
+}

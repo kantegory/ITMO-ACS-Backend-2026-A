@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS vacancies;
+DROP TABLE IF EXISTS experience_levels;
+DROP TABLE IF EXISTS industries;
+DROP TABLE IF EXISTS employers;
+DROP TABLE IF EXISTS educations;
+DROP TABLE IF EXISTS work_experiences;
+DROP TABLE IF EXISTS resumes;
+DROP TABLE IF EXISTS candidates;
+DROP TABLE IF EXISTS users;
+DROP TYPE IF EXISTS user_role;

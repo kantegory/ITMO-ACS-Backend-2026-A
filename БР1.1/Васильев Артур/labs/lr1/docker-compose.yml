@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jobsearch
+      POSTGRES_PASSWORD: jobsearch
+      POSTGRES_DB: jobsearch
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobsearch -d jobsearch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://jobsearch:jobsearch@postgres:5432/jobsearch?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: "8080"
+      MIGRATIONS_PATH: file:///app/migrations
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
