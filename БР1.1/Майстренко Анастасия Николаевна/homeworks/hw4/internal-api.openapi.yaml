@@ -1,0 +1,329 @@
+openapi: 3.0.3
+info:
+  title: Rental Service — Inter-Service (Internal) API
+  description: >
+    Спецификация ВНУТРЕННИХ эндпоинтов для межсервисного взаимодействия
+    в микросервисной архитектуре сервиса аренды недвижимости (ДЗ4).
+    Эти эндпоинты не публикуются наружу через API Gateway и доступны только
+    внутри сети сервисов. Аутентификация — служебный токен (заголовок
+    X-Internal-Token) либо mTLS. Каждый сервис владеет собственной БД
+    (database-per-service); данные других сервисов запрашиваются по этим API
+    или приходят асинхронно через брокер сообщений.
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://identity-service:8001
+    description: Identity Service
+  - url: http://catalog-service:8002
+    description: Catalog Service
+  - url: http://booking-service:8003
+    description: Booking Service
+  - url: http://messaging-service:8004
+    description: Messaging Service
+
+tags:
+  - name: Identity (internal)
+    description: Сервис аутентификации и пользователей (users_db)
+  - name: Catalog (internal)
+    description: Сервис объектов недвижимости (catalog_db)
+  - name: Booking (internal)
+    description: Сервис бронирований и отзывов (booking_db)
+  - name: Messaging (internal)
+    description: Сервис сообщений (messaging_db)
+
+security:
+  - internalToken: []
+
+paths:
+  # ===================== IDENTITY SERVICE =====================
+  /internal/tokens/verify:
+    post:
+      tags: [Identity (internal)]
+      summary: Проверка JWT и извлечение пользователя
+      description: Используется API Gateway и сервисами для валидации access-токена.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Токен валиден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: integer }
+                  role: { $ref: '#/components/schemas/UserRole' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /internal/users/{userId}:
+    get:
+      tags: [Identity (internal)]
+      summary: Получить пользователя по id
+      description: Используется Catalog/Booking/Messaging для обогащения ответов данными пользователя.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/users/batch:
+    post:
+      tags: [Identity (internal)]
+      summary: Получить пользователей по списку id
+      description: Пакетный запрос, чтобы избежать проблемы N+1 при обогащении списков.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: integer }
+      responses:
+        '200':
+          description: Список пользователей
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserInternal' }
+
+  # ===================== CATALOG SERVICE =====================
+  /internal/properties/{propertyId}:
+    get:
+      tags: [Catalog (internal)]
+      summary: Получить объект недвижимости
+      description: >
+        Используется Booking Service при создании брони (для получения
+        ownerId, pricePerDay и статуса) и Messaging при привязке диалога.
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      responses:
+        '200':
+          description: Данные объекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/properties/{propertyId}/status:
+    patch:
+      tags: [Catalog (internal)]
+      summary: Изменить статус объекта
+      description: >
+        Booking Service переводит объект в статус rented при активной аренде
+        и обратно в available при завершении/отмене (через событие или вызов).
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/PropertyStatus' }
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # ===================== BOOKING SERVICE =====================
+  /internal/bookings/{bookingId}:
+    get:
+      tags: [Booking (internal)]
+      summary: Получить бронирование по id
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Данные бронирования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/bookings/exists:
+    get:
+      tags: [Booking (internal)]
+      summary: Проверка наличия завершённой брони пользователя по объекту
+      description: >
+        Используется Messaging/Catalog, чтобы проверить право оставить отзыв
+        или ограничить функциональность (например, переписку) только реальными
+        участниками сделок.
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: propertyId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+      responses:
+        '200':
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists: { type: boolean }
+
+  # ===================== MESSAGING SERVICE =====================
+  /internal/conversations:
+    post:
+      tags: [Messaging (internal)]
+      summary: Создать диалог (служебно)
+      description: >
+        Может вызываться другими сервисами (например, при подтверждении брони
+        автоматически открыть диалог арендатора с владельцем).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [participantAId, participantBId]
+              properties:
+                participantAId: { type: integer }
+                participantBId: { type: integer }
+                propertyId: { type: integer, nullable: true }
+      responses:
+        '201':
+          description: Диалог создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationInternal'
+
+components:
+  securitySchemes:
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: integer }
+    PropertyId:
+      name: propertyId
+      in: path
+      required: true
+      schema: { type: integer }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Служебный токен отсутствует/недействителен или JWT невалиден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Конфликт состояния (например, недопустимый переход статуса)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    UserRole:
+      type: string
+      enum: [tenant, landlord, admin]
+    PropertyStatus:
+      type: string
+      enum: [available, rented, hidden]
+    BookingStatus:
+      type: string
+      enum: [pending, confirmed, active, completed, cancelled]
+
+    UserInternal:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        isVerified: { type: boolean }
+
+    PropertyInternal:
+      type: object
+      properties:
+        id: { type: integer }
+        ownerId: { type: integer }
+        title: { type: string }
+        pricePerDay: { type: number, format: float }
+        status: { $ref: '#/components/schemas/PropertyStatus' }
+
+    BookingInternal:
+      type: object
+      properties:
+        id: { type: integer }
+        propertyId: { type: integer }
+        tenantId: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalPrice: { type: number, format: float }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+
+    ConversationInternal:
+      type: object
+      properties:
+        id: { type: integer }
+        participantAId: { type: integer }
+        participantBId: { type: integer }
+        propertyId: { type: integer, nullable: true }
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: NOT_FOUND }
+        message: { type: string, example: Ресурс не найден }
