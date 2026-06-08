@@ -1,0 +1,1107 @@
+openapi: 3.0.3
+info:
+  title: Rental Service API
+  description: >
+    REST API сервиса аренды недвижимости.
+    Поддерживает регистрацию и аутентификацию пользователей, управление объектами
+    недвижимости, поиск с фильтрацией, бронирование (сделки), обмен сообщениями,
+    отзывы и избранное. Спроектирован на основе ER-модели БД (ДЗ1).
+  version: 1.0.0
+  contact:
+    name: Майстренко Анастасия Николаевна
+    url: https://github.com/may-na
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.rental.example.com/api/v1
+    description: Production
+  - url: http://localhost:3000/api/v1
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, обновление токенов
+  - name: Users
+    description: Профиль пользователя и личный кабинет
+  - name: Properties
+    description: Объекты недвижимости, поиск, фото
+  - name: Amenities
+    description: Справочник удобств
+  - name: Bookings
+    description: Бронирование и сделки
+  - name: Reviews
+    description: Отзывы по сделкам
+  - name: Favorites
+    description: Избранные объекты
+  - name: Conversations
+    description: Диалоги и сообщения
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ============================ AUTH ============================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь создан, возвращены токены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Аутентификация по email и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление пары токенов по refresh-токену
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Новая пара токенов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход (отзыв refresh-токена)
+      responses:
+        '204':
+          description: Сессия завершена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================ USERS ============================
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Профиль текущего пользователя
+      responses:
+        '200':
+          description: Данные профиля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Users]
+      summary: Обновление профиля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Публичный профиль пользователя
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Публичные данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUser'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/me/properties:
+    get:
+      tags: [Users]
+      summary: Объекты, которыми владеет пользователь (личный кабинет арендодателя)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список объектов пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/rentals:
+    get:
+      tags: [Users]
+      summary: Объекты, которые пользователь арендует (личный кабинет арендатора)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список бронирований пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================ PROPERTIES ============================
+  /properties:
+    get:
+      tags: [Properties]
+      summary: Поиск недвижимости с фильтрацией
+      security: []
+      parameters:
+        - name: type
+          in: query
+          description: Тип объекта
+          schema:
+            $ref: '#/components/schemas/PropertyType'
+        - name: priceMin
+          in: query
+          schema: { type: number, format: float, minimum: 0 }
+        - name: priceMax
+          in: query
+          schema: { type: number, format: float, minimum: 0 }
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: lat
+          in: query
+          description: Широта центра поиска (вместе с lng и radius)
+          schema: { type: number, format: double }
+        - name: lng
+          in: query
+          schema: { type: number, format: double }
+        - name: radius
+          in: query
+          description: Радиус поиска в километрах
+          schema: { type: number, format: float, minimum: 0 }
+        - name: rooms
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: amenityIds
+          in: query
+          description: Фильтр по удобствам (id через запятую)
+          schema:
+            type: array
+            items: { type: string, format: uuid }
+          style: form
+          explode: false
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [price_asc, price_desc, created_desc]
+            default: created_desc
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Результаты поиска
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags: [Properties]
+      summary: Создать объект недвижимости (роль landlord)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyCreateRequest'
+      responses:
+        '201':
+          description: Объект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /properties/{propertyId}:
+    get:
+      tags: [Properties]
+      summary: Страница объекта (фото, удобства, условия, владелец)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      responses:
+        '200':
+          description: Детальная карточка объекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Properties]
+      summary: Обновить объект (только владелец)
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyUpdateRequest'
+      responses:
+        '200':
+          description: Обновлённый объект
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Properties]
+      summary: Удалить (скрыть) объект (только владелец)
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      responses:
+        '204':
+          description: Объект удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties/{propertyId}/photos:
+    post:
+      tags: [Properties]
+      summary: Загрузить фотографию объекта
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                ordering:
+                  type: integer
+      responses:
+        '201':
+          description: Фото добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPhoto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties/{propertyId}/photos/{photoId}:
+    delete:
+      tags: [Properties]
+      summary: Удалить фотографию объекта
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+        - name: photoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Фото удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties/{propertyId}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Отзывы по объекту
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список отзывов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================ AMENITIES ============================
+  /amenities:
+    get:
+      tags: [Amenities]
+      summary: Справочник удобств (для фильтров и форм)
+      security: []
+      responses:
+        '200':
+          description: Список удобств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Amenity'
+
+  # ============================ BOOKINGS ============================
+  /bookings:
+    get:
+      tags: [Bookings]
+      summary: История сделок текущего пользователя
+      parameters:
+        - name: role
+          in: query
+          description: Роль пользователя в сделке
+          schema:
+            type: string
+            enum: [tenant, landlord]
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список сделок
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Bookings]
+      summary: Создать бронирование (роль tenant)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Объект недоступен на выбранные даты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Детали сделки
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Данные сделки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/status:
+    patch:
+      tags: [Bookings]
+      summary: Изменить статус сделки (подтвердить / отменить / завершить)
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/BookingStatus'
+      responses:
+        '200':
+          description: Обновлённая сделка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Недопустимый переход статуса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings/{bookingId}/review:
+    post:
+      tags: [Reviews]
+      summary: Оставить отзыв по завершённой сделке
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Отзыв уже существует или сделка не завершена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # ============================ FAVORITES ============================
+  /users/me/favorites:
+    get:
+      tags: [Favorites]
+      summary: Избранные объекты пользователя
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список избранных объектов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/favorites/{propertyId}:
+    put:
+      tags: [Favorites]
+      summary: Добавить объект в избранное
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      responses:
+        '204':
+          description: Добавлено в избранное
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Favorites]
+      summary: Убрать объект из избранного
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+      responses:
+        '204':
+          description: Удалено из избранного
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================ CONVERSATIONS / MESSAGES ============================
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: Список диалогов пользователя
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Диалоги пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Conversations]
+      summary: Начать диалог с пользователем (опционально по объекту)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipientId]
+              properties:
+                recipientId:
+                  type: string
+                  format: uuid
+                propertyId:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        '201':
+          description: Диалог создан или найден существующий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{conversationId}/messages:
+    get:
+      tags: [Conversations]
+      summary: История сообщений диалога
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Сообщения диалога
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Conversations]
+      summary: Отправить сообщение в диалог
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{conversationId}/read:
+    patch:
+      tags: [Conversations]
+      summary: Отметить сообщения диалога прочитанными
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '204':
+          description: Сообщения отмечены прочитанными
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PropertyId:
+      name: propertyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Не аутентифицирован или токен недействителен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Недостаточно прав для операции
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Конфликт (например, email уже занят)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+  schemas:
+    # ---------- Перечисления ----------
+    UserRole:
+      type: string
+      enum: [tenant, landlord, admin]
+    PropertyType:
+      type: string
+      enum: [apartment, house, room, studio]
+    PropertyStatus:
+      type: string
+      enum: [available, rented, hidden]
+    BookingStatus:
+      type: string
+      enum: [pending, confirmed, active, completed, cancelled]
+
+    # ---------- Сущности ----------
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string, nullable: true }
+        avatarUrl: { type: string, format: uri, nullable: true }
+        role: { $ref: '#/components/schemas/UserRole' }
+        isVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PublicUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        firstName: { type: string }
+        lastName: { type: string }
+        avatarUrl: { type: string, format: uri, nullable: true }
+        role: { $ref: '#/components/schemas/UserRole' }
+        isVerified: { type: boolean }
+
+    Property:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        propertyType: { $ref: '#/components/schemas/PropertyType' }
+        pricePerDay: { type: number, format: float }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        area: { type: number, format: float }
+        rooms: { type: integer }
+        status: { $ref: '#/components/schemas/PropertyStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PropertyDetail:
+      allOf:
+        - $ref: '#/components/schemas/Property'
+        - type: object
+          properties:
+            owner: { $ref: '#/components/schemas/PublicUser' }
+            photos:
+              type: array
+              items: { $ref: '#/components/schemas/PropertyPhoto' }
+            amenities:
+              type: array
+              items: { $ref: '#/components/schemas/Amenity' }
+            rating:
+              type: number
+              format: float
+              nullable: true
+            reviewsCount: { type: integer }
+
+    PropertyPhoto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        propertyId: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        ordering: { type: integer }
+        uploadedAt: { type: string, format: date-time }
+
+    Amenity:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        icon: { type: string, nullable: true }
+
+    Booking:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        propertyId: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalPrice: { type: number, format: float }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Review:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        text: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Conversation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        participantAId: { type: string, format: uuid }
+        participantBId: { type: string, format: uuid }
+        propertyId: { type: string, format: uuid, nullable: true }
+        lastMessage:
+          allOf:
+            - $ref: '#/components/schemas/Message'
+          description: Последнее сообщение в диалоге (отсутствует, если сообщений ещё нет)
+        unreadCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    Message:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        body: { type: string }
+        isRead: { type: boolean }
+        sentAt: { type: string, format: date-time }
+
+    # ---------- Запросы ----------
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName, role]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        firstName: { type: string, minLength: 1 }
+        lastName: { type: string, minLength: 1 }
+        phone: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/UserRole' }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string, nullable: true }
+        avatarUrl: { type: string, format: uri, nullable: true }
+
+    PropertyCreateRequest:
+      type: object
+      required: [title, description, propertyType, pricePerDay, city, address]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string }
+        propertyType: { $ref: '#/components/schemas/PropertyType' }
+        pricePerDay: { type: number, format: float, minimum: 0 }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        area: { type: number, format: float, minimum: 0 }
+        rooms: { type: integer, minimum: 0 }
+        amenityIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    PropertyUpdateRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        propertyType: { $ref: '#/components/schemas/PropertyType' }
+        pricePerDay: { type: number, format: float, minimum: 0 }
+        city: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        area: { type: number, format: float, minimum: 0 }
+        rooms: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/PropertyStatus' }
+        amenityIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    BookingCreateRequest:
+      type: object
+      required: [propertyId, startDate, endDate]
+      properties:
+        propertyId: { type: string, format: uuid }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+
+    ReviewCreateRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        text: { type: string, maxLength: 2000 }
+
+    # ---------- Ответы: токены, страницы, ошибки ----------
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        expiresIn: { type: integer, description: Время жизни access-токена в секундах }
+        user: { $ref: '#/components/schemas/User' }
+
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    PropertyPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Property' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    BookingPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Booking' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    ReviewPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    ConversationPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Conversation' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    MessagePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Message' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    Error:
+      type: object
+      properties:
+        code: { type: string, example: NOT_FOUND }
+        message: { type: string, example: Запрашиваемый ресурс не найден }
+      required: [code, message]
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        code: { type: string, example: VALIDATION_ERROR }
+        message: { type: string, example: Ошибка валидации }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
