@@ -1,0 +1,158 @@
+services:
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: lab3-postgres-auth
+    environment:
+      POSTGRES_DB: auth_users_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_users_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-recipe:
+    image: postgres:16-alpine
+    container_name: lab3-postgres-recipe
+    environment:
+      POSTGRES_DB: recipes_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_recipe_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recipes_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-social:
+    image: postgres:16-alpine
+    container_name: lab3-postgres-social
+    environment:
+      POSTGRES_DB: social_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_social_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d social_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: lab3-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build:
+      context: ./auth-service
+    container_name: lab3-auth-service
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8001
+      APP_API_PREFIX: /api
+      DB_HOST: postgres-auth
+      DB_PORT: 5432
+      DB_NAME: auth_users_db
+      DB_USER: postgres
+      DB_PASSWORD: admin
+      JWT_SECRET_KEY: secret
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+    restart: unless-stopped
+
+  recipe-service:
+    build:
+      context: ./recipe-service
+    container_name: lab3-recipe-service
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8002
+      APP_API_PREFIX: /api
+      DB_HOST: postgres-recipe
+      DB_PORT: 5432
+      DB_NAME: recipes_db
+      DB_USER: postgres
+      DB_PASSWORD: admin
+      JWT_SECRET_KEY: secret
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres-recipe:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  social-service:
+    build:
+      context: ./social-service
+    container_name: lab3-social-service
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8003
+      APP_API_PREFIX: /api
+      DB_HOST: postgres-social
+      DB_PORT: 5432
+      DB_NAME: social_db
+      DB_USER: postgres
+      DB_PASSWORD: admin
+      JWT_SECRET_KEY: secret
+      RECIPE_SERVICE_URL: http://recipe-service:8002/api
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres-social:
+        condition: service_healthy
+      recipe-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: lab3-api-gateway
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RECIPE_SERVICE_URL: http://recipe-service:8002
+      SOCIAL_SERVICE_URL: http://social-service:8003
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth-service
+      - recipe-service
+      - social-service
+    restart: unless-stopped
+
+volumes:
+  postgres_auth_data:
+  postgres_recipe_data:
+  postgres_social_data:
