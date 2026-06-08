@@ -1,0 +1,174 @@
+services:
+    # ИНФРАСТРУКТУРА (БД и Брокер)
+    rabbitmq:
+        image: rabbitmq:3.8-management
+        container_name: rabbitmq_broker
+        ports:
+            - '5672:5672'
+            - '15672:15672'
+        networks:
+            - culinary_network
+
+    identity-db:
+        image: postgres:16-alpine
+        container_name: identity_db
+        environment:
+            POSTGRES_USER: root
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: identity_db
+        ports:
+            - '5432:5432'
+        networks:
+            - culinary_network
+
+    recipe-db:
+        image: postgres:16-alpine
+        container_name: recipe_db
+        environment:
+            POSTGRES_USER: root
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: recipes_db
+        ports:
+            - '5433:5432'
+        networks:
+            - culinary_network
+
+    social-db:
+        image: postgres:16-alpine
+        container_name: social_db
+        environment:
+            POSTGRES_USER: root
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: social_db
+        ports:
+            - '5434:5432'
+        networks:
+            - culinary_network
+
+    media-db:
+        image: postgres:16-alpine
+        container_name: media_db
+        environment:
+            POSTGRES_USER: root
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: media_db
+        ports:
+            - '5435:5432'
+        networks:
+            - culinary_network
+
+    # МИКРОСЕРВИСЫ (Node.js)
+    api-gateway:
+        build:
+            context: ./services/api-gateway
+            dockerfile: ../Dockerfile
+        container_name: api_gateway
+        ports:
+            - '8000:8000'
+        environment:
+            - PORT=8000
+            - IDENTITY_SERVICE_URL=http://identity-service:8001
+            - RECIPE_SERVICE_URL=http://recipe-service:8002
+            - SOCIAL_SERVICE_URL=http://social-service:8003
+            - MEDIA_SERVICE_URL=http://media-service:8004
+        depends_on:
+            - identity-service
+        networks:
+            - culinary_network
+
+    identity-service:
+        build:
+            context: ./services/identity-service
+            dockerfile: ../Dockerfile
+        container_name: identity_service
+        ports:
+            - '8001:8001'
+        environment:
+            - APP_PORT=8001
+            - APP_HOST=0.0.0.0
+            - APP_API_PREFIX=/api/v1
+            - DB_HOST=identity-db
+            - DB_PORT=5432
+            - DB_USER=root
+            - DB_PASSWORD=password
+            - DB_NAME=identity_db
+            - RABBITMQ_URL=amqp://rabbitmq:5672
+            - JWT_SECRET_KEY=super_secret_jwt_key_for_local_development
+            - JWT_ACCESS_TOKEN_LIFETIME=1h
+        depends_on:
+            - identity-db
+            - rabbitmq
+        networks:
+            - culinary_network
+
+    recipe-service:
+        build:
+            context: ./services/recipe-service
+            dockerfile: ../Dockerfile
+        container_name: recipe_service
+        ports:
+            - '8002:8002'
+        environment:
+            - APP_PORT=8002
+            - APP_HOST=0.0.0.0
+            - APP_API_PREFIX=/api/v1
+            - DB_HOST=recipe-db
+            - DB_PORT=5432
+            - DB_USER=root
+            - DB_PASSWORD=password
+            - DB_NAME=recipes_db
+            - RABBITMQ_URL=amqp://rabbitmq:5672
+            - IDENTITY_SERVICE_URL=http://identity-service:8001
+        depends_on:
+            - recipe-db
+            - rabbitmq
+        networks:
+            - culinary_network
+
+    social-service:
+        build:
+            context: ./services/social-service
+            dockerfile: ../Dockerfile
+        container_name: social_service
+        ports:
+            - '8003:8003'
+        environment:
+            - APP_PORT=8003
+            - APP_HOST=0.0.0.0
+            - APP_API_PREFIX=/api/v1
+            - DB_HOST=social-db
+            - DB_PORT=5432
+            - DB_USER=root
+            - DB_PASSWORD=password
+            - DB_NAME=social_db
+            - RABBITMQ_URL=amqp://rabbitmq:5672
+            - IDENTITY_SERVICE_URL=http://identity-service:8001
+            - RECIPE_SERVICE_URL=http://recipe-service:8002
+        depends_on:
+            - social-db
+            - rabbitmq
+        networks:
+            - culinary_network
+
+    media-service:
+        build:
+            context: ./services/media-service
+            dockerfile: ../Dockerfile
+        container_name: media_service
+        ports:
+            - '8004:8004'
+        environment:
+            - APP_PORT=8004
+            - APP_HOST=0.0.0.0
+            - APP_API_PREFIX=/api/v1
+        volumes:
+            - media_uploads:/usr/src/app/uploads
+        networks:
+            - culinary_network
+
+networks:
+    culinary_network:
+        driver: bridge
+
+volumes:
+    media_uploads:
