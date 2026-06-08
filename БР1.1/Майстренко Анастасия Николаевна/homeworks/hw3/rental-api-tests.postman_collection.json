@@ -1,0 +1,352 @@
+{
+  "info": {
+    "name": "Rental Service API — комплексный сценарий (ДЗ3)",
+    "description": "Тестирование REST API сервиса аренды недвижимости средствами Postman.\nОсновной процесс: регистрация → вход → список объявлений → фильтрация → просмотр случайного объявления → старт переписки по объявлению.\nПапка «00 — Подготовка данных» наполняет БД, чтобы сценарий запускался на чистой базе (Collection Runner / Newman).\n\nАвтор: Майстренко Анастасия Николаевна, БР1.1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+    { "key": "landlordToken", "value": "" },
+    { "key": "ownerId", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "tenantEmail", "value": "" },
+    { "key": "filteredIds", "value": "[]" },
+    { "key": "propertyId", "value": "" },
+    { "key": "conversationId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 — Подготовка данных",
+      "item": [
+        {
+          "name": "Регистрация арендодателя",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('landlordEmail', `owner_${Date.now()}@test.ru`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Возвращён accessToken', () => pm.expect(json.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.test('Роль — landlord', () => pm.expect(json.user.role).to.eql('landlord'));",
+                  "pm.collectionVariables.set('landlordToken', json.accessToken);",
+                  "pm.collectionVariables.set('ownerId', String(json.user.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{landlordEmail}}\",\n  \"password\": \"password123\",\n  \"firstName\": \"Олег\",\n  \"lastName\": \"Владелец\",\n  \"role\": \"landlord\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Создание удобства (Wi-Fi)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('amenityId', String(json.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/amenities", "host": ["{{baseUrl}}"], "path": ["amenities"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Wi-Fi {{$randomInt}}\",\n  \"icon\": \"wifi\"\n}" }
+          }
+        },
+        {
+          "name": "Создание объявления (студия)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Объект принадлежит арендодателю', () => pm.expect(String(json.ownerId)).to.eql(pm.collectionVariables.get('ownerId')));",
+                  "pm.test('Тип — studio', () => pm.expect(json.propertyType).to.eql('studio'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/properties", "host": ["{{baseUrl}}"], "path": ["properties"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Студия у метро\",\n  \"description\": \"Уютная студия в центре\",\n  \"propertyType\": \"studio\",\n  \"pricePerDay\": 2500,\n  \"city\": \"Санкт-Петербург\",\n  \"address\": \"ул. Думская, 5\",\n  \"rooms\": 1,\n  \"amenityIds\": [{{amenityId}}]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 — Регистрация пользователя",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('tenantEmail', `tenant_${Date.now()}@test.ru`);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('Время ответа < 1000 мс', () => pm.expect(pm.response.responseTime).to.be.below(1000));",
+              "pm.test('Получены accessToken и refreshToken', () => {",
+              "  pm.expect(json.accessToken, 'accessToken').to.be.a('string').and.not.empty;",
+              "  pm.expect(json.refreshToken, 'refreshToken').to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('Пароль не возвращается в ответе', () => pm.expect(json.user).to.not.have.property('password'));",
+              "pm.collectionVariables.set('accessToken', json.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"password123\",\n  \"firstName\": \"Анна\",\n  \"lastName\": \"Арендатор\",\n  \"role\": \"tenant\"\n}"
+        }
+      }
+    },
+    {
+      "name": "02 — Вход",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Возвращён accessToken', () => pm.expect(json.accessToken).to.be.a('string').and.not.empty);",
+              "pm.test('email совпадает с зарегистрированным', () => pm.expect(json.user.email).to.eql(pm.collectionVariables.get('tenantEmail')));",
+              "pm.collectionVariables.set('accessToken', json.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"password123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "03 — Список объявлений",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Ответ имеет структуру { items, meta }', () => {",
+              "  pm.expect(json).to.have.property('items').that.is.an('array');",
+              "  pm.expect(json).to.have.property('meta');",
+              "});",
+              "pm.test('Список объявлений не пуст', () => pm.expect(json.items.length).to.be.above(0));",
+              "pm.test('У объявления есть ключевые поля', () => {",
+              "  const p = json.items[0];",
+              "  pm.expect(p).to.include.all.keys('id', 'title', 'propertyType', 'pricePerDay', 'city');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/properties?limit=50", "host": ["{{baseUrl}}"], "path": ["properties"], "query": [{ "key": "limit", "value": "50" }] }
+      }
+    },
+    {
+      "name": "04 — Фильтрация по списку",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Найдено хотя бы одно объявление по фильтру', () => pm.expect(json.items.length).to.be.above(0));",
+              "pm.test('Все результаты соответствуют фильтру (type=studio, price<=3000)', () => {",
+              "  json.items.forEach((p) => {",
+              "    pm.expect(p.propertyType, 'propertyType').to.eql('studio');",
+              "    pm.expect(p.pricePerDay, 'pricePerDay').to.be.at.most(3000);",
+              "  });",
+              "});",
+              "const ids = json.items.map((p) => p.id);",
+              "pm.collectionVariables.set('filteredIds', JSON.stringify(ids));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/properties?type=studio&priceMax=3000",
+          "host": ["{{baseUrl}}"],
+          "path": ["properties"],
+          "query": [
+            { "key": "type", "value": "studio" },
+            { "key": "priceMax", "value": "3000" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "05 — Просмотр случайного объявления",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ids = JSON.parse(pm.collectionVariables.get('filteredIds') || '[]');",
+              "if (!ids.length) { throw new Error('Список отфильтрованных объявлений пуст'); }",
+              "const randomId = ids[Math.floor(Math.random() * ids.length)];",
+              "pm.collectionVariables.set('propertyId', String(randomId));",
+              "console.log('Выбрано случайное объявление id =', randomId);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Идентификатор совпадает с запрошенным', () => pm.expect(String(json.id)).to.eql(pm.collectionVariables.get('propertyId')));",
+              "pm.test('Карточка содержит фото, удобства и владельца', () => {",
+              "  pm.expect(json, 'photos').to.have.property('photos').that.is.an('array');",
+              "  pm.expect(json, 'amenities').to.have.property('amenities').that.is.an('array');",
+              "  pm.expect(json, 'owner').to.have.property('owner');",
+              "});",
+              "pm.test('У владельца не раскрыт пароль', () => pm.expect(json.owner).to.not.have.property('password'));",
+              "pm.collectionVariables.set('ownerId', String(json.ownerId));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/properties/{{propertyId}}", "host": ["{{baseUrl}}"], "path": ["properties", "{{propertyId}}"] }
+      }
+    },
+    {
+      "name": "06 — Старт переписки по объявлению",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('Создан диалог с id', () => pm.expect(json.id).to.exist);",
+              "pm.test('Диалог привязан к выбранному объявлению', () => pm.expect(String(json.propertyId)).to.eql(pm.collectionVariables.get('propertyId')));",
+              "pm.test('Участник диалога — владелец объявления', () => {",
+              "  const owner = pm.collectionVariables.get('ownerId');",
+              "  pm.expect([String(json.participantAId), String(json.participantBId)]).to.include(owner);",
+              "});",
+              "pm.collectionVariables.set('conversationId', String(json.id));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/conversations", "host": ["{{baseUrl}}"], "path": ["conversations"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"recipientId\": {{ownerId}},\n  \"propertyId\": {{propertyId}}\n}"
+        }
+      }
+    },
+    {
+      "name": "07 — Отправка первого сообщения",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('Текст сообщения сохранён', () => pm.expect(json.body).to.eql('Здравствуйте! Объявление ещё актуально?'));",
+              "pm.test('Сообщение помечено непрочитанным', () => pm.expect(json.isRead).to.eql(false));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/conversations/{{conversationId}}/messages", "host": ["{{baseUrl}}"], "path": ["conversations", "{{conversationId}}", "messages"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Здравствуйте! Объявление ещё актуально?\"\n}"
+        }
+      }
+    }
+  ]
+}
