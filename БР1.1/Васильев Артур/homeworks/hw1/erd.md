@@ -1,109 +1,149 @@
 # ERD — Сайт для поиска работы
 
-Нотация: **Crow's Foot** (один-ко-многим, один-к-одному). PK — первичный ключ, FK — внешний ключ.
+Нотация: **Crow's Foot** (один-ко-многим, один-к-одному). PK — первичный ключ, FK — внешний ключ, UK — уникальный ключ.
 
-## Диаграмма
+
+## Диаграмма связей
 
 ```mermaid
-erDiagram
-    users ||--o| candidates : "has (role=candidate)"
-    users ||--o| employers : "has (role=employer)"
-    candidates ||--|| resumes : "owns"
-    resumes ||--o{ work_experiences : "contains"
-    resumes ||--o{ educations : "contains"
-    employers ||--o{ vacancies : "publishes"
-    industries ||--o{ vacancies : "categorizes"
-    experience_levels ||--o{ vacancies : "requires"
+flowchart TB
+    users[(users)]
+    candidates[(candidates)]
+    employers[(employers)]
+    resumes[(resumes)]
+    work_experiences[(work_experiences)]
+    educations[(educations)]
+    vacancies[(vacancies)]
+    industries[(industries)]
+    experience_levels[(experience_levels)]
 
-    users {
-        uuid id PK
-        varchar email UK
-        varchar password_hash
-        enum role "candidate | employer"
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    candidates {
-        uuid id PK
-        uuid user_id FK UK
-        varchar full_name
-        varchar phone
-        varchar city
-        date birth_date
-        timestamptz created_at
-    }
-
-    resumes {
-        uuid id PK
-        uuid candidate_id FK UK
-        varchar title
-        text summary
-        text skills
-        timestamptz updated_at
-    }
-
-    work_experiences {
-        uuid id PK
-        uuid resume_id FK
-        varchar company_name
-        varchar position
-        date start_date
-        date end_date "nullable"
-        text description
-        int sort_order
-    }
-
-    educations {
-        uuid id PK
-        uuid resume_id FK
-        varchar institution
-        varchar degree
-        int graduation_year
-        int sort_order
-    }
-
-    employers {
-        uuid id PK
-        uuid user_id FK UK
-        varchar company_name
-        text company_description
-        varchar website
-        varchar logo_url
-        timestamptz created_at
-    }
-
-    industries {
-        uuid id PK
-        varchar name UK
-        varchar slug UK
-    }
-
-    experience_levels {
-        uuid id PK
-        varchar name UK
-        varchar slug UK
-        int min_years
-        int max_years "nullable"
-    }
-
-    vacancies {
-        uuid id PK
-        uuid employer_id FK
-        uuid industry_id FK
-        uuid experience_level_id FK
-        varchar title
-        text description
-        text requirements
-        int salary_from "nullable"
-        int salary_to "nullable"
-        varchar salary_currency
-        varchar location
-        boolean is_published
-        timestamptz created_at
-        timestamptz updated_at
-    }
+    users -->|"1 : 0..1"| candidates
+    users -->|"1 : 0..1"| employers
+    candidates -->|"1 : 1"| resumes
+    resumes -->|"1 : N"| work_experiences
+    resumes -->|"1 : N"| educations
+    employers -->|"1 : N"| vacancies
+    industries -->|"1 : N"| vacancies
+    experience_levels -->|"1 : N"| vacancies
 ```
+
+## Схема связей (текст)
+
+```
+users ──1:0..1── candidates ──1:1── resumes ──1:N── work_experiences
+  │                              └──1:N── educations
+  └──1:0..1── employers ──1:N── vacancies ──N:1── industries
+                                    └──N:1── experience_levels
+```
+
+## Таблицы и атрибуты
+
+### users
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| email | varchar | UK, NOT NULL |
+| password_hash | varchar | NOT NULL |
+| role | enum | candidate \| employer |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+### candidates
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| user_id | uuid | FK → users.id, UK |
+| full_name | varchar | |
+| phone | varchar | |
+| city | varchar | |
+| birth_date | date | NULL |
+| created_at | timestamptz | |
+
+### employers
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| user_id | uuid | FK → users.id, UK |
+| company_name | varchar | |
+| company_description | text | |
+| website | varchar | |
+| logo_url | varchar | |
+| created_at | timestamptz | |
+
+### resumes
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| candidate_id | uuid | FK → candidates.id, UK |
+| title | varchar | |
+| summary | text | |
+| skills | text | |
+| updated_at | timestamptz | |
+
+### work_experiences
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| resume_id | uuid | FK → resumes.id |
+| company_name | varchar | |
+| position | varchar | |
+| start_date | date | |
+| end_date | date | NULL |
+| description | text | |
+| sort_order | int | |
+
+### educations
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| resume_id | uuid | FK → resumes.id |
+| institution | varchar | |
+| degree | varchar | |
+| graduation_year | int | |
+| sort_order | int | |
+
+### industries
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| name | varchar | UK |
+| slug | varchar | UK |
+
+### experience_levels
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| name | varchar | UK |
+| slug | varchar | UK |
+| min_years | int | |
+| max_years | int | NULL |
+
+### vacancies
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| id | uuid | PK |
+| employer_id | uuid | FK → employers.id |
+| industry_id | uuid | FK → industries.id |
+| experience_level_id | uuid | FK → experience_levels.id |
+| title | varchar | |
+| description | text | |
+| requirements | text | |
+| salary_from | int | NULL |
+| salary_to | int | NULL |
+| salary_currency | varchar | |
+| location | varchar | |
+| is_published | boolean | |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
 
 ## Легенда связей
 
@@ -118,12 +158,3 @@ erDiagram
 | `industries` → `vacancies` | 1 : N | Справочник отраслей для фильтрации |
 | `experience_levels` → `vacancies` | 1 : N | Справочник уровня опыта для фильтрации |
 
-## Индексы 
-
-```sql
-CREATE INDEX idx_vacancies_industry ON vacancies(industry_id);
-CREATE INDEX idx_vacancies_experience ON vacancies(experience_level_id);
-CREATE INDEX idx_vacancies_salary ON vacancies(salary_from, salary_to);
-CREATE INDEX idx_vacancies_published ON vacancies(is_published) WHERE is_published = true;
-CREATE INDEX idx_vacancies_employer ON vacancies(employer_id);
-```
