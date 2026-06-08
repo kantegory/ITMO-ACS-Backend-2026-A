@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: Internal Microservices API
+  description: Спецификация закрытых (internal) эндпоинтов для межсервисного взаимодействия внутри приватной сети Docker (без выхода в интернет).
+  version: 1.0.0
+servers:
+  - url: http://identity-service:8001/internal
+    description: Внутренний адрес Identity Service
+  - url: http://recipe-service:8002/internal
+    description: Внутренний адрес Recipe Service
+  - url: http://social-service:8003/internal
+    description: Внутренний адрес Social Service
+
+paths:
+  # ================= IDENTITY SERVICE INTERNAL =================
+  /auth/validate-token:
+    post:
+      tags:
+        - Internal Identity
+      summary: Проверка токена и извлечение роли (RBAC)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Токен валиден, возвращен payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidatedUserPayload'
+        '401':
+          description: Токен недействителен или просрочен
+
+  /users/bulk:
+    post:
+      tags:
+        - Internal Identity
+      summary: Пакетная выгрузка профилей (Решение проблемы N+1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userIds
+              properties:
+                userIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: Список базовых профилей авторов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BulkUserResponse'
+
+  # ================= RECIPE SERVICE INTERNAL =================
+  /recipes/{id}/exists:
+    get:
+      tags:
+        - Internal Recipe
+      summary: Проверка существования рецепта (Валидация перед созданием связей)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Рецепт существует
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists:
+                    type: boolean
+                  recipeId:
+                    type: string
+                    format: uuid
+                  authorId:
+                    type: string
+                    format: uuid
+        '404':
+          description: Рецепт не найден
+
+  /recipes/by-author/{userId}:
+    delete:
+      tags:
+        - Internal Recipe
+      summary: Каскадное удаление рецептов автора при блокировке (бан)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Все рецепты автора помечены как удаленные
+        '404':
+          description: Автор не найден
+
+  # ================= SOCIAL SERVICE INTERNAL =================
+  /social/by-user/{userId}:
+    delete:
+      tags:
+        - Internal Social
+      summary: Каскадное удаление социального контента при блокировке (бан)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Лайки, комментарии, блоги и подписки пользователя удалены
+        '404':
+          description: Пользователь не найден
+
+components:
+  schemas:
+    ValidatedUserPayload:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, moderator, admin]
+
+    BulkUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
