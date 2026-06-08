@@ -1,0 +1,238 @@
+version: '3.8'
+
+services:
+  # ========== БАЗЫ ДАННЫХ ==========
+  user-db:
+    image: postgres:15-alpine
+    container_name: user_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d user_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices-network
+
+  company-db:
+    image: postgres:15-alpine
+    container_name: company_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: company_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - company_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d company_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices-network
+
+  order-db:
+    image: postgres:15-alpine
+    container_name: order_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: order_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d order_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices-network
+
+  # ========== MESSAGE BROKER ==========
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  # ========== МИКРОСЕРВИСЫ ==========
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8001
+      DB_HOST: user-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: user_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      JWT_ACCESS_SECRET: user-service-secret-key
+      JWT_REFRESH_SECRET: user-service-refresh-secret-key
+    ports:
+      - "8001:8001"
+    depends_on:
+      user-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices-network
+
+  company-service:
+    build:
+      context: ./company-service
+      dockerfile: Dockerfile
+    container_name: company-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8002
+      DB_HOST: company-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: company_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:8001
+    ports:
+      - "8002:8002"
+    depends_on:
+      company-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+    networks:
+      - microservices-network
+
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8003
+      DB_HOST: order-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: order_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:8001
+      COMPANY_SERVICE_URL: http://company-service:8002
+    ports:
+      - "8003:8003"
+    depends_on:
+      order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      company-service:
+        condition: service_started
+    networks:
+      - microservices-network
+
+  analytics-service:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8004
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:8001
+      COMPANY_SERVICE_URL: http://company-service:8002
+      ORDER_SERVICE_URL: http://order-service:8003
+    ports:
+      - "8004:8004"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      company-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+    networks:
+      - microservices-network
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      USER_SERVICE_URL: http://user-service:8001
+      COMPANY_SERVICE_URL: http://company-service:8002
+      ORDER_SERVICE_URL: http://order-service:8003
+      ANALYTICS_SERVICE_URL: http://analytics-service:8004
+    ports:
+      - "3000:3000"
+    depends_on:
+      user-service:
+        condition: service_started
+      company-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      analytics-service:
+        condition: service_started
+    networks:
+      - microservices-network
+
+# ========== VOLUMES ==========
+volumes:
+  user_db_data:
+  company_db_data:
+  order_db_data:
+  rabbitmq_data:
+
+# ========== NETWORKS ==========
+networks:
+  microservices-network:
+    driver: bridge
