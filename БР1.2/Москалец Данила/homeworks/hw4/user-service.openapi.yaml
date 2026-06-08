@@ -1,0 +1,298 @@
+openapi: 3.0.0
+info:
+  title: User Service API
+  description: Управление пользователями, аутентификация, профили
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8001/api/v1
+    description: User Service (Development)
+
+tags:
+  - name: Auth
+  - name: Profile
+  - name: Internal
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: integer }
+            message: { type: string }
+            details: { type: object }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        role: { type: string, enum: [ADMIN, USER, OWNER] }
+        first_name: { type: string }
+        last_name: { type: string }
+        middle_name: { type: string, nullable: true }
+        is_verified: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 4 }
+        first_name: { type: string, maxLength: 64 }
+        last_name: { type: string, maxLength: 64 }
+        middle_name: { type: string, maxLength: 64, nullable: true }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    TokenPair:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name: { type: string, maxLength: 64 }
+        last_name: { type: string, maxLength: 64 }
+        middle_name: { type: string, maxLength: 64, nullable: true }
+
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password: { type: string }
+        new_password: { type: string, minLength: 4 }
+
+  responses:
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Конфликт
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnprocessableEntity:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/UnprocessableEntity' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновить токены
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '204': { description: Успешно }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Текущий пользователь
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /profile:
+    put:
+      tags: [Profile]
+      summary: Обновить профиль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '400': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /profile/password:
+    put:
+      tags: [Profile]
+      summary: Сменить пароль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Успешно }
+        '400': { description: Неверный текущий пароль }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/validate:
+    post:
+      tags: [Internal]
+      summary: Валидация JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: integer }
+                  role: { type: string }
+        '401': { description: Токен невалиден }
+
+  /internal/users/{id}:
+    get:
+      tags: [Internal]
+      summary: Получить пользователя
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  email: { type: string }
+                  role: { type: string }
+                  first_name: { type: string }
+                  last_name: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }

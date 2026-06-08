@@ -1,0 +1,314 @@
+openapi: 3.0.0
+info:
+  title: Analytics Service API
+  description: Администрирование и отчёты
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8004/api/v1
+    description: Analytics Service (Development)
+
+tags:
+  - name: Admin
+  - name: Reports
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    SortOrderParam:
+      name: sort_order
+      in: query
+      schema: { type: string, enum: [asc, desc], default: desc }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: integer }
+            message: { type: string }
+            details: { type: object }
+
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        total_pages: { type: integer }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        role: { type: string, enum: [ADMIN, USER, OWNER] }
+        first_name: { type: string }
+        last_name: { type: string }
+        middle_name: { type: string, nullable: true }
+        is_verified: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    Company:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        logo_url: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        avg_rating: { type: number, nullable: true }
+        total_reviews: { type: integer }
+        total_services: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    ServiceRequest:
+      type: object
+      properties:
+        id: { type: integer }
+        service:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            company:
+              type: object
+              properties:
+                id: { type: integer }
+                title: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            first_name: { type: string }
+            last_name: { type: string }
+        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED] }
+        description: { type: string, nullable: true }
+        reply: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ActivityReport:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        totals:
+          type: object
+          properties:
+            users: { type: integer }
+            companies: { type: integer }
+            services: { type: integer }
+            requests: { type: integer }
+            reviews: { type: integer }
+        requests_by_status:
+          type: object
+          properties:
+            pending: { type: integer }
+            accepted: { type: integer }
+            rejected: { type: integer }
+            cancelled: { type: integer }
+        top_companies:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              requests_accepted: { type: integer }
+              avg_rating: { type: number, nullable: true }
+        new_users_dynamics:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              count: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnprocessableEntity:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Список пользователей
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: role
+          in: query
+          schema: { type: string, enum: [ADMIN, USER, OWNER] }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, email], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Admin]
+      summary: Детали пользователя
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Admin]
+      summary: Удалить пользователя
+      responses:
+        '204': { description: Удалено }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/companies:
+    get:
+      tags: [Admin]
+      summary: Список компаний
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, rating, title], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Company' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/requests:
+    get:
+      tags: [Admin]
+      summary: Все заявки
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED] }
+        - name: company_id
+          in: query
+          schema: { type: integer }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, status], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ServiceRequest' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/reports/activity:
+    get:
+      tags: [Reports]
+      summary: Отчёт по активности
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, enum: [day, week, month], default: month }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ActivityReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/UnprocessableEntity' }
