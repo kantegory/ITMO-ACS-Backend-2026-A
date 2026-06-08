@@ -1,0 +1,537 @@
+{
+  "info": {
+    "name": "Fitness Microservices — E2E сценарий (ЛР2)",
+    "description": "Демонстрация микросервисной архитектуры из ЛР2 (Цветкова К3341).\n\nСценарий показывает:\n— маршрутизацию через **API Gateway** (порт 3000);\n— **синхронный HTTP** между сервисами (plan → catalog) при добавлении тренировки в план — с denormalization snapshot-полей;\n— **асинхронное событие** через event bus (catalog → plan) при удалении тренировки — plan получает событие и помечает items как workoutIsStale=true;\n— **доступ напрямую** к internal-эндпоинтам сервисов (для демонстрации, что они изолированы).\n\nЗапуск: сначала поднять сервисы (`npm run dev` в корне `Бэк-микросервисы/`), затем Run Collection.",
+    "_postman_id": "fitness-microservices-lr2-2026",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "authUrl", "value": "http://localhost:3001", "type": "string" },
+    { "key": "catalogUrl", "value": "http://localhost:3003", "type": "string" },
+    { "key": "planUrl", "value": "http://localhost:3004", "type": "string" },
+    { "key": "userToken", "value": "", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "workoutId", "value": "", "type": "string" },
+    { "key": "planId", "value": "", "type": "string" },
+    { "key": "planItemId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Health-check всех сервисов (через Gateway и напрямую)",
+      "item": [
+        {
+          "name": "Gateway /api/health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{gatewayUrl}}/health", "host": ["{{gatewayUrl}}"], "path": ["health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Gateway отвечает 200', () => pm.response.to.have.status(200));",
+                  "pm.test('service=gateway', () => pm.expect(pm.response.json().service).to.eql('gateway'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth /health (напрямую, минуя gateway)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{authUrl}}/health", "host": ["{{authUrl}}"], "path": ["health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('auth-service отвечает 200', () => pm.response.to.have.status(200));",
+                  "pm.test('service=auth-service', () => pm.expect(pm.response.json().service).to.eql('auth-service'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Catalog /health (напрямую)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{catalogUrl}}/health", "host": ["{{catalogUrl}}"], "path": ["health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('catalog-service отвечает 200', () => pm.response.to.have.status(200));",
+                  "pm.test('service=catalog-service', () => pm.expect(pm.response.json().service).to.eql('catalog-service'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Plan /health (напрямую)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{planUrl}}/health", "host": ["{{planUrl}}"], "path": ["health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('plan-service отвечает 200', () => pm.response.to.have.status(200));",
+                  "pm.test('service=plan-service', () => pm.expect(pm.response.json().service).to.eql('plan-service'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Вход user@fitness.local — через Gateway → auth-service",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{gatewayUrl}}/auth/login", "host": ["{{gatewayUrl}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user@fitness.local\",\n  \"password\": \"user12345\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Получен accessToken', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+              "pm.test('Получен refreshToken', () => pm.expect(body.refreshToken).to.be.a('string').and.not.empty);",
+              "pm.test('user.role = \"user\"', () => pm.expect(body.user.role).to.eql('user'));",
+              "pm.test('passwordHash не утекает', () => pm.expect(body.user).to.not.have.property('passwordHash'));",
+              "pm.collectionVariables.set('userToken', body.accessToken);",
+              "pm.collectionVariables.set('userId', body.user.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Список тренировок — через Gateway → catalog-service",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{gatewayUrl}}/workouts", "host": ["{{gatewayUrl}}"], "path": ["workouts"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Структура: items + total', () => {",
+              "  pm.expect(body).to.have.property('items').that.is.an('array');",
+              "  pm.expect(body).to.have.property('total').that.is.a('number');",
+              "});",
+              "pm.test('Каталог не пустой (seed)', () => pm.expect(body.items.length).to.be.above(0));",
+              "pm.test('У тренировок есть обязательные поля', () => {",
+              "  body.items.forEach(w => {",
+              "    pm.expect(w).to.have.property('id');",
+              "    pm.expect(w).to.have.property('title');",
+              "    pm.expect(w).to.have.property('type');",
+              "    pm.expect(w).to.have.property('level');",
+              "    pm.expect(w).to.have.property('durationMinutes');",
+              "  });",
+              "});",
+              "// Сохраним id первой тренировки",
+              "pm.collectionVariables.set('workoutId', body.items[0].id);",
+              "console.log('Выбрана тренировка:', body.items[0].title);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Поиск с фильтром (type=cardio, level=beginner, maxDuration=30)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{gatewayUrl}}/workouts?type=cardio&level=beginner&maxDuration=30",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workouts"],
+          "query": [
+            { "key": "type", "value": "cardio" },
+            { "key": "level", "value": "beginner" },
+            { "key": "maxDuration", "value": "30" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Все результаты type=cardio', () => body.items.forEach(w => pm.expect(w.type).to.eql('cardio')));",
+              "pm.test('Все результаты level=beginner', () => body.items.forEach(w => pm.expect(w.level).to.eql('beginner')));",
+              "pm.test('durationMinutes ≤ 30', () => body.items.forEach(w => pm.expect(w.durationMinutes).to.be.at.most(30)));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Защищённый эндпоинт без токена — должен вернуть 401",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{gatewayUrl}}/workout-plans",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workout-plans"]
+        },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"должно быть 401\"\n}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 401 Unauthorized (Gateway не прокинул X-User-Id)', () => pm.response.to.have.status(401));",
+              "pm.test('В ответе есть error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Создание плана — через Gateway → plan-service (с JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{userToken}}" }
+        ],
+        "url": {
+          "raw": "{{gatewayUrl}}/workout-plans",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workout-plans"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"План на неделю\",\n  \"description\": \"Сценарий из Postman\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Возвращён id плана', () => pm.expect(body.id).to.be.a('string'));",
+              "pm.test('userId совпадает с залогиненным (Gateway корректно прокинул X-User-Id)', () =>",
+              "  pm.expect(body.userId).to.eql(pm.collectionVariables.get('userId')));",
+              "pm.test('Название сохранено', () => pm.expect(body.title).to.eql('План на неделю'));",
+              "pm.collectionVariables.set('planId', body.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ 6. Добавить тренировку в план (sync HTTP plan→catalog)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{userToken}}" }
+        ],
+        "url": {
+          "raw": "{{gatewayUrl}}/workout-plans/{{planId}}/items",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workout-plans", "{{planId}}", "items"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"workoutId\": \"{{workoutId}}\",\n  \"notes\": \"первая тренировка\"\n}"
+        },
+        "description": "При обработке этого запроса plan-service СИНХРОННО дёргает catalog-service по адресу http://localhost:3003/internal/workouts/{id}, чтобы получить snapshot тренировки (title, durationMinutes, type) и сохранить его в plan_items.\n\nПроверь в логах терминала [PLAN] и [CATALOG] — увидишь два запроса подряд."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('workoutId совпадает', () => pm.expect(body.workoutId).to.eql(pm.collectionVariables.get('workoutId')));",
+              "pm.test('Snapshot НЕ пустой (значит plan→catalog отработал)', () => {",
+              "  pm.expect(body.workoutTitleSnapshot).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.workoutDurationMin).to.be.a('number').and.above(0);",
+              "  pm.expect(body.workoutType).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('workoutIsStale = false (тренировка существует)', () => pm.expect(body.workoutIsStale).to.eql(false));",
+              "pm.test('completed = false по умолчанию', () => pm.expect(body.completed).to.eql(false));",
+              "pm.collectionVariables.set('planItemId', body.id);",
+              "console.log('Snapshot сохранён:', body.workoutTitleSnapshot, '|', body.workoutDurationMin, 'мин |', body.workoutType);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Получить план — увидеть item со snapshot",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+        "url": {
+          "raw": "{{gatewayUrl}}/workout-plans/{{planId}}",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workout-plans", "{{planId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items содержит добавленный элемент', () => pm.expect(body.items.length).to.be.at.least(1));",
+              "pm.test('Snapshot заполнен', () => {",
+              "  const item = body.items[0];",
+              "  pm.expect(item.workoutTitleSnapshot).to.be.a('string').and.not.empty;",
+              "  pm.expect(item.workoutIsStale).to.eql(false);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Прямой вызов internal эндпоинта catalog (для демонстрации)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{catalogUrl}}/internal/workouts/{{workoutId}}",
+          "host": ["{{catalogUrl}}"],
+          "path": ["internal", "workouts", "{{workoutId}}"]
+        },
+        "description": "Тот же internal-эндпоинт, который дёргал plan-service. Доступен напрямую, чтобы показать как сервисы общаются друг с другом."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Возвращает урезанную модель тренировки', () => {",
+              "  pm.expect(body).to.have.property('id');",
+              "  pm.expect(body).to.have.property('title');",
+              "  pm.expect(body).to.have.property('type');",
+              "  pm.expect(body).to.have.property('durationMinutes');",
+              "  pm.expect(body).to.have.property('active');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Вход admin@fitness.local",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{gatewayUrl}}/auth/login", "host": ["{{gatewayUrl}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@fitness.local\",\n  \"password\": \"admin12345\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Роль admin', () => pm.expect(body.user.role).to.eql('admin'));",
+              "pm.collectionVariables.set('adminToken', body.accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Создание тренировки обычным user — должен вернуть 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{userToken}}" }
+        ],
+        "url": { "raw": "{{gatewayUrl}}/workouts", "host": ["{{gatewayUrl}}"], "path": ["workouts"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Попытка от user\",\n  \"description\": \"должна быть отклонена\",\n  \"videoUrl\": \"https://example.com/v.mp4\",\n  \"type\": \"cardio\",\n  \"level\": \"beginner\",\n  \"durationMinutes\": 15\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 403 Forbidden (роль user не может создавать тренировки)', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ 11. УДАЛЕНИЕ тренировки admin → событие workout.deleted",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": {
+          "raw": "{{gatewayUrl}}/workouts/{{workoutId}}",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workouts", "{{workoutId}}"]
+        },
+        "description": "При удалении catalog-service публикует событие `workout.deleted` в event bus.\n\nЭто событие через HTTP fan-out доставляется plan-service на эндпоинт /internal/events.\n\nplan-service в обработчике пометит все plan_items с этой тренировкой как `workoutIsStale = true`.\n\nПроверь логи терминала:\n```\n[CATALOG] [event-bus] -> publish workout.deleted\n[PLAN]    [event-bus] <- received workout.deleted\n[PLAN]    marked N items as stale\n```"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 204 No Content', () => pm.response.to.have.status(204));",
+              "// Даём event bus 500мс на доставку события до plan-service",
+              "setTimeout(() => {}, 500);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ 12. Re-fetch плана — workoutIsStale должен быть true",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+        "url": {
+          "raw": "{{gatewayUrl}}/workout-plans/{{planId}}",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workout-plans", "{{planId}}"]
+        },
+        "description": "Проверяем, что событие `workout.deleted` корректно обработалось plan-service и item в плане теперь имеет workoutIsStale=true.\n\nПри этом snapshot-поля (workoutTitleSnapshot, workoutDurationMin) остались — план показывается, просто помечен как недоступный для запуска."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// busy-wait ~1.2 сек чтобы async-событие workout.deleted точно успело долететь до plan-service",
+              "const start = Date.now();",
+              "while (Date.now() - start < 1200) { /* sleep */ }"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('items по-прежнему присутствует (snapshot жив)', () => pm.expect(body.items.length).to.be.at.least(1));",
+              "const item = body.items.find(i => i.id === pm.collectionVariables.get('planItemId'));",
+              "pm.test('Snapshot тренировки сохранён', () => {",
+              "  pm.expect(item.workoutTitleSnapshot).to.be.a('string').and.not.empty;",
+              "  pm.expect(item.workoutDurationMin).to.be.above(0);",
+              "});",
+              "pm.test('★ workoutIsStale = true (async event дошёл!)', () => pm.expect(item.workoutIsStale).to.eql(true));",
+              "console.log('Stale snapshot:', item.workoutTitleSnapshot, '| stale:', item.workoutIsStale);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Несуществующий план — 404",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+        "url": {
+          "raw": "{{gatewayUrl}}/workout-plans/00000000-0000-0000-0000-000000000000",
+          "host": ["{{gatewayUrl}}"],
+          "path": ["workout-plans", "00000000-0000-0000-0000-000000000000"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 404 Not Found', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Internal: валидация JWT через auth (показать что валидация работает)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{authUrl}}/internal/auth/validate",
+          "host": ["{{authUrl}}"],
+          "path": ["internal", "auth", "validate"]
+        },
+        "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{userToken}}\"\n}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('valid=true', () => pm.expect(body.valid).to.eql(true));",
+              "pm.test('userId совпадает', () => pm.expect(body.userId).to.eql(pm.collectionVariables.get('userId')));",
+              "pm.test('role=user', () => pm.expect(body.role).to.eql('user'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

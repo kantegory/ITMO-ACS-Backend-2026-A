@@ -1,0 +1,1625 @@
+openapi: 3.0.3
+info:
+  title: Fitness Platform API
+  description: |
+    REST API для платформы фитнес-тренировок и здоровья.
+    Аутентификация: Bearer JWT (заголовок `Authorization: Bearer <token>`).
+  version: 1.0.0
+  contact:
+    name: Цветкова Татьяна, К3341
+
+servers:
+  - url: https://api.fitness-platform.ru/api/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Регистрация и аутентификация
+  - name: Users
+    description: Управление профилем пользователя
+  - name: Workouts
+    description: Тренировки и справочники
+  - name: Plans
+    description: Планы тренировок
+  - name: Logs & Progress
+    description: История тренировок и замеры прогресса
+  - name: Blog
+    description: Статьи и категории блога
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECURITY
+# ─────────────────────────────────────────────────────────────────────────────
+security: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ── Common error response ──────────────────────────────────────────────────
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: Ресурс не найден
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password, full_name]
+      properties:
+        email:
+          type: string
+          format: email
+          example: tanya@example.com
+        password:
+          type: string
+          minLength: 8
+          example: Secr3t!pass
+        full_name:
+          type: string
+          example: Цветкова Татьяна
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthTokens:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Время жизни access_token в секундах
+          example: 3600
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    # ── User / Profile ────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        role:
+          type: string
+          enum: [user, admin, trainer]
+        created_at:
+          type: string
+          format: date-time
+
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        age:
+          type: integer
+          example: 22
+        weight_kg:
+          type: number
+          format: float
+          example: 58.5
+        height_cm:
+          type: integer
+          example: 165
+        fitness_level:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        avatar_url:
+          type: string
+          format: uri
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        age:
+          type: integer
+        weight_kg:
+          type: number
+          format: float
+        height_cm:
+          type: integer
+        fitness_level:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        avatar_url:
+          type: string
+          format: uri
+
+    # ── Workouts ──────────────────────────────────────────────────────────────
+    WorkoutType:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: Кардио
+
+    DifficultyLevel:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: Начальный
+
+    Workout:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+          example: Утренняя пробежка
+        description:
+          type: string
+        instructions:
+          type: string
+        video_url:
+          type: string
+          format: uri
+        duration_min:
+          type: integer
+          example: 30
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        level:
+          $ref: '#/components/schemas/DifficultyLevel'
+        created_at:
+          type: string
+          format: date-time
+
+    WorkoutRequest:
+      type: object
+      required: [title, type_id, level_id, duration_min]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        instructions:
+          type: string
+        video_url:
+          type: string
+          format: uri
+        duration_min:
+          type: integer
+        type_id:
+          type: integer
+        level_id:
+          type: integer
+
+    WorkoutList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workout'
+        total:
+          type: integer
+        page:
+          type: integer
+        per_page:
+          type: integer
+
+    # ── Training Plans ────────────────────────────────────────────────────────
+    TrainingPlan:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+          example: 30-дневный план для начинающих
+        created_by:
+          type: integer
+          nullable: true
+          description: ID пользователя-создателя; null для системных планов
+        level:
+          $ref: '#/components/schemas/DifficultyLevel'
+        is_public:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    TrainingPlanRequest:
+      type: object
+      required: [title, level_id]
+      properties:
+        title:
+          type: string
+        level_id:
+          type: integer
+        is_public:
+          type: boolean
+          default: false
+
+    PlanWorkout:
+      type: object
+      properties:
+        workout_id:
+          type: integer
+        day_number:
+          type: integer
+          example: 1
+        order_in_day:
+          type: integer
+          example: 1
+
+    PlanWorkoutRequest:
+      type: object
+      required: [workout_id, day_number, order_in_day]
+      properties:
+        workout_id:
+          type: integer
+        day_number:
+          type: integer
+        order_in_day:
+          type: integer
+
+    UserPlanAssignment:
+      type: object
+      properties:
+        id:
+          type: integer
+        plan:
+          $ref: '#/components/schemas/TrainingPlan'
+        started_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, paused, completed]
+
+    AssignPlanRequest:
+      type: object
+      required: [plan_id]
+      properties:
+        plan_id:
+          type: integer
+
+    UpdatePlanStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, paused, completed]
+
+    # ── Workout Logs ──────────────────────────────────────────────────────────
+    WorkoutLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        workout:
+          $ref: '#/components/schemas/Workout'
+        completed_at:
+          type: string
+          format: date-time
+        duration_actual_min:
+          type: integer
+          example: 35
+
+    WorkoutLogRequest:
+      type: object
+      required: [workout_id, completed_at]
+      properties:
+        workout_id:
+          type: integer
+        completed_at:
+          type: string
+          format: date-time
+        duration_actual_min:
+          type: integer
+
+    # ── Progress Metrics ──────────────────────────────────────────────────────
+    ProgressMetric:
+      type: object
+      properties:
+        id:
+          type: integer
+        measured_at:
+          type: string
+          format: date-time
+        weight_kg:
+          type: number
+          format: float
+        body_fat_percent:
+          type: number
+          format: float
+
+    ProgressMetricRequest:
+      type: object
+      required: [measured_at, weight_kg]
+      properties:
+        measured_at:
+          type: string
+          format: date-time
+        weight_kg:
+          type: number
+          format: float
+        body_fat_percent:
+          type: number
+          format: float
+
+    # ── Blog ─────────────────────────────────────────────────────────────────
+    BlogCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: Питание
+        slug:
+          type: string
+          example: nutrition
+
+    BlogPost:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        author:
+          $ref: '#/components/schemas/User'
+        category:
+          $ref: '#/components/schemas/BlogCategory'
+        is_published:
+          type: boolean
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    BlogPostRequest:
+      type: object
+      required: [title, content, category_id]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        category_id:
+          type: integer
+        is_published:
+          type: boolean
+          default: false
+
+    BlogPostList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlogPost'
+        total:
+          type: integer
+        page:
+          type: integer
+        per_page:
+          type: integer
+
+  # ── Reusable parameters ───────────────────────────────────────────────────
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    PerPageParam:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+  # ── Reusable responses ────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Не аутентифицирован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Требуется авторизация
+    Forbidden:
+      description: Нет прав доступа
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Недостаточно прав
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Ресурс не найден
+    ValidationError:
+      description: Ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Поле email обязательно
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # AUTH
+  # ══════════════════════════════════════════════════════════════════════════
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '409':
+          description: Email уже зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: EMAIL_CONFLICT
+                  message: Пользователь с таким email уже существует
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход по email и паролю
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Неверный email или пароль
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление access_token по refresh_token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Новые токены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Refresh token недействителен или истёк
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход (инвалидация refresh_token)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Успешный выход
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # USERS
+  # ══════════════════════════════════════════════════════════════════════════
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить данные текущего пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/me/profile:
+    get:
+      tags: [Users]
+      summary: Получить профиль текущего пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Users]
+      summary: Создать или обновить профиль текущего пользователя
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Получить публичные данные пользователя (admin/trainer)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # WORKOUTS
+  # ══════════════════════════════════════════════════════════════════════════
+  /workout-types:
+    get:
+      tags: [Workouts]
+      summary: Список типов тренировок
+      responses:
+        '200':
+          description: Список типов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /difficulty-levels:
+    get:
+      tags: [Workouts]
+      summary: Список уровней сложности
+      responses:
+        '200':
+          description: Список уровней
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DifficultyLevel'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /workouts:
+    get:
+      tags: [Workouts]
+      summary: Список тренировок с фильтрацией
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: type_id
+          in: query
+          schema:
+            type: integer
+          description: Фильтр по типу тренировки
+        - name: level_id
+          in: query
+          schema:
+            type: integer
+          description: Фильтр по уровню сложности
+        - name: duration_max
+          in: query
+          schema:
+            type: integer
+          description: Максимальная длительность в минутах
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Поиск по названию
+      responses:
+        '200':
+          description: Список тренировок
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutList'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Workouts]
+      summary: Создать тренировку (trainer / admin)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutRequest'
+      responses:
+        '201':
+          description: Тренировка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /workouts/{workoutId}:
+    get:
+      tags: [Workouts]
+      summary: Получить тренировку по ID
+      parameters:
+        - name: workoutId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные тренировки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Workouts]
+      summary: Обновить тренировку (trainer / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workoutId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutRequest'
+      responses:
+        '200':
+          description: Тренировка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Workouts]
+      summary: Удалить тренировку (admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workoutId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Тренировка удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # TRAINING PLANS
+  # ══════════════════════════════════════════════════════════════════════════
+  /plans:
+    get:
+      tags: [Plans]
+      summary: Список публичных планов тренировок
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: level_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список планов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TrainingPlan'
+                  total:
+                    type: integer
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Plans]
+      summary: Создать план тренировок (trainer / admin)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingPlanRequest'
+      responses:
+        '201':
+          description: План создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /plans/{planId}:
+    get:
+      tags: [Plans]
+      summary: Получить план по ID
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные плана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Plans]
+      summary: Обновить план (trainer / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingPlanRequest'
+      responses:
+        '200':
+          description: План обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Plans]
+      summary: Удалить план (admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: План удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /plans/{planId}/workouts:
+    get:
+      tags: [Plans]
+      summary: Получить список тренировок плана (расписание по дням)
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Расписание плана
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanWorkout'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Plans]
+      summary: Добавить тренировку в план (trainer / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanWorkoutRequest'
+      responses:
+        '201':
+          description: Тренировка добавлена в план
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanWorkout'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /plans/{planId}/workouts/{workoutId}:
+    delete:
+      tags: [Plans]
+      summary: Удалить тренировку из плана (trainer / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: workoutId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Тренировка удалена из плана
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/me/plans:
+    get:
+      tags: [Plans]
+      summary: Планы, назначенные текущему пользователю
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список назначенных планов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPlanAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Plans]
+      summary: Взять план (назначить себе)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignPlanRequest'
+      responses:
+        '201':
+          description: План назначен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPlanAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: План уже назначен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/me/plans/{assignmentId}:
+    patch:
+      tags: [Plans]
+      summary: Обновить статус назначенного плана
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanStatusRequest'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPlanAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # WORKOUT LOGS
+  # ══════════════════════════════════════════════════════════════════════════
+  /users/me/workout-logs:
+    get:
+      tags: [Logs & Progress]
+      summary: История выполненных тренировок
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Начало периода (YYYY-MM-DD)
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Конец периода (YYYY-MM-DD)
+      responses:
+        '200':
+          description: История тренировок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkoutLog'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Logs & Progress]
+      summary: Записать выполненную тренировку
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutLogRequest'
+      responses:
+        '201':
+          description: Запись добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Тренировка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/me/workout-logs/{logId}:
+    delete:
+      tags: [Logs & Progress]
+      summary: Удалить запись о тренировке
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Запись удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # PROGRESS METRICS
+  # ══════════════════════════════════════════════════════════════════════════
+  /users/me/progress:
+    get:
+      tags: [Logs & Progress]
+      summary: Динамика замеров (вес, % жира)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Список замеров
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProgressMetric'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Logs & Progress]
+      summary: Добавить замер прогресса
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgressMetricRequest'
+      responses:
+        '201':
+          description: Замер добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressMetric'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/me/progress/{metricId}:
+    delete:
+      tags: [Logs & Progress]
+      summary: Удалить замер
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: metricId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Замер удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # BLOG
+  # ══════════════════════════════════════════════════════════════════════════
+  /blog/categories:
+    get:
+      tags: [Blog]
+      summary: Список категорий блога
+      responses:
+        '200':
+          description: Список категорий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BlogCategory'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Blog]
+      summary: Создать категорию (admin)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+      responses:
+        '201':
+          description: Категория создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogCategory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Slug уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /blog/posts:
+    get:
+      tags: [Blog]
+      summary: Список опубликованных статей
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список статей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPostList'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Blog]
+      summary: Создать статью (trainer / admin)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlogPostRequest'
+      responses:
+        '201':
+          description: Статья создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPost'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /blog/posts/{postId}:
+    get:
+      tags: [Blog]
+      summary: Получить статью по ID
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные статьи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPost'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Blog]
+      summary: Обновить статью (автор / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlogPostRequest'
+      responses:
+        '200':
+          description: Статья обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPost'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Blog]
+      summary: Удалить статью (автор / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Статья удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /blog/posts/{postId}/publish:
+    post:
+      tags: [Blog]
+      summary: Опубликовать статью (автор / admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Статья опубликована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlogPost'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Статья уже опубликована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'

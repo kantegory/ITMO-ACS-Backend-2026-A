@@ -1,0 +1,563 @@
+{
+  "info": {
+    "name": "Fitness Platform API — E2E сценарий",
+    "description": "Комплексный сценарий тестирования REST API платформы фитнес-тренировок и здоровья (ДЗ3, Цветкова К3341).\n\nСценарий: регистрация → вход → личный кабинет → поиск тренировок → фильтрация → просмотр случайной тренировки → создание плана → добавление тренировки в план → отметка выполнения → запись прогресса → статистика.",
+    "_postman_id": "fitness-platform-e2e-2026",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "userEmail", "value": "", "type": "string" },
+    { "key": "userPassword", "value": "Test12345!", "type": "string" },
+    { "key": "workoutId", "value": "", "type": "string" },
+    { "key": "planId", "value": "", "type": "string" },
+    { "key": "planItemId", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "1. Регистрация нового пользователя",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"username\": \"{{$randomUserName}}_{{$timestamp}}\",\n  \"password\": \"{{userPassword}}\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// генерируем уникальный email для каждого запуска, чтобы избежать 409 Conflict",
+              "const email = `test_${Date.now()}@fitness.local`;",
+              "pm.collectionVariables.set('userEmail', email);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Возвращён accessToken', () => pm.expect(body).to.have.property('accessToken').that.is.a('string').and.not.empty);",
+              "pm.test('Возвращён refreshToken', () => pm.expect(body).to.have.property('refreshToken').that.is.a('string').and.not.empty);",
+              "pm.test('Возвращён объект user с id и email', () => {",
+              "  pm.expect(body.user).to.be.an('object');",
+              "  pm.expect(body.user.id).to.be.a('string');",
+              "  pm.expect(body.user.email).to.eql(pm.collectionVariables.get('userEmail'));",
+              "});",
+              "pm.test('passwordHash не утекает в ответ', () => pm.expect(body.user).to.not.have.property('passwordHash'));",
+              "pm.collectionVariables.set('accessToken', body.accessToken);",
+              "pm.collectionVariables.set('refreshToken', body.refreshToken);",
+              "pm.collectionVariables.set('userId', body.user.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Вход (login)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Получен accessToken', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+              "pm.test('Получен refreshToken', () => pm.expect(body.refreshToken).to.be.a('string').and.not.empty);",
+              "pm.test('id пользователя совпадает с зарегистрированным', () => pm.expect(body.user.id).to.eql(pm.collectionVariables.get('userId')));",
+              "pm.test('Ответ приходит быстрее 1000 мс', () => pm.expect(pm.response.responseTime).to.be.below(1000));",
+              "pm.collectionVariables.set('accessToken', body.accessToken);",
+              "pm.collectionVariables.set('refreshToken', body.refreshToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Вход с неверным паролем — должен вернуть 401",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"wrong_password_123\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 401 Unauthorized', () => pm.response.to.have.status(401));",
+              "pm.test('В ответе есть поле error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Личный кабинет (GET /users/me)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('id совпадает с текущим пользователем', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('userId')));",
+              "pm.test('email совпадает', () => pm.expect(body.email).to.eql(pm.collectionVariables.get('userEmail')));",
+              "pm.test('Возвращены поля профиля', () => {",
+              "  pm.expect(body).to.have.property('firstName');",
+              "  pm.expect(body).to.have.property('lastName');",
+              "  pm.expect(body).to.have.property('fitnessLevel');",
+              "  pm.expect(body).to.have.property('role');",
+              "});",
+              "pm.test('passwordHash не возвращается', () => pm.expect(body).to.not.have.property('passwordHash'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Обновить профиль (PATCH /users/me)",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"weightKg\": 68.5,\n  \"heightCm\": 172,\n  \"fitnessLevel\": \"intermediate\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Вес обновлён', () => pm.expect(body.weightKg).to.eql(68.5));",
+              "pm.test('Рост обновлён', () => pm.expect(body.heightCm).to.eql(172));",
+              "pm.test('Уровень обновлён', () => pm.expect(body.fitnessLevel).to.eql('intermediate'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Список тренировок (без фильтров)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/workouts", "host": ["{{baseUrl}}"], "path": ["workouts"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('В ответе есть items и total', () => {",
+              "  pm.expect(body).to.have.property('items').that.is.an('array');",
+              "  pm.expect(body).to.have.property('total').that.is.a('number');",
+              "});",
+              "pm.test('items не пустой (seed-данные)', () => pm.expect(body.items.length).to.be.above(0));",
+              "pm.test('У каждой тренировки есть обязательные поля', () => {",
+              "  body.items.forEach(w => {",
+              "    pm.expect(w).to.have.property('id');",
+              "    pm.expect(w).to.have.property('title');",
+              "    pm.expect(w).to.have.property('type');",
+              "    pm.expect(w).to.have.property('level');",
+              "    pm.expect(w).to.have.property('durationMinutes');",
+              "    pm.expect(w).to.have.property('videoUrl');",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Поиск тренировок с фильтрацией (cardio, beginner, ≤30мин)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/workouts?type=cardio&level=beginner&maxDuration=30",
+          "host": ["{{baseUrl}}"],
+          "path": ["workouts"],
+          "query": [
+            { "key": "type", "value": "cardio" },
+            { "key": "level", "value": "beginner" },
+            { "key": "maxDuration", "value": "30" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Все результаты соответствуют фильтру type=cardio', () => {",
+              "  body.items.forEach(w => pm.expect(w.type).to.eql('cardio'));",
+              "});",
+              "pm.test('Все результаты соответствуют фильтру level=beginner', () => {",
+              "  body.items.forEach(w => pm.expect(w.level).to.eql('beginner'));",
+              "});",
+              "pm.test('Длительность всех тренировок ≤ 30 минут', () => {",
+              "  body.items.forEach(w => pm.expect(w.durationMinutes).to.be.at.most(30));",
+              "});",
+              "// Сохраняем id случайной тренировки для следующих шагов",
+              "if (body.items.length > 0) {",
+              "  const randomIndex = Math.floor(Math.random() * body.items.length);",
+              "  pm.collectionVariables.set('workoutId', body.items[randomIndex].id);",
+              "  console.log('Выбрана тренировка:', body.items[randomIndex].title);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Просмотр случайной тренировки (GET /workouts/:id)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/workouts/{{workoutId}}", "host": ["{{baseUrl}}"], "path": ["workouts", "{{workoutId}}"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('id совпадает с запрошенным', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('workoutId')));",
+              "pm.test('Есть видео и описание (страница тренировки)', () => {",
+              "  pm.expect(body.videoUrl).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.description).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('Тренировка соответствует фильтру: cardio beginner ≤30мин', () => {",
+              "  pm.expect(body.type).to.eql('cardio');",
+              "  pm.expect(body.level).to.eql('beginner');",
+              "  pm.expect(body.durationMinutes).to.be.at.most(30);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Несуществующая тренировка — должен вернуть 404",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/workouts/00000000-0000-0000-0000-000000000000",
+          "host": ["{{baseUrl}}"],
+          "path": ["workouts", "00000000-0000-0000-0000-000000000000"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 404 Not Found', () => pm.response.to.have.status(404));",
+              "pm.test('В ответе есть поле error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Создать план тренировок (POST /workout-plans)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/workout-plans", "host": ["{{baseUrl}}"], "path": ["workout-plans"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Мой план на неделю\",\n  \"description\": \"Сценарий из Postman\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Возвращён id плана', () => pm.expect(body.id).to.be.a('string'));",
+              "pm.test('Название сохранено', () => pm.expect(body.title).to.eql('Мой план на неделю'));",
+              "pm.collectionVariables.set('planId', body.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Добавить тренировку в план (POST /workout-plans/:id/items)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/workout-plans/{{planId}}/items",
+          "host": ["{{baseUrl}}"],
+          "path": ["workout-plans", "{{planId}}", "items"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"workoutId\": \"{{workoutId}}\",\n  \"dayOffset\": 0,\n  \"orderIndex\": 0,\n  \"notes\": \"Старт недели\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Элемент плана связан с тренировкой', () => pm.expect(body.workout.id).to.eql(pm.collectionVariables.get('workoutId')));",
+              "pm.test('completed = false по умолчанию', () => pm.expect(body.completed).to.eql(false));",
+              "pm.collectionVariables.set('planItemId', body.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Отметить тренировку выполненной",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/workout-plans/{{planId}}/items/{{planItemId}}/complete",
+          "host": ["{{baseUrl}}"],
+          "path": ["workout-plans", "{{planId}}", "items", "{{planItemId}}", "complete"]
+        },
+        "body": { "mode": "raw", "raw": "{\n  \"completed\": true\n}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('completed = true', () => pm.expect(pm.response.json().completed).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Записать прогресс (POST /progress)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/progress", "host": ["{{baseUrl}}"], "path": ["progress"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"workoutId\": \"{{workoutId}}\",\n  \"durationMinutes\": 30,\n  \"caloriesBurned\": 250,\n  \"rating\": 5,\n  \"performedAt\": \"2026-05-20T10:00:00Z\",\n  \"notes\": \"Отлично себя чувствую!\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Длительность сохранена', () => pm.expect(body.durationMinutes).to.eql(30));",
+              "pm.test('Калории сохранены', () => pm.expect(body.caloriesBurned).to.eql(250));",
+              "pm.test('Рейтинг сохранён', () => pm.expect(body.rating).to.eql(5));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Валидация: рейтинг > 5 — должен вернуть 422",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/progress", "host": ["{{baseUrl}}"], "path": ["progress"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"durationMinutes\": 30,\n  \"rating\": 99,\n  \"performedAt\": \"2026-05-20T10:00:00Z\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 422 Validation Error', () => pm.response.to.have.status(422));",
+              "const body = pm.response.json();",
+              "pm.test('Возвращены детали ошибки валидации', () => pm.expect(body.details).to.be.an('array').that.is.not.empty);",
+              "pm.test('Ошибка связана с полем rating', () => {",
+              "  const ratingErrors = body.details.filter(d => d.property === 'rating');",
+              "  pm.expect(ratingErrors.length).to.be.above(0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Сводная статистика прогресса (GET /progress/stats)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/progress/stats", "host": ["{{baseUrl}}"], "path": ["progress", "stats"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Все поля статистики присутствуют', () => {",
+              "  pm.expect(body).to.have.property('totalEntries').that.is.a('number');",
+              "  pm.expect(body).to.have.property('totalMinutes').that.is.a('number');",
+              "  pm.expect(body).to.have.property('totalCalories').that.is.a('number');",
+              "  pm.expect(body).to.have.property('averageRating').that.is.a('number');",
+              "});",
+              "pm.test('Есть как минимум 1 запись', () => pm.expect(body.totalEntries).to.be.at.least(1));",
+              "pm.test('totalMinutes ≥ 30 (предыдущая запись)', () => pm.expect(body.totalMinutes).to.be.at.least(30));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Список постов блога (GET /blog)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/blog", "host": ["{{baseUrl}}"], "path": ["blog"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Структура ответа корректна', () => {",
+              "  pm.expect(body).to.have.property('items').that.is.an('array');",
+              "  pm.expect(body).to.have.property('total').that.is.a('number');",
+              "});",
+              "pm.test('Все посты опубликованы', () => {",
+              "  body.items.forEach(p => pm.expect(p.published).to.eql(true));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. Защищённый эндпоинт без токена — должен вернуть 401",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 401 Unauthorized', () => pm.response.to.have.status(401));",
+              "pm.test('Сообщение об отсутствии токена', () => {",
+              "  pm.expect(pm.response.json().error.toLowerCase()).to.match(/token|unauthorized|missing/);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18. Создание тренировки обычным user — 403 Forbidden",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/workouts", "host": ["{{baseUrl}}"], "path": ["workouts"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Попытка от user\",\n  \"description\": \"Должно быть запрещено\",\n  \"videoUrl\": \"https://example.com/v.mp4\",\n  \"type\": \"cardio\",\n  \"level\": \"beginner\",\n  \"durationMinutes\": 15\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 403 Forbidden (роль user)', () => pm.response.to.have.status(403));",
+              "pm.test('Возвращён error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

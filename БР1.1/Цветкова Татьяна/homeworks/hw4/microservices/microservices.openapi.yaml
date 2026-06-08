@@ -1,0 +1,480 @@
+openapi: 3.0.3
+info:
+  title: Fitness Platform — Internal Microservices API
+  version: 1.0.0
+  description: |
+    Спецификация **межсервисных** эндпоинтов и асинхронных событий для микросервисной
+    архитектуры платформы фитнес-тренировок и здоровья (ДЗ4).
+
+    Здесь описаны только **internal**-эндпоинты, доступные **в служебной сети между
+    сервисами** (через service mesh / private VPC), и события, публикуемые в message
+    broker (RabbitMQ). Внешние (public) API сервисов перечислены отдельно в каждом
+    сервисе и проходят через API Gateway.
+
+    Аутентификация для internal-вызовов: mTLS + общий service-to-service токен
+    (заголовок `X-Service-Token`).
+
+servers:
+  - url: http://auth-service:3001
+    description: Auth Service (internal)
+  - url: http://profile-service:3002
+    description: Profile Service (internal)
+  - url: http://catalog-service:3003
+    description: Catalog Service (internal)
+  - url: http://plan-service:3004
+    description: Plan Service (internal)
+  - url: http://progress-service:3005
+    description: Progress Service (internal)
+  - url: http://blog-service:3006
+    description: Blog Service (internal)
+
+tags:
+  - name: Auth (internal)
+  - name: Profile (internal)
+  - name: Catalog (internal)
+  - name: Plan (internal)
+  - name: Progress (internal)
+  - name: Blog (internal)
+  - name: Events
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: Общий служебный токен, известный только сервисам в кластере.
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        details: {}
+
+    AuthUserSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        username: { type: string }
+        role: { type: string, enum: [user, trainer, admin] }
+        active: { type: boolean }
+
+    ValidateTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, description: "JWT access-токен" }
+
+    ValidateTokenResponse:
+      type: object
+      properties:
+        valid: { type: boolean }
+        userId: { type: string, format: uuid }
+        email: { type: string }
+        role: { type: string, enum: [user, trainer, admin] }
+        expiresAt: { type: string, format: date-time }
+
+    ProfileSummary:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        firstName: { type: string }
+        lastName: { type: string }
+        avatarUrl: { type: string }
+        fitnessLevel: { type: string, enum: [beginner, intermediate, advanced] }
+
+    WorkoutSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string, enum: [cardio, strength, yoga, stretching, hiit, mixed] }
+        level: { type: string, enum: [beginner, intermediate, advanced] }
+        durationMinutes: { type: integer }
+        thumbnailUrl: { type: string }
+        active: { type: boolean }
+
+    # ===== Async events (payloads через RabbitMQ) =====
+
+    UserCreatedEvent:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string, enum: ["user.created"] }
+        occurredAt: { type: string, format: date-time }
+        payload:
+          type: object
+          properties:
+            userId: { type: string, format: uuid }
+            email: { type: string }
+            username: { type: string }
+            role: { type: string }
+
+    UserDeletedEvent:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string, enum: ["user.deleted"] }
+        occurredAt: { type: string, format: date-time }
+        payload:
+          type: object
+          properties:
+            userId: { type: string, format: uuid }
+
+    WorkoutCreatedEvent:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string, enum: ["workout.created"] }
+        occurredAt: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/WorkoutSummary" }
+
+    WorkoutUpdatedEvent:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string, enum: ["workout.updated"] }
+        occurredAt: { type: string, format: date-time }
+        payload: { $ref: "#/components/schemas/WorkoutSummary" }
+
+    WorkoutDeletedEvent:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string, enum: ["workout.deleted"] }
+        occurredAt: { type: string, format: date-time }
+        payload:
+          type: object
+          properties:
+            workoutId: { type: string, format: uuid }
+
+    WorkoutCompletedEvent:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        eventType: { type: string, enum: ["workout.completed"] }
+        occurredAt: { type: string, format: date-time }
+        payload:
+          type: object
+          properties:
+            userId: { type: string, format: uuid }
+            workoutId: { type: string, format: uuid }
+            durationMinutes: { type: integer }
+            caloriesBurned: { type: integer }
+
+security:
+  - serviceToken: []
+
+paths:
+  # ===== Auth Service =====
+  /internal/auth/validate:
+    post:
+      tags: [Auth (internal)]
+      summary: Валидация JWT-токена для других сервисов
+      description: |
+        Используется plan-service, progress-service, blog-service и API Gateway,
+        если решено НЕ выполнять stateless-валидацию JWT по публичному ключу.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateTokenRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidateTokenResponse" }
+        "401":
+          description: Токен невалиден или истёк
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /internal/auth/users/{userId}:
+    get:
+      tags: [Auth (internal)]
+      summary: Получить базовую информацию о пользователе (id, email, role)
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthUserSummary" }
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /internal/auth/users/batch:
+    post:
+      tags: [Auth (internal)]
+      summary: Batch-получение пользователей по списку id (для blog/comments)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuthUserSummary" }
+
+  # ===== Profile Service =====
+  /internal/profiles/{userId}:
+    get:
+      tags: [Profile (internal)]
+      summary: Получить профиль пользователя
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileSummary" }
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /internal/profiles/batch:
+    post:
+      tags: [Profile (internal)]
+      summary: Batch-получение профилей (для агрегаций в blog/progress)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProfileSummary" }
+
+  # ===== Catalog Service =====
+  /internal/workouts/{workoutId}:
+    get:
+      tags: [Catalog (internal)]
+      summary: Получить тренировку по id
+      description: |
+        Используется plan-service при добавлении тренировки в план, чтобы
+        проверить её существование и сохранить denormalized-копию (title,
+        durationMinutes, type) для дальнейшего отображения без обращения
+        к catalog-service.
+      parameters:
+        - in: path
+          name: workoutId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkoutSummary" }
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /internal/workouts/batch:
+    post:
+      tags: [Catalog (internal)]
+      summary: Batch-получение тренировок (для отображения плана/прогресса)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WorkoutSummary" }
+
+  # ===== Plan Service =====
+  /internal/plans/by-user/{userId}/active:
+    get:
+      tags: [Plan (internal)]
+      summary: Активный план пользователя (для notification-service)
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Нет активного плана
+
+  # ===== Progress Service =====
+  /internal/progress/by-user/{userId}/stats:
+    get:
+      tags: [Progress (internal)]
+      summary: Сводная статистика прогресса (для отображения в профиле)
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalEntries: { type: integer }
+                  totalMinutes: { type: integer }
+                  totalCalories: { type: integer }
+                  averageRating: { type: number }
+
+  # ===== Blog Service =====
+  /internal/blog/posts/by-author/{userId}/count:
+    get:
+      tags: [Blog (internal)]
+      summary: Сколько постов опубликовал пользователь
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+
+  # ===== Events (схема payload-ов для message broker) =====
+  /events/user.created:
+    post:
+      tags: [Events]
+      summary: "Event: user.created — публикует auth-service"
+      description: |
+        **Канал:** RabbitMQ exchange `events`, routing key `user.created`.
+        **Producer:** auth-service. **Consumers:** profile-service (создаёт пустой
+        профиль), notification-service (приветственное письмо).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserCreatedEvent" }
+      responses:
+        "200": { description: Event delivered }
+
+  /events/user.deleted:
+    post:
+      tags: [Events]
+      summary: "Event: user.deleted — публикует auth-service"
+      description: |
+        **Producer:** auth-service. **Consumers:** profile-service (удаление профиля),
+        plan-service (удаление планов), progress-service (удаление записей).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserDeletedEvent" }
+      responses:
+        "200": { description: Event delivered }
+
+  /events/workout.created:
+    post:
+      tags: [Events]
+      summary: "Event: workout.created — публикует catalog-service"
+      description: |
+        **Consumers:** notification-service (рассылка о новой тренировке подписчикам).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutCreatedEvent" }
+      responses:
+        "200": { description: Event delivered }
+
+  /events/workout.updated:
+    post:
+      tags: [Events]
+      summary: "Event: workout.updated — публикует catalog-service"
+      description: |
+        **Consumers:** plan-service (обновляет denormalized-кеш в plan_items).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutUpdatedEvent" }
+      responses:
+        "200": { description: Event delivered }
+
+  /events/workout.deleted:
+    post:
+      tags: [Events]
+      summary: "Event: workout.deleted — публикует catalog-service"
+      description: |
+        **Consumers:** plan-service (помечает items как stale/неактивные),
+        progress-service (NULL-ит ссылку на удалённую тренировку, оставляя запись).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutDeletedEvent" }
+      responses:
+        "200": { description: Event delivered }
+
+  /events/workout.completed:
+    post:
+      tags: [Events]
+      summary: "Event: workout.completed — публикует progress-service"
+      description: |
+        **Consumers:** notification-service (поздравление, серия выполнения),
+        gamification-service (опционально, для бейджей).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkoutCompletedEvent" }
+      responses:
+        "200": { description: Event delivered }

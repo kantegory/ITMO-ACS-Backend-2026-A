@@ -1,0 +1,161 @@
+# Общий docker-compose: 4 микросервиса + RabbitMQ (ЛР3 + ДЗ5)
+# Все контейнеры в сети fitness-net, общаются по DNS-именам.
+# Наружу выставлены: Gateway (3000) и RabbitMQ Management UI (15672).
+
+services:
+
+  # ===== Message Broker (ДЗ5) =====
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: fitness-rabbitmq
+    networks: [fitness-net]
+    ports:
+      - "15672:15672"   # Management UI: http://localhost:15672 (guest/guest)
+      # 5672 наружу пробрасывать не нужно — сервисы видят rabbitmq внутри сети
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ===== Auth =====
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    image: fitness-auth:latest
+    container_name: fitness-auth
+    networks: [fitness-net]
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_DATABASE: /data/auth.db
+      JWT_SECRET: super_secret_change_me
+      JWT_EXPIRES_IN: 1d
+      JWT_REFRESH_SECRET: super_refresh_secret_change_me
+      JWT_REFRESH_EXPIRES_IN: 7d
+      # RabbitMQ вместо HTTP fan-out (ДЗ5)
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - auth-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===== Catalog =====
+  catalog:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    image: fitness-catalog:latest
+    container_name: fitness-catalog
+    networks: [fitness-net]
+    environment:
+      NODE_ENV: production
+      PORT: "3003"
+      DB_DATABASE: /data/catalog.db
+      JWT_SECRET: super_secret_change_me
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - catalog-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===== Plan =====
+  plan:
+    build:
+      context: .
+      dockerfile: services/plan/Dockerfile
+    image: fitness-plan:latest
+    container_name: fitness-plan
+    networks: [fitness-net]
+    environment:
+      NODE_ENV: production
+      PORT: "3004"
+      DB_DATABASE: /data/plan.db
+      JWT_SECRET: super_secret_change_me
+      # sync HTTP за тренировкой
+      CATALOG_SERVICE_URL: http://catalog:3003
+      # подписка на события через RabbitMQ
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - plan-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===== API Gateway =====
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    image: fitness-gateway:latest
+    container_name: fitness-gateway
+    networks: [fitness-net]
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      JWT_SECRET: super_secret_change_me
+      AUTH_SERVICE_URL: http://auth:3001
+      CATALOG_SERVICE_URL: http://catalog:3003
+      PLAN_SERVICE_URL: http://plan:3004
+    depends_on:
+      auth:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      plan:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+networks:
+  fitness-net:
+    driver: bridge
+    name: fitness-net
+
+volumes:
+  auth-data:
+    name: fitness-auth-data
+  catalog-data:
+    name: fitness-catalog-data
+  plan-data:
+    name: fitness-plan-data
+  rabbitmq-data:
+    name: fitness-rabbitmq-data
