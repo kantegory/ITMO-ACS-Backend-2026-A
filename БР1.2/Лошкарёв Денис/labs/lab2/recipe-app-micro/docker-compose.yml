@@ -1,0 +1,90 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: chef
+      POSTGRES_PASSWORD: chefpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chef"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer
+    ports:
+      - "1000:8080"
+    depends_on:
+      - db
+
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=chef
+      - DB_PASSWORD=chefpass
+      - DB_NAME=db_auth
+      - JWT_SECRET=supersecret
+    volumes:
+      - ./auth-service:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  recipe-service:
+    build: ./recipe-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=chef
+      - DB_PASSWORD=chefpass
+      - DB_NAME=db_recipes
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - JWT_SECRET=supersecret
+    volumes:
+      - ./recipe-service:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  interaction-service:
+    build: ./interaction-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - DB_HOST=db
+      - DB_NAME=db_interactions
+      - JWT_SECRET=supersecret
+    volumes:
+      - ./interaction-service:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    depends_on:
+      - auth-service
+      - recipe-service
+    volumes:
+      - ./gateway:/app
+      - /app/node_modules
