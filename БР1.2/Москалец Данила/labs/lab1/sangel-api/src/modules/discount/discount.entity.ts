@@ -1,8 +1,10 @@
-import { Entity, Column, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, OneToOne, JoinColumn, Check } from 'typeorm';
 import { BaseEntity } from '../../common/base.entity';
 import { Service } from '../service/service.entity';
 
 @Entity({ name: 'discounts' })
+@Check('"percentage" BETWEEN 1 AND 99')
+@Check('"start_at" < "end_at"')
 export class Discount extends BaseEntity {
   @Column({ type: 'integer' })
   percentage: number;

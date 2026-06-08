@@ -1,31 +1,29 @@
 import { Router } from 'express';
 import { RequestController } from './request.controller';
-import { authMiddleware } from '../../middleware/auth.middleware';
+import { authMiddleware, roleMiddleware } from '../../middleware/auth.middleware';
 import { validate } from '../../middleware/validation.middleware';
 import { CreateRequestSchema, UpdateRequestStatusSchema } from './request.dto';
 
 const router = Router();
 const requestController = new RequestController();
 
-// Все маршруты требуют аутентификации
-router.use(authMiddleware);
-
+// Все маршруты требуют аутентификации (кроме создания заявки, но создание заявки тоже требует авторизации)
 // Мои заявки
-router.get('/me/requests', requestController.getMyRequests);
+router.get('/me/requests', authMiddleware, requestController.getMyRequests);
 
-// Создание заявки
-router.post('/services/:service_id/requests', validate(CreateRequestSchema), requestController.createRequest);
+// Создание заявки (только авторизованные клиенты)
+router.post('/services/:service_id/requests', authMiddleware, validate(CreateRequestSchema), requestController.createRequest);
 
-// Детали заявки
-router.get('/requests/:request_id', requestController.getRequest);
+// Детали заявки (автор или владелец компании)
+router.get('/requests/:request_id', authMiddleware, requestController.getRequest);
 
-// Изменение статуса (OWNER)
-router.put('/requests/:request_id/status', validate(UpdateRequestStatusSchema), requestController.updateStatus);
+// Изменение статуса (только OWNER)
+router.put('/requests/:request_id/status', authMiddleware, validate(UpdateRequestStatusSchema), requestController.updateStatus);
 
-// Отмена заявки (автор)
-router.put('/requests/:request_id/cancel', requestController.cancelRequest);
+// Отмена заявки (только автор)
+router.put('/requests/:request_id/cancel', authMiddleware, requestController.cancelRequest);
 
-// Заявки компании (OWNER/ADMIN)
-router.get('/companies/:company_id/requests', requestController.getCompanyRequests);
+// Заявки компании (только OWNER/ADMIN)
+router.get('/companies/:company_id/requests', authMiddleware, requestController.getCompanyRequests);
 
 export default router;

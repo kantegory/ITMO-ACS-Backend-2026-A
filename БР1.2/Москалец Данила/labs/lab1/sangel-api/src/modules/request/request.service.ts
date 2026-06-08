@@ -109,7 +109,8 @@ export class RequestService {
       status: RequestStatus.PENDING,
     });
 
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+    return this.findById(saved.id);
   }
 
   async updateStatus(
@@ -139,7 +140,8 @@ export class RequestService {
       request.reply = dto.reply;
     }
 
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+    return this.findById(saved.id);
   }
 
   async cancel(requestId: number, userId: number): Promise<Request> {
@@ -154,7 +156,8 @@ export class RequestService {
     }
 
     request.status = RequestStatus.CANCELLED;
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+    return this.findById(saved.id);
   }
 
   async hasAcceptedRequest(userId: number, serviceId: number): Promise<boolean> {

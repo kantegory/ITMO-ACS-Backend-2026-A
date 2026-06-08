@@ -10,13 +10,10 @@ const categoryController = new CategoryController();
 // Публичные маршруты
 router.get('/', categoryController.list);
 
-// Защищенные маршруты (только ADMIN)
-router.use(authMiddleware);
-router.use(roleMiddleware(['ADMIN']));
-
-router.get('/all', categoryController.listAll);
-router.post('/', validate(CreateCategorySchema), categoryController.create);
-router.put('/:id', validate(UpdateCategorySchema), categoryController.update);
-router.delete('/:id', categoryController.delete);
+// Защищённые маршруты (только ADMIN)
+router.get('/all', authMiddleware, roleMiddleware(['ADMIN']), categoryController.listAll);
+router.post('/', authMiddleware, roleMiddleware(['ADMIN']), validate(CreateCategorySchema), categoryController.create);
+router.put('/:id', authMiddleware, roleMiddleware(['ADMIN']), validate(UpdateCategorySchema), categoryController.update);
+router.delete('/:id', authMiddleware, roleMiddleware(['ADMIN']), categoryController.delete);
 
 export default router;

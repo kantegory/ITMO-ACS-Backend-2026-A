@@ -69,7 +69,7 @@ export class ReviewService {
     
     const [reviews, total] = await this.reviewRepository.findAndCount({
       where: { user_id: userId },
-      relations: ['service', 'service.company'],
+      relations: ['service', 'service.company', 'user'],
       skip: (page - 1) * page_size,
       take: page_size,
       order: { [sort_by]: sort_order },
@@ -106,7 +106,8 @@ export class ReviewService {
       comment: dto.comment || null,
     });
 
-    return this.reviewRepository.save(review);
+    const saved = await this.reviewRepository.save(review);
+    return this.findById(saved.id);
   }
 
   async delete(id: number, userId: number, isAdmin: boolean): Promise<void> {

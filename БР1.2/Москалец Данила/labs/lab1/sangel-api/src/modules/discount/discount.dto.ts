@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 // Create/Update Discount
 export const DiscountSchema = z.object({
+  params: z.object({
+    service_id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     percentage: z.number().int().min(1, 'Percentage must be between 1 and 99').max(99),
     start_at: z.string().datetime({ offset: true }),

@@ -5,6 +5,7 @@ import { AuthRequest } from '../../middleware/auth.middleware';
 import { getPaginationParams, buildPaginatedResponse } from '../../common/pagination';
 import { ActivityReportQuerySchema, CompanyReportQuerySchema, UserListQuerySchema } from './admin.dto';
 import { RequestStatus } from '../request/request.entity';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class AdminController {
   private adminService: AdminService;
@@ -36,7 +37,7 @@ export class AdminController {
   // Получить пользователя по ID
   getUser = async (req: AuthRequest, res: Response) => {
     try {
-      const userId = parseInt(req.params.user_id);
+      const userId = parseIdParam(req.params.user_id, 'user_id');
       const user = await this.adminService.findUserById(userId);
       
       const { password, ...safeUser } = user;
@@ -53,7 +54,7 @@ export class AdminController {
   // Удалить пользователя
   deleteUser = async (req: AuthRequest, res: Response) => {
     try {
-      const userId = parseInt(req.params.user_id);
+      const userId = parseIdParam(req.params.user_id, 'user_id');
       await this.adminService.deleteUser(userId);
       res.status(204).send();
     } catch (error: any) {
@@ -97,9 +98,14 @@ export class AdminController {
       );
       const status = req.query.status as RequestStatus;
       const companyId = req.query.company_id as any;
+      const parsedCompanyId = companyId !== undefined ? Number(companyId) : undefined;
+
+      if (parsedCompanyId !== undefined && (!Number.isInteger(parsedCompanyId) || parsedCompanyId <= 0)) {
+        return res.status(400).json(errorResponse(400, 'company_id must be a positive integer'));
+      }
       
       const [requests, total] = await this.adminService.findAllRequests(
-        page, page_size, status, companyId ? parseInt(companyId) : undefined
+        page, page_size, status, parsedCompanyId
       );
       
       const enriched = requests.map(request => ({
@@ -146,7 +152,7 @@ export class AdminController {
   // Отчет по компании
   getCompanyReport = async (req: AuthRequest, res: Response) => {
     try {
-      const companyId = parseInt(req.params.company_id);
+      const companyId = parseIdParam(req.params.company_id, 'company_id');
       const validated = CompanyReportQuerySchema.parse({ query: req.query });
       const report = await this.adminService.getCompanyReport(companyId, validated.query);
       res.status(200).json(successResponse(report));

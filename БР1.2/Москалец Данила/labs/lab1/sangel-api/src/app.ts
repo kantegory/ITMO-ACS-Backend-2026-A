@@ -62,11 +62,12 @@ export class App {
     });
 
     // API routes
+      
     this.app.use('/api/v1/auth', authRoutes);
     this.app.use('/api/v1/users', userRoutes);
     this.app.use('/api/v1/categories', categoryRoutes);
-    this.app.use('/api/v1/companies', companyRoutes);
     this.app.use('/api/v1', serviceRoutes);
+    this.app.use('/api/v1', companyRoutes);
     this.app.use('/api/v1', requestRoutes);
     this.app.use('/api/v1', reviewRoutes);
     this.app.use('/api/v1', favoriteRoutes);
@@ -82,7 +83,6 @@ export class App {
     try {
       await AppDataSource.initialize();
       console.log('Database connected successfully');
-      console.log('Database synchronization enabled');
     } catch (error) {
       console.error('Database connection failed:', error);
       throw error;

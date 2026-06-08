@@ -1,10 +1,11 @@
-import { Entity, Column, ManyToOne, OneToMany, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, OneToMany, OneToOne, JoinColumn, Check } from 'typeorm';
 import { BaseEntity } from '../../common/base.entity';
 import { Company } from '../company/company.entity';
 import { ServiceCategory } from './service-category.entity';
 import { Discount } from '../discount/discount.entity';
 
 @Entity({ name: 'services' })
+@Check('"base_price" >= 0')
 export class Service extends BaseEntity {
   @Column({ type: 'varchar', length: 256 })
   name: string;

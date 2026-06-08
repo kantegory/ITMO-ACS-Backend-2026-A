@@ -7,6 +7,7 @@ import { getPaginationParams, buildPaginatedResponse } from '../../common/pagina
 import { ReviewListQuerySchema } from './review.dto';
 import { AppDataSource } from '../../config/database';
 import { Review } from './review.entity';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class ReviewController {
   private reviewService: ReviewService;
@@ -41,7 +42,7 @@ export class ReviewController {
   // Отзывы об услуге (публичный)
   getServiceReviews = async (req: Request, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const validated = ReviewListQuerySchema.parse({ query: req.query });
       
       const [reviews, total, rating] = await this.reviewService.findServiceReviews(
@@ -70,7 +71,7 @@ export class ReviewController {
   // Отзывы о компании (публичный)
   getCompanyReviews = async (req: Request, res: Response) => {
     try {
-      const companyId = parseInt(req.params.company_id);
+      const companyId = parseIdParam(req.params.company_id, 'company_id');
       const validated = ReviewListQuerySchema.parse({ query: req.query });
       const { page, page_size } = validated.query;
       
@@ -129,7 +130,7 @@ export class ReviewController {
   createReview = async (req: AuthRequest, res: Response) => {
     try {
       const userId = req.user?.userId!;
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       
       const review = await this.reviewService.create(userId, serviceId, req.body);
       const enriched = (await this.enrichReviews([review]))[0];
@@ -150,7 +151,7 @@ export class ReviewController {
   // Удалить отзыв
   deleteReview = async (req: AuthRequest, res: Response) => {
     try {
-      const reviewId = parseInt(req.params.review_id);
+      const reviewId = parseIdParam(req.params.review_id, 'review_id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       

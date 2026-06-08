@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CategoryService } from './category.service';
 import { successResponse, errorResponse } from '../../common/dto';
 import { AuthRequest } from '../../middleware/auth.middleware';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class CategoryController {
   private categoryService: CategoryService;
@@ -47,7 +48,7 @@ export class CategoryController {
   // ADMIN только
   update = async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIdParam(req.params.id, 'id');
       const category = await this.categoryService.update(id, req.body);
       res.status(200).json(successResponse(category));
     } catch (error: any) {
@@ -64,7 +65,7 @@ export class CategoryController {
   // ADMIN только
   delete = async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIdParam(req.params.id, 'id');
       await this.categoryService.delete(id);
       res.status(204).send();
     } catch (error: any) {

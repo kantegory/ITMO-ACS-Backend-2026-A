@@ -7,6 +7,7 @@ import { getPaginationParams, buildPaginatedResponse } from '../../common/pagina
 import { ServiceListQuerySchema } from './service.dto';
 import { AppDataSource } from '../../config/database';
 import { Review } from '../review/review.entity';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class ServiceController {
   private serviceService: ServiceService;
@@ -20,14 +21,18 @@ export class ServiceController {
   // Получить услуги компании (публичный)
   getCompanyServices = async (req: Request, res: Response) => {
     try {
-      const companyId = parseInt(req.params.company_id);
+      const companyId = parseIdParam(req.params.company_id, 'company_id');
       const { page, page_size } = getPaginationParams(
         req.query.page as any,
         req.query.page_size as any
       );
-      const categoryId = req.query.category_id as any;
+      const categoryId = req.query.category_id ? Number(req.query.category_id) : undefined;
       const sortBy = (req.query.sort_by as string) || 'created_at';
       const sortOrder = (req.query.sort_order as 'asc' | 'desc') || 'desc';
+
+      if (categoryId !== undefined && Number.isNaN(categoryId)) {
+        return res.status(400).json(errorResponse(400, 'category_id must be a number'));
+      }
 
       const [services, total] = await this.serviceService.getCompanyServicesPublic(
         companyId, page, page_size, categoryId, sortBy, sortOrder
@@ -44,29 +49,37 @@ export class ServiceController {
 
   // Создать услугу (только OWNER)
   createService = async (req: AuthRequest, res: Response) => {
-    try {
-      const companyId = parseInt(req.params.company_id);
-      const userId = req.user?.userId!;
 
-      const { CompanyService } = await import('../company/company.service');
-      const companyService = new CompanyService();
-      const company = await companyService.findById(companyId);
-      
-      if (company.user_id !== userId) {
-        return res.status(403).json(errorResponse(403, 'You are not the owner of this company'));
-      }
+  try {
+    const companyId = parseIdParam(req.params.company_id, 'company_id');
+    const userId = req.user?.userId!;
 
-      const service = await this.serviceService.create(companyId, req.body);
-      const enriched = (await this.enrichServices([service]))[0];
-      res.status(201).json(successResponse(enriched));
-    } catch (error: any) {
-      if (error.message === 'Company not found') {
-        res.status(404).json(errorResponse(404, error.message));
-      } else {
-        res.status(400).json(errorResponse(400, error.message));
-      }
+    
+
+    const { CompanyService } = await import('../company/company.service');
+    const companyService = new CompanyService();
+    const company = await companyService.findById(companyId);
+    
+    const companyOwnerId = company.user?.id || company.user_id;
+    
+    if (companyOwnerId !== userId) {
+      return res.status(403).json(errorResponse(403, 'You are not the owner of this company'));
     }
-  };
+
+    const service = await this.serviceService.create(companyId, req.body);
+    const enriched = (await this.enrichServices([service]))[0];
+    res.status(201).json(successResponse(enriched));
+  } catch (error: any) {
+    console.error('Create service error:', error);
+    if (error.message === 'Company not found') {
+      res.status(404).json(errorResponse(404, error.message));
+    } else if (error.message === 'One or more categories not found') {
+      res.status(404).json(errorResponse(404, error.message));
+    } else {
+      res.status(400).json(errorResponse(400, error.message));
+    }
+  }
+};
 
   // Каталог услуг (публичный с фильтрацией)
   getCatalog = async (req: Request, res: Response) => {
@@ -89,12 +102,14 @@ export class ServiceController {
   // Детали услуги (публичный)
   getService = async (req: Request, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const service = await this.serviceService.findById(serviceId);
       const enriched = (await this.enrichServices([service]))[0];
       res.status(200).json(successResponse(enriched));
     } catch (error: any) {
       if (error.message === 'Service not found') {
+        res.status(404).json(errorResponse(404, error.message));
+      } else if (error.message === 'One or more categories not found') {
         res.status(404).json(errorResponse(404, error.message));
       } else {
         res.status(400).json(errorResponse(400, error.message));
@@ -105,7 +120,7 @@ export class ServiceController {
   // Обновить услугу (только OWNER)
   updateService = async (req: AuthRequest, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const userId = req.user?.userId!;
 
       const isOwner = await this.serviceService.isOwner(serviceId, userId);
@@ -128,7 +143,7 @@ export class ServiceController {
   // Удалить услугу (только OWNER)
   deleteService = async (req: AuthRequest, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const userId = req.user?.userId!;
 
       const isOwner = await this.serviceService.isOwner(serviceId, userId);

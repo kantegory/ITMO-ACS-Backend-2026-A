@@ -8,14 +8,13 @@ const router = Router();
 const reviewController = new ReviewController();
 
 // Публичные маршруты
+// Публичные маршруты
 router.get('/services/:service_id/reviews', reviewController.getServiceReviews);
 router.get('/companies/:company_id/reviews', reviewController.getCompanyReviews);
 
 // Защищенные маршруты
-router.use(authMiddleware);
-
-router.get('/me/reviews', reviewController.getMyReviews);
-router.post('/services/:service_id/reviews', validate(CreateReviewSchema), reviewController.createReview);
-router.delete('/reviews/:review_id', reviewController.deleteReview);
+router.get('/me/reviews', authMiddleware, reviewController.getMyReviews);
+router.post('/services/:service_id/reviews', authMiddleware, validate(CreateReviewSchema), reviewController.createReview);
+router.delete('/reviews/:review_id', authMiddleware, reviewController.deleteReview);
 
 export default router;

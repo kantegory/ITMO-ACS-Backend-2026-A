@@ -7,6 +7,7 @@ import { getPaginationParams, buildPaginatedResponse } from '../../common/pagina
 import { AppDataSource } from '../../config/database';
 import { Service } from '../service/service.entity';
 import { Review } from '../review/review.entity';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class CompanyController {
   private companyService: CompanyService;
@@ -83,7 +84,7 @@ export class CompanyController {
   // Публичный - детали компании
   get = async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIdParam(req.params.id, 'id');
       const company = await this.companyService.getCompanyResponse(id);
       res.status(200).json(successResponse(company));
     } catch (error: any) {
@@ -102,6 +103,7 @@ export class CompanyController {
       const company = await this.companyService.create(userId, req.body);
       
       const response = await this.companyService.getCompanyResponse(company.id);
+      
       res.status(201).json(successResponse(response));
     } catch (error: any) {
       if (error.message === 'User already owns a company') {
@@ -115,7 +117,7 @@ export class CompanyController {
   // Обновить компанию
   update = async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIdParam(req.params.id, 'id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       
@@ -136,7 +138,7 @@ export class CompanyController {
   // Удалить компанию
   delete = async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIdParam(req.params.id, 'id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       
@@ -173,7 +175,7 @@ export class CompanyController {
   // Отчет по компании (для OWNER и ADMIN)
   getReport = async (req: AuthRequest, res: Response) => {
     try {
-      const companyId = parseInt(req.params.company_id);
+      const companyId = parseIdParam(req.params.company_id, 'company_id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       

@@ -8,10 +8,8 @@ const router = Router();
 const userController = new UserController();
 
 // Все маршруты требуют аутентификации
-router.use(authMiddleware);
-
-router.get('/profile', userController.getProfile);
-router.put('/profile', validate(UpdateProfileSchema), userController.updateProfile);
-router.put('/profile/password', validate(ChangePasswordSchema), userController.changePassword);
+router.get('/profile', authMiddleware, userController.getProfile);
+router.put('/profile', authMiddleware, validate(UpdateProfileSchema), userController.updateProfile);
+router.put('/profile/password', authMiddleware, validate(ChangePasswordSchema), userController.changePassword);
 
 export default router;

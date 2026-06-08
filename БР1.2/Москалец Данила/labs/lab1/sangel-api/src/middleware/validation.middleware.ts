@@ -11,9 +11,10 @@ export const validate = (schema: AnyZodObject) => {
         params: req.params,
       });
       
-      req.body = validated.body;
-      req.query = validated.query;
-      req.params = validated.params;
+      // Keep original request parts when schema doesn't define a section.
+      req.body = validated.body ?? req.body;
+      req.query = validated.query ?? req.query;
+      req.params = validated.params ?? req.params;
       
       next();
     } catch (error) {

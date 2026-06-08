@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 // Create Review
 export const CreateReviewSchema = z.object({
+  params: z.object({
+    service_id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     rating: z.number().int().min(1, 'Rating must be between 1 and 5').max(5),
     comment: z.string().max(4096).optional().nullable(),

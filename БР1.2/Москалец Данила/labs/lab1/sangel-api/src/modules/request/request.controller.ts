@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../../common/dto';
 import { AuthRequest } from '../../middleware/auth.middleware';
 import { getPaginationParams, buildPaginatedResponse } from '../../common/pagination';
 import { RequestListQuerySchema } from './request.dto';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class RequestController {
   private requestService: RequestService;
@@ -38,7 +39,7 @@ export class RequestController {
   // Заявки компании (входящие)
   getCompanyRequests = async (req: AuthRequest, res: Response) => {
     try {
-      const companyId = parseInt(req.params.company_id);
+      const companyId = parseIdParam(req.params.company_id, 'company_id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       
@@ -78,7 +79,7 @@ export class RequestController {
   createRequest = async (req: AuthRequest, res: Response) => {
     try {
       const userId = req.user?.userId!;
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       
       const request = await this.requestService.create(userId, serviceId, req.body);
       const enriched = this.enrichRequests([request])[0];
@@ -99,7 +100,7 @@ export class RequestController {
   // Получить детали заявки
   getRequest = async (req: AuthRequest, res: Response) => {
     try {
-      const requestId = parseInt(req.params.request_id);
+      const requestId = parseIdParam(req.params.request_id, 'request_id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       
@@ -125,7 +126,7 @@ export class RequestController {
   // Изменить статус заявки (OWNER)
   updateStatus = async (req: AuthRequest, res: Response) => {
     try {
-      const requestId = parseInt(req.params.request_id);
+      const requestId = parseIdParam(req.params.request_id, 'request_id');
       const userId = req.user?.userId!;
       const isAdmin = req.user?.role === 'ADMIN';
       
@@ -148,7 +149,7 @@ export class RequestController {
   // Отменить заявку (автор)
   cancelRequest = async (req: AuthRequest, res: Response) => {
     try {
-      const requestId = parseInt(req.params.request_id);
+      const requestId = parseIdParam(req.params.request_id, 'request_id');
       const userId = req.user?.userId!;
       
       const request = await this.requestService.cancel(requestId, userId);

@@ -12,6 +12,9 @@ export type CreateCategoryDto = z.infer<typeof CreateCategorySchema>['body'];
 
 // Update Category
 export const UpdateCategorySchema = z.object({
+  params: z.object({
+    id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     title: z.string().min(1).max(128).optional(),
     is_published: z.boolean().optional(),

@@ -3,6 +3,7 @@ import { DiscountService } from './discount.service';
 import { ServiceService } from '../service/service.service';
 import { successResponse, errorResponse } from '../../common/dto';
 import { AuthRequest } from '../../middleware/auth.middleware';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class DiscountController {
   private discountService: DiscountService;
@@ -16,7 +17,7 @@ export class DiscountController {
   // Получить скидку (публичный)
   getDiscount = async (req: Request, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const discount = await this.discountService.findByServiceId(serviceId);
       
       if (!discount) {
@@ -39,7 +40,7 @@ export class DiscountController {
   // Создать скидку (только OWNER)
   createDiscount = async (req: AuthRequest, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const userId = req.user?.userId!;
 
       const isOwner = await this.serviceService.isOwner(serviceId, userId);
@@ -70,7 +71,7 @@ export class DiscountController {
   // Обновить скидку (только OWNER)
   updateDiscount = async (req: AuthRequest, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const userId = req.user?.userId!;
 
       const isOwner = await this.serviceService.isOwner(serviceId, userId);
@@ -99,7 +100,7 @@ export class DiscountController {
   // Удалить скидку (только OWNER)
   deleteDiscount = async (req: AuthRequest, res: Response) => {
     try {
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       const userId = req.user?.userId!;
 
       const isOwner = await this.serviceService.isOwner(serviceId, userId);

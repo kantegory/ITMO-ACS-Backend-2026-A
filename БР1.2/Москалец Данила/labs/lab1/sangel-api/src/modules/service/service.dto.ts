@@ -1,7 +1,20 @@
 import { z } from 'zod';
 
+const BooleanQuerySchema = z.preprocess((value) => {
+  if (value === undefined) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (value.toLowerCase() === 'true') return true;
+    if (value.toLowerCase() === 'false') return false;
+  }
+  return value;
+}, z.boolean().optional());
+
 // Create Service
 export const CreateServiceSchema = z.object({
+  params: z.object({
+    company_id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     name: z.string().min(1, 'Name is required').max(256),
     description: z.string().max(4096).optional().nullable(),
@@ -15,6 +28,9 @@ export type CreateServiceDto = z.infer<typeof CreateServiceSchema>['body'];
 
 // Update Service
 export const UpdateServiceSchema = z.object({
+  params: z.object({
+    service_id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     name: z.string().max(256).optional(),
     description: z.string().max(4096).nullable().optional(),
@@ -36,7 +52,7 @@ export const ServiceListQuerySchema = z.object({
     category_id: z.coerce.number().int().optional(),
     price_min: z.coerce.number().min(0).optional(),
     price_max: z.coerce.number().min(0).optional(),
-    with_discount: z.coerce.boolean().optional(),
+    with_discount: BooleanQuerySchema,
     sort_by: z.enum(['created_at', 'price', 'final_price', 'rating']).default('created_at'),
     sort_order: z.enum(['asc', 'desc']).default('desc'),
   }),

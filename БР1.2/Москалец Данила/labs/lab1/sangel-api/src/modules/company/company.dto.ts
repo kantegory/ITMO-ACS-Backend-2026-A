@@ -15,6 +15,9 @@ export type CreateCompanyDto = z.infer<typeof CreateCompanySchema>['body'];
 
 // Update Company
 export const UpdateCompanySchema = z.object({
+  params: z.object({
+    id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     title: z.string().max(256).optional(),
     description: z.string().max(4096).nullable().optional(),

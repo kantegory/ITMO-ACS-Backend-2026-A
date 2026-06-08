@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 // Create Request
 export const CreateRequestSchema = z.object({
+  params: z.object({
+    service_id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     description: z.string().max(2048).optional().nullable(),
   }),
@@ -12,6 +15,9 @@ export type CreateRequestDto = z.infer<typeof CreateRequestSchema>['body'];
 
 // Update Request Status
 export const UpdateRequestStatusSchema = z.object({
+  params: z.object({
+    request_id: z.coerce.number().int().positive(),
+  }),
   body: z.object({
     status: z.enum(['ACCEPTED', 'REJECTED']),
     reply: z.string().max(2048).optional().nullable(),

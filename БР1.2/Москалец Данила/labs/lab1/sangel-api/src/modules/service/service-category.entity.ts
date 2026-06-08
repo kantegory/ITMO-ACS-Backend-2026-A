@@ -1,9 +1,10 @@
-import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { BaseEntity } from '../../common/base.entity';
 import { Service } from './service.entity';
 import { Category } from '../category/category.entity';
 
 @Entity({ name: 'service_categories' })
+@Unique(['service_id', 'category_id'])
 export class ServiceCategory extends BaseEntity {
   @ManyToOne(() => Service, (service) => service.service_categories, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'service_id' })

@@ -7,24 +7,20 @@ import { ServiceController } from '../service/service.controller';
 
 const router = Router();
 const companyController = new CompanyController();
-
 const serviceController = new ServiceController();
 
 // Публичные маршруты
-router.get('/', companyController.list);
-router.get('/:id', companyController.get);
-router.get('/:company_id/services', serviceController.getCompanyServices); 
+router.get('/companies', companyController.list);
+router.get('/companies/:company_id/services', serviceController.getCompanyServices);
+router.get('/companies/:id', companyController.get);
 
-// Защищенные маршруты
-router.use(authMiddleware);
+// Защищённые маршруты
+router.get('/me/company', authMiddleware, companyController.getMyCompany);
+router.get('/companies/:company_id/report', authMiddleware, roleMiddleware(['OWNER', 'ADMIN']), companyController.getReport);
 
-// Моя компания
-router.get('/me/company', companyController.getMyCompany);
-router.get('/:company_id/report', companyController.getReport);
-
-// CRUD операции
-router.post('/', validate(CreateCompanySchema), companyController.create);
-router.put('/:id', validate(UpdateCompanySchema), companyController.update);
-router.delete('/:id', companyController.delete);
+// CRUD операции (требуют владельца или админа)
+router.post('/companies/', authMiddleware, validate(CreateCompanySchema), companyController.create);
+router.put('/companies/:id', authMiddleware, roleMiddleware(['OWNER', 'ADMIN']), validate(UpdateCompanySchema), companyController.update);
+router.delete('/companies/:id', authMiddleware, roleMiddleware(['OWNER', 'ADMIN']), companyController.delete);
 
 export default router;

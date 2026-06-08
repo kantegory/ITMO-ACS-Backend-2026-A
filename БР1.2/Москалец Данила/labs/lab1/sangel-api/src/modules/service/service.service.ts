@@ -1,5 +1,4 @@
-// src/modules/service/service.service.ts
-import { Repository, ILike, Between, In, FindOptionsWhere } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Service } from './service.entity';
 import { ServiceCategory } from './service-category.entity';
 import { Discount } from '../discount/discount.entity';
@@ -26,7 +25,6 @@ export class ServiceService {
     this.reviewRepository = AppDataSource.getRepository(Review);
   }
 
-  // Получить услуги компании (с пагинацией и фильтрацией)
   async findByCompanyId(
     companyId: number,
     page: number,
@@ -36,32 +34,31 @@ export class ServiceService {
     sortBy: string = 'created_at',
     sortOrder: 'asc' | 'desc' = 'desc'
   ): Promise<[Service[], number]> {
-    const where: FindOptionsWhere<Service> = { company_id: companyId };
-    
+    const qb = this.serviceRepository
+      .createQueryBuilder('service')
+      .leftJoinAndSelect('service.service_categories', 'service_categories')
+      .leftJoinAndSelect('service_categories.category', 'category')
+      .leftJoinAndSelect('service.discount', 'discount')
+      .where('service.company_id = :companyId', { companyId });
+
     if (isPublished !== undefined) {
-      where.is_published = isPublished;
+      qb.andWhere('service.is_published = :isPublished', { isPublished });
     }
 
-    const [services, total] = await this.serviceRepository.findAndCount({
-      where,
-      relations: ['service_categories', 'service_categories.category', 'discount'],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      order: { [sortBy]: sortOrder },
-    });
-
-    // Фильтрация по категориям (на уровне приложения, т.к. связь многие-ко-многим)
-    let filteredServices = services;
     if (categoryId) {
-      filteredServices = services.filter(service =>
-        service.service_categories?.some(sc => sc.category_id === categoryId)
-      );
+      qb.andWhere('category.id = :categoryId', { categoryId });
     }
 
-    return [filteredServices, filteredServices.length];
+    const allowedSortFields = ['created_at', 'name', 'base_price'];
+    const orderBy = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
+
+    qb.skip((page - 1) * pageSize)
+      .take(pageSize)
+      .orderBy(`service.${orderBy}`, sortOrder.toUpperCase() as 'ASC' | 'DESC');
+
+    return qb.getManyAndCount();
   }
 
-  // Получить услугу по ID
   async findById(id: number): Promise<Service> {
     const service = await this.serviceRepository.findOne({
       where: { id },
@@ -73,7 +70,6 @@ export class ServiceService {
     return service;
   }
 
-  // Проверить, является ли пользователь владельцем услуги
   async isOwner(serviceId: number, userId: number): Promise<boolean> {
     const service = await this.serviceRepository.findOne({
       where: { id: serviceId },
@@ -83,7 +79,6 @@ export class ServiceService {
     return service.company.user_id === userId;
   }
 
-  // Создать услугу
   async create(companyId: number, dto: CreateServiceDto): Promise<Service> {
     const company = await this.companyRepository.findOne({ where: { id: companyId } });
     if (!company) {
@@ -107,7 +102,6 @@ export class ServiceService {
     return this.findById(savedService.id);
   }
 
-  // Обновить услугу
   async update(id: number, dto: UpdateServiceDto): Promise<Service> {
     const service = await this.findById(id);
 
@@ -128,24 +122,31 @@ export class ServiceService {
     return this.findById(id);
   }
 
-  // Удалить услугу
   async delete(id: number): Promise<void> {
     const service = await this.findById(id);
     await this.serviceRepository.remove(service);
   }
 
-  // Добавить категории к услуге
   private async addCategoriesToService(serviceId: number, categoryIds: number[]): Promise<void> {
-    const serviceCategories = categoryIds.map(categoryId => {
+    const uniqueCategoryIds = [...new Set(categoryIds)];
+    const existingCategories = await this.categoryRepository.find({
+      where: { id: In(uniqueCategoryIds) },
+    });
+
+    if (existingCategories.length !== uniqueCategoryIds.length) {
+      throw new Error('One or more categories not found');
+    }
+
+    const serviceCategories = uniqueCategoryIds.map((categoryId) => {
       return this.serviceCategoryRepository.create({
         service_id: serviceId,
         category_id: categoryId,
       });
     });
+
     await this.serviceCategoryRepository.save(serviceCategories);
   }
 
-  // Каталог услуг (с фильтрацией, поиском, сортировкой)
   async getCatalog(query: ServiceListQuery): Promise<[Service[], number]> {
     const {
       page,
@@ -168,24 +169,20 @@ export class ServiceService {
       .leftJoinAndSelect('service.discount', 'discount')
       .where('service.is_published = :published', { published: true });
 
-    // Поиск по названию или описанию
     if (search) {
       qb.andWhere('(service.name ILIKE :search OR service.description ILIKE :search)', {
         search: `%${search}%`,
       });
     }
 
-    // Фильтр по компании
     if (company_id) {
       qb.andWhere('service.company_id = :companyId', { companyId: company_id });
     }
 
-    // Фильтр по категории
     if (category_id) {
       qb.andWhere('category.id = :categoryId', { categoryId: category_id });
     }
 
-    // Фильтр по цене
     if (price_min !== undefined) {
       qb.andWhere('service.base_price >= :priceMin', { priceMin: price_min });
     }
@@ -193,22 +190,23 @@ export class ServiceService {
       qb.andWhere('service.base_price <= :priceMax', { priceMax: price_max });
     }
 
-    // Фильтр по скидке
     if (with_discount) {
       qb.andWhere('discount.id IS NOT NULL');
       qb.andWhere('discount.start_at <= NOW()');
       qb.andWhere('discount.end_at >= NOW()');
     }
 
-    // Сортировка - ТЕПЕРЬ С ПОДДЕРЖКОЙ РЕЙТИНГА
     const sortOrderDir = sort_order.toUpperCase() as 'ASC' | 'DESC';
-    
+
     switch (sort_by) {
       case 'price':
         qb.orderBy('service.base_price', sortOrderDir);
         break;
       case 'final_price':
-        qb.addSelect('COALESCE(service.base_price * (100 - COALESCE(discount.percentage, 0)) / 100, service.base_price)', 'final_price');
+        qb.addSelect(
+          'COALESCE(service.base_price * (100 - COALESCE(discount.percentage, 0)) / 100, service.base_price)',
+          'final_price'
+        );
         qb.orderBy('final_price', sortOrderDir);
         break;
       case 'rating':
@@ -230,16 +228,11 @@ export class ServiceService {
         qb.orderBy('service.created_at', sortOrderDir);
     }
 
-    // Пагинация
-    const skip = (page - 1) * page_size;
-    qb.skip(skip).take(page_size);
+    qb.skip((page - 1) * page_size).take(page_size);
 
-    const [services, total] = await qb.getManyAndCount();
-
-    return [services, total];
+    return qb.getManyAndCount();
   }
 
-  // Получить услуги компании для публичного просмотра
   async getCompanyServicesPublic(
     companyId: number,
     page: number,

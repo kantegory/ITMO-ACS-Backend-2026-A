@@ -6,6 +6,7 @@ import { AuthRequest } from '../../middleware/auth.middleware';
 import { getPaginationParams, buildPaginatedResponse } from '../../common/pagination';
 import { AppDataSource } from '../../config/database';
 import { Review } from '../review/review.entity';
+import { parseIdParam } from '../../utils/parse-id-param';
 
 export class FavoriteController {
   private favoriteService: FavoriteService;
@@ -76,7 +77,7 @@ export class FavoriteController {
   addToFavorites = async (req: AuthRequest, res: Response) => {
     try {
       const userId = req.user?.userId!;
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       
       await this.favoriteService.add(userId, serviceId);
       res.status(201).json(successResponse({ message: 'Added to favorites' }));
@@ -95,7 +96,7 @@ export class FavoriteController {
   removeFromFavorites = async (req: AuthRequest, res: Response) => {
     try {
       const userId = req.user?.userId!;
-      const serviceId = parseInt(req.params.service_id);
+      const serviceId = parseIdParam(req.params.service_id, 'service_id');
       
       await this.favoriteService.remove(userId, serviceId);
       res.status(204).send();
