@@ -1,0 +1,114 @@
+services:
+  rabbitmq:
+    platform: linux/amd64
+    image: rabbitmq:3.13-management
+    container_name: lab3-rabbitmq
+    mem_limit: 384m
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  identity-service:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/identity-service/Dockerfile
+    container_name: lab3-identity-service
+    mem_limit: 256m
+    environment:
+      PORT: 8081
+      SERVICE_NAME: identity-service
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+
+  catalog-service:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/catalog-service/Dockerfile
+    container_name: lab3-catalog-service
+    mem_limit: 256m
+    environment:
+      PORT: 8082
+      SERVICE_NAME: catalog-service
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+
+  reservation-service:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/reservation-service/Dockerfile
+    container_name: lab3-reservation-service
+    mem_limit: 256m
+    environment:
+      PORT: 8083
+      SERVICE_NAME: reservation-service
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      catalog-service:
+        condition: service_started
+    ports:
+      - "8083:8083"
+
+  review-service:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/review-service/Dockerfile
+    container_name: lab3-review-service
+    mem_limit: 256m
+    environment:
+      PORT: 8084
+      SERVICE_NAME: review-service
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8084:8084"
+
+  api-gateway:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: lab3-api-gateway
+    mem_limit: 256m
+    environment:
+      PORT: 8080
+      SERVICE_NAME: api-gateway
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      catalog-service:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      reservation-service:
+        condition: service_started
+      review-service:
+        condition: service_started
+    ports:
+      - "8080:8080"
