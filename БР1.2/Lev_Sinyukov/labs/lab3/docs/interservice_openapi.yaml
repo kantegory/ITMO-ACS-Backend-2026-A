@@ -1,0 +1,427 @@
+﻿openapi: 3.0.3
+info:
+  title: Restaurant Booking API
+  version: 1.0.0
+  description: Внутренние контракты взаимодействия микросервисов
+servers:
+  - url: http://identity-service.internal
+    description: Сервис идентификации
+  - url: http://catalog-service.internal
+    description: Сервис каталога ресторанов
+  - url: http://reservation-service.internal
+    description: Сервис бронирований
+  - url: http://review-service.internal
+    description: Сервис отзывов
+
+tags:
+  - name: InternalIdentity
+  - name: InternalCatalog
+  - name: InternalReservation
+  - name: InternalReview
+
+paths:
+  /internal/users/{userId}:
+    get:
+      tags: [InternalIdentity]
+      summary: Получить пользователя по ID для межсервисной проверки
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalUser'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/auth/introspect:
+    post:
+      tags: [InternalIdentity]
+      summary: Проверить JWT и вернуть контекст пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrospectRequest'
+      responses:
+        '200':
+          description: Токен валиден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/restaurants/{restaurantId}/exists:
+    get:
+      tags: [InternalCatalog]
+      summary: Проверить, что ресторан существует и активен
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Результат проверки существования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExistsResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/restaurants:
+    get:
+      tags: [InternalCatalog]
+      summary: Получить список ресторанов с фильтрацией для BFF
+      parameters:
+        - in: query
+          name: name
+          schema:
+            type: string
+          description: Поиск по названию (частичное совпадение)
+        - in: query
+          name: cuisine
+          schema:
+            type: string
+          description: Фильтр по кухне
+        - in: query
+          name: city
+          schema:
+            type: string
+          description: Фильтр по городу
+        - in: query
+          name: min_price_range
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+        - in: query
+          name: max_price_range
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+      responses:
+        '200':
+          description: Список ресторанов получен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalRestaurantSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/restaurants/{restaurantId}/tables/{tableId}/exists:
+    get:
+      tags: [InternalCatalog]
+      summary: Проверить, что стол принадлежит ресторану и активен
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - $ref: '#/components/parameters/TableId'
+      responses:
+        '200':
+          description: Результат проверки существования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableExistsResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/reservations/availability/check:
+    post:
+      tags: [InternalReservation]
+      summary: Проверить доступность слота перед созданием бронирования
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityCheckRequest'
+      responses:
+        '200':
+          description: Результат проверки доступности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityCheckResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/reviews/restaurant/{restaurantId}/summary:
+    get:
+      tags: [InternalReview]
+      summary: Получить агрегированную статистику отзывов по ресторану
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Статистика успешно получена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewSummary'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: Некорректное тело запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Невалидный или истекший токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Сущность не найдена
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Ошибка доменной валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Целевой сервис недоступен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    InternalUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+        is_active:
+          type: boolean
+      required: [id, email, is_active]
+
+    IntrospectRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 10
+      required: [token]
+
+    IntrospectResponse:
+      type: object
+      properties:
+        active:
+          type: boolean
+        user_id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        exp:
+          type: integer
+          format: int64
+      required: [active]
+
+    ExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+        is_active:
+          type: boolean
+      required: [exists, is_active]
+
+    TableExistsResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+        is_active:
+          type: boolean
+        seats_count:
+          type: integer
+          minimum: 1
+      required: [exists, is_active]
+
+    InternalRestaurant:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        city:
+          type: string
+        cuisines:
+          type: array
+          items:
+            type: string
+        price_range:
+          type: integer
+          minimum: 1
+          maximum: 4
+        is_active:
+          type: boolean
+      required: [id, name, city, cuisines, price_range, is_active]
+
+    InternalRestaurantSearchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InternalRestaurant'
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            limit:
+              type: integer
+              minimum: 1
+            total:
+              type: integer
+              minimum: 0
+          required: [page, limit, total]
+      required: [items, pagination]
+
+    AvailabilityCheckRequest:
+      type: object
+      properties:
+        restaurant_id:
+          type: integer
+          format: int64
+          minimum: 1
+        table_id:
+          type: integer
+          format: int64
+          minimum: 1
+        reservation_start:
+          type: string
+          format: date-time
+        reservation_end:
+          type: string
+          format: date-time
+        guests_count:
+          type: integer
+          minimum: 1
+      required: [restaurant_id, table_id, reservation_start, reservation_end, guests_count]
+
+    AvailabilityCheckResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: string
+          enum:
+            - OK
+            - TABLE_NOT_FOUND
+            - TABLE_INACTIVE
+            - TIME_CONFLICT
+            - CAPACITY_EXCEEDED
+      required: [available, reason]
+
+    ReviewSummary:
+      type: object
+      properties:
+        restaurant_id:
+          type: integer
+          format: int64
+        average_rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+        reviews_count:
+          type: integer
+          minimum: 0
+      required: [restaurant_id, average_rating, reviews_count]
+
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+        issue:
+          type: string
+      required: [field, issue]
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Validation failed
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+        trace_id:
+          type: string
+          example: 4f80f02bcf5a4b67
+      required: [code, message, trace_id]
+
