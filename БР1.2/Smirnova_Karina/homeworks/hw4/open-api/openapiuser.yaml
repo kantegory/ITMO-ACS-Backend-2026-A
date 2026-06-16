@@ -1,0 +1,219 @@
+openapi: 3.0.1
+info:
+  title: User Service API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8081/api/v1
+tags:
+  - name: Auth
+    description: Авторизация и верификация пользователя
+  - name: Users
+    description: Профиль и настройки текущего пользователя
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterResponse' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokensResponse' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление токенов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokensResponse' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Логаут пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '204': { description: No Content }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить свой профиль
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserMeResponse' }
+    patch:
+      tags: [Users]
+      summary: Обновить свой профиль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMeRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserMeResponse' }
+
+  /users/me/email/verify:
+    post:
+      tags: [Users]
+      summary: Повторная отправка email
+      responses:
+        '204': { description: No Content }
+
+  /users/email/confirm:
+    post:
+      tags: [Auth]
+      summary: Подтверждение email по токену
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailConfirmRequest' }
+      responses:
+        '204': { description: No Content }
+
+  /auth/validate:
+    post:
+      tags: [Auth]
+      summary: Валидация access token (для других сервисов)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+              required: [token]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: integer }
+        '401':
+          description: Unauthorized
+
+  /internal/users/{userId}:
+    get:
+      tags: [Users]
+      summary: Получение публичного профиля пользователя для других сервисов
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserMeResponse' }
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, username, phone]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        username: { type: string }
+        phone: { type: string }
+    RegisterResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        verified: { type: boolean }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+    TokensResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string }
+        accessExpiresIn: { type: string }
+        refreshExpiresIn: { type: string }
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    UserMeResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        username: { type: string }
+        phone: { type: string }
+        verified: { type: boolean }
+    UpdateMeRequest:
+      type: object
+      properties:
+        username: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        password: { type: string }
+    EmailConfirmRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
