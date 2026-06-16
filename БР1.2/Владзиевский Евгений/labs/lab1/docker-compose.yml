@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rental-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rental
+      POSTGRES_PASSWORD: rentalpass
+      POSTGRES_DB: rental_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - rental-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rental-app
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=rental
+      - DB_PASSWORD=rentalpass
+      - DB_NAME=rental_db
+      - JWT_SECRET=your-secret-key-change-in-production
+      - UPLOAD_DIR=/app/storage
+    volumes:
+      - ./storage:/app/storage
+    networks:
+      - rental-network
+
+volumes:
+  postgres_data:
+
+networks:
+  rental-network:
