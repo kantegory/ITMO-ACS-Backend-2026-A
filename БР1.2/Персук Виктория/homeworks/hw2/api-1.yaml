@@ -1,0 +1,1536 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking API
+  version: 1.0.0
+
+servers:
+  - url: /api
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: ЗАПРЕЩЕНО
+        message:
+          type: string
+          example: Вы не можете изменить это бронирование
+
+    Pagination:
+      type: object
+      properties:
+        limit:
+          type: integer
+          example: 10
+        offset:
+          type: integer
+          example: 0
+        total:
+          type: integer
+          example: 100
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: test@mail.com
+        password:
+          type: string
+          minLength: 6
+          example: "123456"
+        first_name:
+          type: string
+          example: Vika
+        last_name:
+          type: string
+          example: Persuk
+        phone:
+          type: string
+          example: "+123456789"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: test@mail.com
+        password:
+          type: string
+          example: "123456"
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    UserResponse:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        email:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [admin, customer]
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+
+    RestaurantCreateRequest:
+      type: object
+      required: [name, address, city]
+      properties:
+        name:
+          type: string
+          example: Aster
+        description:
+          type: string
+          example: Лучшее бистро в городе
+        address:
+          type: string
+          example: Маяковского, 23
+        city:
+          type: string
+          example: Санкт-Петербург
+        price:
+          type: string
+          enum: [$, $$, $$$]
+          example: $$
+
+    RestaurantUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        price:
+          type: string
+          enum: [$, $$, $$$]
+
+    RestaurantResponse:
+      type: object
+      properties:
+        restaurant_id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        price:
+          type: string
+          enum: [$, $$, $$$]
+        status:
+          type: string
+          enum: [pending, verified, rejected]
+        rating:
+          type: number
+          format: float
+          minimum: 1
+          maximum: 5
+          description: Среднее, посчитанное на основе оценок в отзывах
+
+    CuisineResponse:
+      type: object
+      properties:
+        cuisine_id:
+          type: integer
+        name:
+          type: string
+
+    StaffAssignRequest:
+      type: object
+      required: [user_id, role]
+      properties:
+        user_id:
+          type: integer
+          example: 5
+        role:
+          type: string
+          enum: [manager]
+
+    StaffResponse:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [owner, manager]
+
+    TableCreateRequest:
+      type: object
+      required: [restaurant_id, capacity]
+      properties:
+        restaurant_id:
+          type: integer
+          example: 1
+        capacity:
+          type: integer
+          example: 4
+
+    TableUpdateRequest:
+      type: object
+      properties:
+        capacity:
+          type: integer
+
+    TableResponse:
+      type: object
+      properties:
+        table_id:
+          type: integer
+        restaurant_id:
+          type: integer
+        capacity:
+          type: integer
+
+    MenuCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Основное меню
+
+    MenuResponse:
+      type: object
+      properties:
+        menu_id:
+          type: integer
+        restaurant_id:
+          type: integer
+        name:
+          type: string
+
+    MenuItemCreateRequest:
+      type: object
+      required: [menu_id, name, price]
+      properties:
+        menu_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Паста в сливочно-томатном соусе
+        description:
+          type: string
+          example: Можно добавить ндую
+        price:
+          type: number
+          format: float
+          example: 690
+
+    MenuItemUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+
+    MenuItemResponse:
+      type: object
+      properties:
+        item_id:
+          type: integer
+        menu_id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+
+    ReservationCreateRequest:
+      type: object
+      required: [table_id, reservation_time, guest_number]
+      properties:
+        table_id:
+          type: integer
+          example: 1
+        reservation_time:
+          type: string
+          format: date-time
+          example: "2026-03-29T18:00:00"
+        guest_number:
+          type: integer
+          minimum: 1
+          example: 2
+
+    ReservationUpdateRequest:
+      type: object
+      properties:
+        reservation_time:
+          type: string
+          format: date-time
+        guest_number:
+          type: integer
+          minimum: 1
+
+    ReservationResponse:
+      type: object
+      properties:
+        reservation_id:
+          type: integer
+        table_id:
+          type: integer
+        restaurant_id:
+          type: integer
+        reservation_time:
+          type: string
+          format: date-time
+        reservation_date:
+          type: string
+          format: date
+        guest_number:
+          type: integer
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled]
+        created_at:
+          type: string
+          format: date-time
+
+    ReviewCreateRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: Отличное место!
+
+    ReviewUpdateRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+
+    ReviewResponse:
+      type: object
+      properties:
+        review_id:
+          type: integer
+        restaurant_id:
+          type: integer
+        user_id:
+          type: integer
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PhotoUploadRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "https://example.com/photo.jpg"
+
+    PhotoResponse:
+      type: object
+      properties:
+        photo_id:
+          type: integer
+        url:
+          type: string
+          format: uri
+
+paths:
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Tokens returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New tokens returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me:
+    get:
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      summary: Get current user profile
+      responses:
+        '200':
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+
+    patch:
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/reservations:
+    get:
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      summary: Get reservation history of the current user
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            example: 10
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            example: 0
+      responses:
+        '200':
+          description: List of user reservations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReservationResponse'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /cuisines:
+    get:
+      tags: [Cuisines]
+      summary: Get list of all cuisines
+      responses:
+        '200':
+          description: Cuisines list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CuisineResponse'
+
+  /restaurants:
+    get:
+      tags: [Restaurants]
+      summary: Get list of verified restaurants with optional filters
+      description: Returns only restaurants with status `verified`.
+      parameters:
+        - in: query
+          name: city
+          schema:
+            type: string
+        - in: query
+          name: cuisine_id
+          schema:
+            type: integer
+        - in: query
+          name: price
+          schema:
+            type: string
+            enum: [$, $$, $$$]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            example: 10
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            example: 0
+        - in: query
+          name: sort_by
+          schema:
+            type: string
+            enum: [rating, name, price]
+            example: rating
+        - in: query
+          name: order
+          schema:
+            type: string
+            enum: [asc, desc]
+            example: desc
+      responses:
+        '200':
+          description: Paginated restaurant list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RestaurantResponse'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Restaurants]
+      security:
+        - BearerAuth: []
+      summary: Create a new restaurant
+      description: >
+        Creates a restaurant with status `pending`.
+        The authenticated user is automatically assigned the `owner` role
+        for this restaurant via RestaurantOwner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestaurantCreateRequest'
+      responses:
+        '201':
+          description: Restaurant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /restaurants/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Restaurants]
+      summary: Get restaurant by ID
+      responses:
+        '200':
+          description: Restaurant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags: [Restaurants]
+      security:
+        - BearerAuth: []
+      summary: Update restaurant info (owner / admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestaurantUpdateRequest'
+      responses:
+        '200':
+          description: Updated restaurant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Restaurants]
+      security:
+        - BearerAuth: []
+      summary: Delete restaurant (admin only)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /restaurants/{id}/verify:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+    patch:
+      tags: [Restaurants]
+      security:
+        - BearerAuth: []
+      summary: Verify restaurant (admin only)
+      responses:
+        '200':
+          description: Restaurant verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /restaurants/{id}/reject:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+    patch:
+      tags: [Restaurants]
+      security:
+        - BearerAuth: []
+      summary: Reject restaurant (admin only)
+      responses:
+        '200':
+          description: Restaurant rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /restaurants/{id}/staff:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Staff]
+      security:
+        - BearerAuth: []
+      summary: Get restaurant staff list (owner / admin)
+      responses:
+        '200':
+          description: Staff list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StaffResponse'
+        '403':
+          description: Forbidden
+
+    post:
+      tags: [Staff]
+      security:
+        - BearerAuth: []
+      summary: Assign a manager to restaurant (owner / admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffAssignRequest'
+      responses:
+        '200':
+          description: Manager assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+
+  /restaurants/{id}/staff/{user_id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+      - in: path
+        name: user_id
+        required: true
+        schema:
+          type: integer
+        description: User ID to remove
+
+    delete:
+      tags: [Staff]
+      security:
+        - BearerAuth: []
+      summary: Remove staff member (owner / admin)
+      responses:
+        '204':
+          description: Staff member removed
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /restaurants/{id}/menus:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Menu]
+      summary: Get all menus of a restaurant
+      responses:
+        '200':
+          description: List of menus
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuResponse'
+        '404':
+          description: Restaurant not found
+
+    post:
+      tags: [Menu]
+      security:
+        - BearerAuth: []
+      summary: Create a new menu section for restaurant (owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuCreateRequest'
+      responses:
+        '201':
+          description: Menu section created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /restaurants/{id}/menu:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Menu]
+      summary: Get full restaurant menu (all sections with items)
+      responses:
+        '200':
+          description: Full menu with items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    menu_id:
+                      type: integer
+                    name:
+                      type: string
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/MenuItemResponse'
+        '404':
+          description: Not found
+
+  /menu-items:
+    post:
+      tags: [Menu]
+      security:
+        - BearerAuth: []
+      summary: Add a dish to a menu (owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuItemCreateRequest'
+      responses:
+        '201':
+          description: Menu item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItemResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /menu-items/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Menu item ID
+
+    patch:
+      tags: [Menu]
+      security:
+        - BearerAuth: []
+      summary: Update a menu item (owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuItemUpdateRequest'
+      responses:
+        '200':
+          description: Updated menu item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItemResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+    delete:
+      tags: [Menu]
+      security:
+        - BearerAuth: []
+      summary: Delete a menu item (owner)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /restaurants/{id}/tables:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Tables]
+      summary: Get all tables of a restaurant
+      responses:
+        '200':
+          description: Tables list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TableResponse'
+
+  /tables:
+    post:
+      tags: [Tables]
+      security:
+        - BearerAuth: []
+      summary: Create a new table (owner / manager)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TableCreateRequest'
+      responses:
+        '201':
+          description: Table created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tables/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Table ID
+
+    patch:
+      tags: [Tables]
+      security:
+        - BearerAuth: []
+      summary: Update table capacity (owner / manager)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TableUpdateRequest'
+      responses:
+        '200':
+          description: Table updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+    delete:
+      tags: [Tables]
+      security:
+        - BearerAuth: []
+      summary: Delete a table (owner / manager)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /reservations:
+    post:
+      tags: [Reservations]
+      security:
+        - BearerAuth: []
+      summary: Create a reservation
+      description: >
+        Any authenticated user can book a table.
+        Owner/manager can also create reservations on behalf of guests.
+        Returns 409 if the table is already booked at the requested time,
+        or if guest_number exceeds table capacity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationCreateRequest'
+      responses:
+        '201':
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Table already booked or guest count exceeds capacity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reservations/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Reservation ID
+
+    get:
+      tags: [Reservations]
+      security:
+        - BearerAuth: []
+      summary: Get reservation by ID
+      description: Customer can only access their own reservation. Owner/manager can access any reservation of their restaurant.
+      responses:
+        '200':
+          description: Reservation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+    patch:
+      tags: [Reservations]
+      security:
+        - BearerAuth: []
+      summary: Update reservation
+      description: >
+        Customer: can update only their own reservation and only if
+        at least 3 hours remain before reservation_time.
+        Owner/manager: can update any reservation of their restaurant without time restriction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationUpdateRequest'
+      responses:
+        '200':
+          description: Updated reservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationResponse'
+        '403':
+          description: Forbidden or too late to modify
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+        '409':
+          description: Table conflict at new time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Reservations]
+      security:
+        - BearerAuth: []
+      summary: Cancel reservation
+      description: >
+        Customer: can cancel only their own reservation and only if
+        at least 3 hours remain before reservation_time.
+        Owner/manager: can cancel any reservation of their restaurant without time restriction.
+      responses:
+        '204':
+          description: Reservation cancelled
+        '403':
+          description: Forbidden or too late to cancel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /restaurants/{id}/reservations:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Reservations]
+      security:
+        - BearerAuth: []
+      summary: Get all reservations for a restaurant (owner / manager)
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled]
+        - in: query
+          name: date
+          schema:
+            type: string
+            format: date
+          description: Filter by reservation date
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            example: 10
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            example: 0
+      responses:
+        '200':
+          description: Paginated reservations list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReservationResponse'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          description: Forbidden
+
+  /restaurants/{id}/reviews:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Reviews]
+      summary: Get all reviews for a restaurant
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            example: 10
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            example: 0
+        - in: query
+          name: sort_by
+          schema:
+            type: string
+            enum: [rating, created_at]
+        - in: query
+          name: order
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: Paginated reviews list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReviewResponse'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          description: Restaurant not found
+
+    post:
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      summary: Add a review to a restaurant (authenticated user)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User has already reviewed this restaurant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reviews/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Review ID
+
+    patch:
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      summary: Update a review (author only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewUpdateRequest'
+      responses:
+        '200':
+          description: Updated review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '403':
+          description: Forbidden — not the author
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+    delete:
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      summary: Delete a review (author or admin)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+
+  /restaurants/{id}/photos:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Restaurant ID
+
+    get:
+      tags: [Photos]
+      summary: Get all photos of a restaurant
+      responses:
+        '200':
+          description: Photos list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoResponse'
+
+    post:
+      tags: [Photos]
+      security:
+        - BearerAuth: []
+      summary: Upload a photo for restaurant (owner / manager)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhotoUploadRequest'
+      responses:
+        '201':
+          description: Photo added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /photos/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        description: Photo ID
+
+    delete:
+      tags: [Photos]
+      security:
+        - BearerAuth: []
+      summary: Delete a photo (owner / manager / admin)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
