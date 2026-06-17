@@ -1,0 +1,2741 @@
+openapi: 3.0.3
+info:
+  title: Jobby API
+  description: |
+    REST API для сайта по поиску работы.
+    **Авторизация** — JWT хранится в `httpOnly` cookie (`access_token`). Браузер отправляет куку автоматически. JS токен не видит.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local dev
+
+security:
+  - cookieAuth: []
+
+tags:
+  - name: Auth
+    description: Регистрация и вход
+  - name: Profile
+    description: Личный кабинет текущего пользователя
+  - name: Resumes
+    description: Резюме соискателя
+  - name: Vacancies
+    description: Вакансии
+  - name: Applications
+    description: Отклики
+  - name: Companies
+    description: Компании
+  - name: Dictionaries
+    description: Справочники — чтение (публично)
+  - name: Admin Dictionaries
+    description: Справочники — управление (только ADMIN)
+
+# ─────────────────────────────────────────────
+# SECURITY
+# ─────────────────────────────────────────────
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: |
+        httpOnly JWT cookie. Устанавливается сервером через Set-Cookie при логине.
+        Клиент отправляет запросы с withCredentials: true.
+
+  # ─── REUSABLE RESPONSES ───
+  responses:
+    Unauthorized:
+      description: Не передан или невалидный JWT токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 401
+            message: Unauthorized
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 403
+            message: Forbidden
+    Conflict:
+      description: Ресурс уже существует
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 409
+            message: Already exists
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 404
+            message: Not found
+    UnprocessableEntity:
+      description: Ошибка валидации тела запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+  # ─── SCHEMAS ───
+  schemas:
+
+    # ── Errors ──
+    ErrorResponse:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: Bad request
+
+    ValidationErrorResponse:
+      type: object
+      required: [statusCode, message, errors]
+      properties:
+        statusCode:
+          type: integer
+          example: 422
+        message:
+          type: string
+          example: Validation failed
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: email
+              message:
+                type: string
+                example: must be a valid email
+
+    # ── Auth ──
+    RegisterStep1Request:
+      type: object
+      required: [email, password, role]
+      properties:
+        email:
+          type: string
+          format: email
+          example: ivan@example.com
+        phone:
+          type: string
+          example: "+79001234567"
+        password:
+          type: string
+          minLength: 8
+          example: strongpass123
+        role:
+          type: string
+          enum: [SEEKER, EMPLOYER]
+
+    RegisterSeekerRequest:
+      type: object
+      required: [firstName, lastName, cityId]
+      properties:
+        firstName:
+          type: string
+          example: Иван
+        lastName:
+          type: string
+          example: Петров
+        middleName:
+          type: string
+          example: Сергеевич
+        birthDate:
+          type: string
+          format: date
+          example: "1995-06-15"
+        gender:
+          type: string
+          enum: [MALE, FEMALE]
+        cityId:
+          type: string
+          format: uuid
+
+    RegisterEmployerRequest:
+      type: object
+      required: [firstName, lastName, companyId]
+      properties:
+        firstName:
+          type: string
+          example: Ольга
+        lastName:
+          type: string
+          example: Смирнова
+        position:
+          type: string
+          example: HR Manager
+        companyId:
+          type: string
+          format: uuid
+          description: ID существующей компании. Если компании нет — сначала создать через POST /companies
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        user:
+          $ref: '#/components/schemas/UserShort'
+
+    UserShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [SEEKER, EMPLOYER, ADMIN]
+        profile:
+          description: |
+            Профиль пользователя — структура зависит от role.
+            SEEKER — SeekerProfile, EMPLOYER — EmployerProfile, ADMIN — null.
+
+    # ── Profile ──
+    SeekerProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        middleName:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        gender:
+          type: string
+          enum: [MALE, FEMALE]
+          nullable: true
+        city:
+          $ref: '#/components/schemas/CityShort'
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+
+    UpdateSeekerProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        middleName:
+          type: string
+        birthDate:
+          type: string
+          format: date
+        gender:
+          type: string
+          enum: [MALE, FEMALE]
+        cityId:
+          type: string
+          format: uuid
+        phone:
+          type: string
+
+    EmployerProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        position:
+          type: string
+          nullable: true
+        email:
+          type: string
+        company:
+          $ref: '#/components/schemas/CompanyShort'
+
+    # ── Resume ──
+    ResumeShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Python-разработчик
+        isPublished:
+          type: boolean
+        experienceMonths:
+          type: integer
+          example: 36
+        updatedAt:
+          type: string
+          format: date-time
+
+    ResumeDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        summary:
+          type: string
+          nullable: true
+        isPublished:
+          type: boolean
+        experienceMonths:
+          type: integer
+        city:
+          $ref: '#/components/schemas/CityShort'
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResumeSkillItem'
+        workExperience:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkExperienceItem'
+        education:
+          type: array
+          items:
+            $ref: '#/components/schemas/EducationItem'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateResumeRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: Backend-разработчик
+        summary:
+          type: string
+          example: Опытный разработчик на Node.js
+        cityId:
+          type: string
+          format: uuid
+        isPublished:
+          type: boolean
+          default: false
+
+    UpdateResumeRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        summary:
+          type: string
+        cityId:
+          type: string
+          format: uuid
+        isPublished:
+          type: boolean
+
+    ResumeSkillItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        skill:
+          $ref: '#/components/schemas/SkillShort'
+        level:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, EXPERT]
+
+    AddResumeSkillRequest:
+      type: object
+      required: [skillId, level]
+      properties:
+        skillId:
+          type: string
+          format: uuid
+        level:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, EXPERT]
+
+    WorkExperienceItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+        role:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrent:
+          type: boolean
+
+    CreateWorkExperienceRequest:
+      type: object
+      required: [companyName, role, startDate]
+      properties:
+        companyName:
+          type: string
+          example: ООО Ромашка
+        role:
+          type: string
+          example: Старший разработчик
+        startDate:
+          type: string
+          format: date
+          example: "2021-03-01"
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrent:
+          type: boolean
+          default: false
+
+    EducationItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        degreeType:
+          type: string
+          example: BACHELOR
+        institution:
+          type: string
+        programName:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date
+          nullable: true
+        endDate:
+          type: string
+          format: date
+          nullable: true
+
+    CreateEducationRequest:
+      type: object
+      required: [degreeTypeId, institution]
+      properties:
+        degreeTypeId:
+          type: string
+          format: uuid
+        institution:
+          type: string
+          example: СПбГУ
+        programName:
+          type: string
+          example: Прикладная математика и информатика
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+
+    # ── Vacancy ──
+    VacancyShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Senior NestJS Developer
+        company:
+          $ref: '#/components/schemas/CompanyShort'
+        city:
+          $ref: '#/components/schemas/CityShort'
+        salaryType:
+          type: string
+          enum: [FIXED, RANGE, FROM, NEGOTIABLE]
+        salaryFixed:
+          type: integer
+          nullable: true
+        salaryMin:
+          type: integer
+          nullable: true
+        salaryMax:
+          type: integer
+          nullable: true
+        currency:
+          type: string
+          example: RUB
+        isRemote:
+          type: boolean
+        experienceYearsMin:
+          type: integer
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    VacancyDetail:
+      allOf:
+        - $ref: '#/components/schemas/VacancyShort'
+        - type: object
+          properties:
+            description:
+              type: string
+            conditions:
+              type: string
+              nullable: true
+            requirementsNote:
+              type: string
+              nullable: true
+            experienceYearsMax:
+              type: integer
+              nullable: true
+            employmentType:
+              $ref: '#/components/schemas/EmploymentTypeItem'
+            industry:
+              $ref: '#/components/schemas/IndustryItem'
+            skills:
+              type: array
+              items:
+                $ref: '#/components/schemas/VacancySkillItem'
+            employer:
+              $ref: '#/components/schemas/EmployerShort'
+            createdAt:
+              type: string
+              format: date-time
+
+    CreateVacancyRequest:
+      type: object
+      required: [title, salaryType, companyId]
+      properties:
+        title:
+          type: string
+          example: Backend Developer
+        description:
+          type: string
+        conditions:
+          type: string
+        requirementsNote:
+          type: string
+        cityId:
+          type: string
+          format: uuid
+        industryId:
+          type: string
+          format: uuid
+        employmentTypeId:
+          type: string
+          format: uuid
+        salaryType:
+          type: string
+          enum: [FIXED, RANGE, FROM, NEGOTIABLE]
+        salaryFixed:
+          type: integer
+          nullable: true
+        salaryMin:
+          type: integer
+          nullable: true
+        salaryMax:
+          type: integer
+          nullable: true
+        currency:
+          type: string
+          default: RUB
+        experienceYearsMin:
+          type: integer
+          nullable: true
+        experienceYearsMax:
+          type: integer
+          nullable: true
+        isRemote:
+          type: boolean
+          default: false
+        isPublished:
+          type: boolean
+          default: false
+        companyId:
+          type: string
+          format: uuid
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/VacancySkillInput'
+
+    UpdateVacancyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        conditions:
+          type: string
+        requirementsNote:
+          type: string
+        cityId:
+          type: string
+          format: uuid
+        industryId:
+          type: string
+          format: uuid
+        employmentTypeId:
+          type: string
+          format: uuid
+        salaryType:
+          type: string
+          enum: [FIXED, RANGE, FROM, NEGOTIABLE]
+        salaryFixed:
+          type: integer
+          nullable: true
+        salaryMin:
+          type: integer
+          nullable: true
+        salaryMax:
+          type: integer
+          nullable: true
+        currency:
+          type: string
+        experienceYearsMin:
+          type: integer
+          nullable: true
+        experienceYearsMax:
+          type: integer
+          nullable: true
+        isRemote:
+          type: boolean
+        isPublished:
+          type: boolean
+
+    VacancySkillItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        skill:
+          $ref: '#/components/schemas/SkillShort'
+        isRequired:
+          type: boolean
+        minLevel:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, EXPERT]
+          nullable: true
+
+    VacancySkillInput:
+      type: object
+      required: [skillId]
+      properties:
+        skillId:
+          type: string
+          format: uuid
+        isRequired:
+          type: boolean
+          default: true
+        minLevel:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, EXPERT]
+          nullable: true
+
+    VacancyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/VacancyShort'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ── Application ──
+    ApplicationItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        vacancy:
+          $ref: '#/components/schemas/VacancyShort'
+        resume:
+          $ref: '#/components/schemas/ResumeShort'
+        coverLetter:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, VIEWED, INVITED, REJECTED, ACCEPTED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ApplicationDetail:
+      allOf:
+        - $ref: '#/components/schemas/ApplicationItem'
+        - type: object
+          properties:
+            statusHistory:
+              type: array
+              items:
+                $ref: '#/components/schemas/StatusHistoryItem'
+
+    StatusHistoryItem:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [PENDING, VIEWED, INVITED, REJECTED, ACCEPTED]
+        comment:
+          type: string
+          nullable: true
+        changedAt:
+          type: string
+          format: date-time
+
+    CreateApplicationRequest:
+      type: object
+      required: [vacancyId, resumeId]
+      properties:
+        vacancyId:
+          type: string
+          format: uuid
+        resumeId:
+          type: string
+          format: uuid
+        coverLetter:
+          type: string
+          example: Хочу работать в вашей команде, потому что...
+
+    UpdateApplicationStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [VIEWED, INVITED, REJECTED, ACCEPTED]
+        comment:
+          type: string
+          example: Приглашаем на техническое интервью
+
+    # ── Company ──
+    CompanyShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
+
+    CompanyDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        industry:
+          $ref: '#/components/schemas/IndustryItem'
+        city:
+          $ref: '#/components/schemas/CityShort'
+
+    CreateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: ООО Технологии
+        description:
+          type: string
+        website:
+          type: string
+          example: https://example.com
+        logoUrl:
+          type: string
+        industryId:
+          type: string
+          format: uuid
+        cityId:
+          type: string
+          format: uuid
+
+    # ── Dictionaries ──
+
+    CountryItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Россия
+
+    CreateCountryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Россия
+
+    CityShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Санкт-Петербург
+        country:
+          $ref: '#/components/schemas/CountryItem'
+
+    CreateCityRequest:
+      type: object
+      required: [name, countryId]
+      properties:
+        name:
+          type: string
+          example: Санкт-Петербург
+        countryId:
+          type: string
+          format: uuid
+
+    IndustryItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Информационные технологии
+
+
+    SkillCategoryItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Языки программирования
+
+    CreateSkillCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Языки программирования
+
+    SkillShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Python
+        category:
+          $ref: '#/components/schemas/SkillCategoryItem'
+
+    EmploymentTypeItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: FULL_TIME
+
+    DegreeTypeItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: BACHELOR
+
+
+    CreateSkillRequest:
+      type: object
+      required: [name, categoryId]
+      properties:
+        name:
+          type: string
+          example: Python
+        categoryId:
+          type: string
+          format: uuid
+
+    CreateIndustryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    CreateEmploymentTypeRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    CreateDegreeTypeRequest:
+      type: object
+      required: [name, sortOrder]
+      properties:
+        name:
+          type: string
+        sortOrder:
+          type: integer
+
+    EmployerShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        position:
+          type: string
+          nullable: true
+
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+paths:
+
+  # ══════════════ AUTH ══════════════
+
+  /auth/register/step1:
+    post:
+      operationId: post_auth_register_step1
+      tags: [Auth]
+      summary: Шаг 1 — создание учётной записи
+      description: Создаёт User, возвращает temporaryToken для шага 2
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterStep1Request'
+      responses:
+        '201':
+          description: Учётная запись создана, нужно завершить профиль
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  temporaryToken:
+                    type: string
+                    description: Одноразовый токен для шага 2, действует 15 минут
+                  role:
+                    type: string
+                    enum: [SEEKER, EMPLOYER]
+        '409':
+          description: Email уже зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 409
+                message: Email already exists
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/register/seeker:
+    post:
+      operationId: post_auth_register_seeker
+      tags: [Auth]
+      summary: Шаг 2 — профиль соискателя
+
+      description: Завершает регистрацию соискателя. Требует temporaryToken из шага 1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterSeekerRequest'
+      responses:
+        '201':
+          description: Профиль создан, возвращает полный JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/register/employer:
+    post:
+      operationId: post_auth_register_employer
+      tags: [Auth]
+      summary: Шаг 2 — профиль работодателя
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterEmployerRequest'
+      responses:
+        '201':
+          description: Профиль создан, возвращает полный JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/login:
+    post:
+      operationId: post_auth_login
+      tags: [Auth]
+      summary: Вход
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 401
+                message: Invalid credentials
+
+  /auth/me:
+    get:
+      operationId: get_auth_me
+      tags: [Auth]
+      summary: Текущий пользователь + профиль
+      description: |
+        Возвращает данные сессии и вложенный профиль.
+        Используется при загрузке приложения для инициализации стейта.
+        Поле `profile` зависит от роли: SEEKER → SeekerProfile, EMPLOYER → EmployerProfile, ADMIN → null.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  email:
+                    type: string
+                  role:
+                    type: string
+                    enum: [SEEKER, EMPLOYER, ADMIN]
+                  profile:
+                    description: SeekerProfile или EmployerProfile в зависимости от role, null для ADMIN
+                    nullable: true
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Выход — сброс cookie
+      description: Сервер устанавливает Max-Age=0, браузер удаляет куку
+      responses:
+        '204':
+          description: Cookie сброшен
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: access_token=; HttpOnly; Secure; Max-Age=0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ══════════════ PROFILE ══════════════
+
+  /profile/seeker:
+    patch:
+      operationId: patch_profile_seeker
+      tags: [Profile]
+      summary: Обновить профиль соискателя
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSeekerProfileRequest'
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeekerProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /profile/employer:
+    patch:
+      operationId: patch_profile_employer
+      tags: [Profile]
+      summary: Обновить профиль работодателя
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                position:
+                  type: string
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ══════════════ RESUMES ══════════════
+
+  /resumes:
+    get:
+      operationId: get_resumes
+      tags: [Resumes]
+      summary: Список резюме текущего соискателя
+
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResumeShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: post_resumes
+      tags: [Resumes]
+      summary: Создать резюме
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResumeRequest'
+      responses:
+        '201':
+          description: Резюме создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /resumes/{resumeId}:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: get_resumes_resumeId
+      tags: [Resumes]
+      summary: Получить резюме по ID
+
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: patch_resumes_resumeId
+      tags: [Resumes]
+      summary: Обновить резюме
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateResumeRequest'
+      responses:
+        '200':
+          description: Обновлённое резюме
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: delete_resumes_resumeId
+      tags: [Resumes]
+      summary: Удалить резюме
+
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /resumes/{resumeId}/skills:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: post_resumes_resumeId_skills
+      tags: [Resumes]
+      summary: Добавить навык в резюме
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddResumeSkillRequest'
+      responses:
+        '201':
+          description: Навык добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeSkillItem'
+        '409':
+          description: Навык уже добавлен в это резюме
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /resumes/{resumeId}/skills/{skillId}:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: skillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: delete_resumes_resumeId_skills_skillId
+      tags: [Resumes]
+      summary: Удалить навык из резюме
+
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /resumes/{resumeId}/work-experience:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: post_resumes_resumeId_work_experience
+      tags: [Resumes]
+      summary: Добавить опыт работы
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkExperienceRequest'
+      responses:
+        '201':
+          description: Опыт добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkExperienceItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /resumes/{resumeId}/work-experience/{workId}:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: patch_resumes_resumeId_work_experience_workId
+      tags: [Resumes]
+      summary: Обновить запись опыта
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkExperienceRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkExperienceItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: delete_resumes_resumeId_work_experience_workId
+      tags: [Resumes]
+      summary: Удалить запись опыта
+
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /resumes/{resumeId}/education:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: post_resumes_resumeId_education
+      tags: [Resumes]
+      summary: Добавить образование
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEducationRequest'
+      responses:
+        '201':
+          description: Образование добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EducationItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /resumes/{resumeId}/education/{educationId}:
+    parameters:
+      - name: resumeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: educationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: patch_resumes_resumeId_education_educationId
+      tags: [Resumes]
+      summary: Обновить образование
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEducationRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EducationItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: delete_resumes_resumeId_education_educationId
+      tags: [Resumes]
+      summary: Удалить образование
+
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ══════════════ VACANCIES ══════════════
+
+  /vacancies:
+    get:
+      operationId: get_vacancies
+      tags: [Vacancies]
+      summary: Поиск вакансий с фильтрацией
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          description: Полнотекстовый поиск по названию
+          schema:
+            type: string
+        - name: cityId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: countryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: industryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: employmentTypeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: salaryMin
+          in: query
+          description: Минимальная зарплата для фильтрации
+          schema:
+            type: integer
+        - name: experienceYearsMax
+          in: query
+          description: Максимальный требуемый опыт (лет)
+          schema:
+            type: integer
+        - name: isRemote
+          in: query
+          schema:
+            type: boolean
+        - name: skillIds
+          in: query
+          description: Фильтр по навыкам (через запятую)
+          schema:
+            type: string
+            example: uuid1,uuid2
+      responses:
+        '200':
+          description: Список вакансий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyListResponse'
+
+    post:
+      operationId: post_vacancies
+      tags: [Vacancies]
+      summary: Создать вакансию (только EMPLOYER)
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVacancyRequest'
+      responses:
+        '201':
+          description: Вакансия создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /vacancies/{vacancyId}:
+    parameters:
+      - name: vacancyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: get_vacancies_vacancyId
+      tags: [Vacancies]
+      summary: Детали вакансии
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: patch_vacancies_vacancyId
+      tags: [Vacancies]
+      summary: Обновить вакансию (только автор)
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVacancyRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: delete_vacancies_vacancyId
+      tags: [Vacancies]
+      summary: Удалить вакансию (только автор)
+
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /vacancies/{vacancyId}/skills:
+    parameters:
+      - name: vacancyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: post_vacancies_vacancyId_skills
+      tags: [Vacancies]
+      summary: Добавить навык к вакансии
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancySkillInput'
+      responses:
+        '201':
+          description: Навык добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancySkillItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /vacancies/{vacancyId}/skills/{skillId}:
+    parameters:
+      - name: vacancyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: skillId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: delete_vacancies_vacancyId_skills_skillId
+      tags: [Vacancies]
+      summary: Удалить навык из вакансии
+
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /employer/vacancies:
+    get:
+      operationId: get_employer_vacancies
+      tags: [Vacancies]
+      summary: Мои вакансии (только EMPLOYER)
+
+      parameters:
+        - name: isPublished
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VacancyShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ══════════════ APPLICATIONS ══════════════
+
+  /applications:
+    post:
+      operationId: post_applications
+      tags: [Applications]
+      summary: Откликнуться на вакансию (только SEEKER)
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Отклик создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationItem'
+        '409':
+          description: Отклик на эту вакансию уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 409
+                message: Already applied to this vacancy
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /applications/my:
+    get:
+      operationId: get_applications_my
+      tags: [Applications]
+      summary: Мои отклики (только SEEKER)
+
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, VIEWED, INVITED, REJECTED, ACCEPTED]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /applications/{applicationId}:
+    parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: get_applications_applicationId
+      tags: [Applications]
+      summary: Детали отклика
+
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /applications/{applicationId}/status:
+    parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: patch_applications_applicationId_status
+      tags: [Applications]
+      summary: Сменить статус отклика (только EMPLOYER — автор вакансии)
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationStatusRequest'
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /vacancies/{vacancyId}/applications:
+    parameters:
+      - name: vacancyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: get_vacancies_vacancyId_applications
+      tags: [Applications]
+      summary: Отклики на вакансию (только автор вакансии)
+
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, VIEWED, INVITED, REJECTED, ACCEPTED]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ══════════════ COMPANIES ══════════════
+
+  /companies:
+    get:
+      tags: [Companies]
+      operationId: get_companies
+      summary: Список компаний (публично)
+      security: []
+      parameters:
+        - name: search
+          in: query
+          description: Поиск по названию
+          schema:
+            type: string
+            example: Яндекс
+        - name: industryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: cityId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CompanyShort'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+    post:
+      operationId: post_companies
+      tags: [Companies]
+      summary: Создать компанию (только EMPLOYER)
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        '201':
+          description: Компания создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /companies/{companyId}:
+    parameters:
+      - name: companyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: get_companies_companyId
+      tags: [Companies]
+      summary: Страница компании (публичная)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: patch_companies_companyId
+      tags: [Companies]
+      summary: Обновить компанию (только сотрудник компании)
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ══════════════ DICTIONARIES ══════════════
+
+
+  /dictionaries/countries:
+    get:
+      tags: [Dictionaries]
+      operationId: get_countries
+      summary: Список стран
+      security: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CountryItem'
+
+  /dictionaries/cities:
+    get:
+      operationId: get_dictionaries_cities
+      tags: [Dictionaries]
+      summary: Список городов
+      security: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: countryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CityShort'
+
+  /dictionaries/industries:
+    get:
+      operationId: get_dictionaries_industries
+      tags: [Dictionaries]
+      summary: Список отраслей
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndustryItem'
+
+
+  /dictionaries/skill-categories:
+    get:
+      tags: [Dictionaries]
+      operationId: get_skill_categories
+      summary: Категории навыков
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SkillCategoryItem'
+
+  /dictionaries/skills:
+    get:
+      operationId: get_dictionaries_skills
+      tags: [Dictionaries]
+      summary: Список навыков с категориями
+      security: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SkillShort'
+
+  /dictionaries/employment-types:
+    get:
+      operationId: get_dictionaries_employment_types
+      tags: [Dictionaries]
+      summary: Типы занятости
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmploymentTypeItem'
+
+  /dictionaries/degree-types:
+    get:
+      operationId: get_dictionaries_degree_types
+      tags: [Dictionaries]
+      summary: Типы учёных степеней
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DegreeTypeItem'
+
+
+  # ══════════════ ADMIN DICTIONARIES ══════════════
+
+  /admin/dictionaries/countries:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_country
+      summary: Создать страну (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCountryRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/dictionaries/countries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_country
+      summary: Обновить страну (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCountryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CountryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_country
+      summary: Удалить страну (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — есть связанные города
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/dictionaries/cities:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_city
+      summary: Создать город (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCityRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CityShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /admin/dictionaries/cities/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_city
+      summary: Обновить город (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCityRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CityShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_city
+      summary: Удалить город (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — есть связанные пользователи или вакансии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/dictionaries/industries:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_industry
+      summary: Создать отрасль (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIndustryRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndustryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/dictionaries/industries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_industry
+      summary: Обновить отрасль (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIndustryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndustryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_industry
+      summary: Удалить отрасль (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — есть связанные вакансии или компании
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/dictionaries/skill-categories:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_skill_category
+      summary: Создать категорию навыков (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSkillCategoryRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillCategoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/dictionaries/skill-categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_skill_category
+      summary: Обновить категорию навыков (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSkillCategoryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillCategoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_skill_category
+      summary: Удалить категорию (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — категория содержит навыки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/dictionaries/skills:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_skill
+      summary: Создать навык (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSkillRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/dictionaries/skills/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_skill
+      summary: Обновить навык (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSkillRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_skill
+      summary: Удалить навык (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — навык используется в резюме или вакансиях
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/dictionaries/employment-types:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_employment_type
+      summary: Создать тип занятости (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmploymentTypeRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmploymentTypeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/dictionaries/employment-types/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_employment_type
+      summary: Обновить тип занятости (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmploymentTypeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmploymentTypeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_employment_type
+      summary: Удалить тип занятости (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — используется в вакансиях
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/dictionaries/degree-types:
+    post:
+      tags: [Admin Dictionaries]
+      operationId: admin_create_degree_type
+      summary: Создать тип степени (только ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDegreeTypeRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DegreeTypeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/dictionaries/degree-types/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Admin Dictionaries]
+      operationId: admin_update_degree_type
+      summary: Обновить тип степени (только ADMIN)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDegreeTypeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DegreeTypeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin Dictionaries]
+      operationId: admin_delete_degree_type
+      summary: Удалить тип степени (только ADMIN)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Нельзя удалить — используется в резюме
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
