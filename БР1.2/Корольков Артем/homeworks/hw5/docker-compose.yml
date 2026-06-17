@@ -1,0 +1,83 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    environment:
+      PORT: 3001
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_ENABLED: "true"
+      JWT_SECRET: restaurant-api-dev-secret
+      SERVICE_KEY: inter-service-dev-key
+    volumes:
+      - ./services/data:/app/services/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  restaurant-service:
+    build:
+      context: .
+      dockerfile: services/restaurant-service/Dockerfile
+    environment:
+      PORT: 3002
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_ENABLED: "true"
+      SERVICE_KEY: inter-service-dev-key
+    volumes:
+      - ./services/data:/app/services/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  reservation-service:
+    build:
+      context: .
+      dockerfile: services/reservation-service/Dockerfile
+    environment:
+      PORT: 3003
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_ENABLED: "true"
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
+      SERVICE_KEY: inter-service-dev-key
+    volumes:
+      - ./services/data:/app/services/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      restaurant-service:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    ports:
+      - "3010:3010"
+    environment:
+      PORT: 3010
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
+      RESERVATION_SERVICE_URL: http://reservation-service:3003
+    depends_on:
+      - auth-service
+      - restaurant-service
+      - reservation-service
+
+networks:
+  default:
+    name: restaurant-booking-net
