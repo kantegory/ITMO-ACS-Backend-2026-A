@@ -1,0 +1,362 @@
+openapi: 3.0.3
+info:
+  title: UnhappyJob Internal API
+  description: >
+    Внутренние эндпоинты для межсервисного взаимодействия
+    платформы UnhappyJob.
+  version: 1.0.0
+servers:
+  - url: http://auth-service:8081
+    description: Auth Service
+  - url: http://profile-service:8082
+    description: Profile Service
+  - url: http://resume-service:8083
+    description: Resume Service
+
+paths:
+  # ===== AUTH SERVICE =====
+  /internal/users/{user_id}:
+    get:
+      tags: [Auth Internal]
+      summary: Получить данные пользователя по ID
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalUserResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/users/batch:
+    post:
+      tags: [Auth Internal]
+      summary: Получить данные нескольких пользователей
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_ids]
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: Массив пользователей
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InternalUserResponse'
+
+  # ===== PROFILE SERVICE =====
+  /internal/companies/{company_id}:
+    get:
+      tags: [Profile Internal]
+      summary: Получить данные компании по ID
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Данные компании
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalCompanyResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/employers/{user_id}:
+    get:
+      tags: [Profile Internal]
+      summary: Получить профиль работодателя по user_id
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Профиль работодателя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalEmployerResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/job-seekers/{user_id}:
+    get:
+      tags: [Profile Internal]
+      summary: Получить профиль соискателя по user_id
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Профиль соискателя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalJobSeekerResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== RESUME SERVICE =====
+  /internal/resumes/{resume_id}:
+    get:
+      tags: [Resume Internal]
+      summary: Получить полные данные резюме
+      parameters:
+        - name: resume_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-User-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: ID пользователя для проверки владения
+      responses:
+        '200':
+          description: Данные резюме
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalResumeResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/resumes/by-owner/{user_id}:
+    get:
+      tags: [Resume Internal]
+      summary: Проверить принадлежность резюме пользователю
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: resume_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  resume_id:
+                    type: string
+                    format: uuid
+        '404':
+          description: Резюме не найдено или не принадлежит пользователю
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                  message:
+                    type: string
+
+components:
+  schemas:
+    InternalUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [job_seeker, employer, admin]
+        created_at:
+          type: string
+          format: date-time
+
+    InternalCompanyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        website:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    InternalEmployerResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+          nullable: true
+        first_name:
+          type: string
+        last_name:
+          type: string
+        position:
+          type: string
+
+    InternalJobSeekerResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+
+    InternalResumeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_seeker_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        summary:
+          type: string
+        salary_expectation:
+          type: number
+        is_active:
+          type: boolean
+        skills:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+        educations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              institution:
+                type: string
+              degree:
+                type: string
+              start_date:
+                type: string
+                format: date-time
+              end_date:
+                type: string
+                format: date-time
+                nullable: true
+        experiences:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              company_name:
+                type: string
+              position:
+                type: string
+              description:
+                type: string
+              start_date:
+                type: string
+                format: date-time
+              end_date:
+                type: string
+                format: date-time
+                nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+  responses:
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Внутренняя ошибка сервиса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
