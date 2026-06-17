@@ -1,0 +1,389 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking API
+  version: 1.0.0
+  description: API для бронирования столиков в ресторанах
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Auth
+  - name: Users
+  - name: Restaurants
+  - name: Reservations
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Личный кабинет пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /users/me/reservations:
+    get:
+      tags: [Users]
+      summary: История бронирований пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: История бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /restaurants:
+    get:
+      tags: [Restaurants]
+      summary: Поиск ресторанов с фильтрацией
+      parameters:
+        - in: query
+          name: cuisine
+          schema:
+            type: string
+          description: Фильтр по кухне
+        - in: query
+          name: city
+          schema:
+            type: string
+          description: Фильтр по городу
+        - in: query
+          name: priceMin
+          schema:
+            type: integer
+          description: Минимальная средняя цена
+        - in: query
+          name: priceMax
+          schema:
+            type: integer
+          description: Максимальная средняя цена
+      responses:
+        '200':
+          description: Список ресторанов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RestaurantCard'
+  /restaurants/{id}:
+    get:
+      tags: [Restaurants]
+      summary: Детальная страница ресторана (меню, фото, отзывы)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Детальная информация о ресторане
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /restaurants/{id}/reservations:
+    post:
+      tags: [Reservations]
+      summary: Создать бронирование в ресторане
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /reservations:
+    get:
+      tags: [Reservations]
+      summary: Получить бронирования текущего пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Reservations]
+      summary: Создать бронирование (через restaurant_id)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restaurant_id, guests_count, reservation_datetime]
+              properties:
+                restaurant_id:
+                  type: integer
+                guests_count:
+                  type: integer
+                reservation_datetime:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Неавторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserProfile'
+    RestaurantCard:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        cuisine:
+          type: string
+        city:
+          type: string
+        address:
+          type: string
+        average_check:
+          type: integer
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: integer
+    RestaurantPhoto:
+      type: object
+      properties:
+        id:
+          type: integer
+        url:
+          type: string
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        rating:
+          type: integer
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        User:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+    RestaurantDetails:
+      allOf:
+        - $ref: '#/components/schemas/RestaurantCard'
+        - type: object
+          properties:
+            description:
+              type: string
+            MenuItems:
+              type: array
+              items:
+                $ref: '#/components/schemas/MenuItem'
+            RestaurantPhotos:
+              type: array
+              items:
+                $ref: '#/components/schemas/RestaurantPhoto'
+            Reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/Review'
+    CreateReservationRequest:
+      type: object
+      required: [guests_count, reservation_datetime]
+      properties:
+        guests_count:
+          type: integer
+        reservation_datetime:
+          type: string
+          format: date-time
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: integer
+        guests_count:
+          type: integer
+        reservation_datetime:
+          type: string
+          format: date-time
+        status:
+          type: string
+        UserId:
+          type: integer
+        RestaurantId:
+          type: integer
+        Restaurant:
+          $ref: '#/components/schemas/RestaurantCard'
