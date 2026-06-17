@@ -1,0 +1,150 @@
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: gateway
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    mem_limit: 64m
+    depends_on:
+      - user-service
+      - property-service
+      - communication-service
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    shm_size: "128mb"
+    mem_limit: 320m
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: kafka
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_HEAP_OPTS=-Xms128m -Xmx128m
+      - CLUSTER_ID=abcdefghijklmnopqrstuv
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: mailhog
+    restart: unless-stopped
+    ports:
+      - "8085:8025"
+    mem_limit: 64m
+
+  user-service:
+    image: renting-service-app:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: user-service
+    restart: unless-stopped
+    mem_limit: 192m
+    environment:
+      SPRING_PROFILES_ACTIVE: user
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=30.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: user_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+      - mailhog
+
+  property-service:
+    image: renting-service-app:local
+    pull_policy: never
+    container_name: property-service
+    restart: unless-stopped
+    mem_limit: 192m
+    environment:
+      SPRING_PROFILES_ACTIVE: property
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=30.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: property_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_BASE_URL: http://user-service:8080/api/v1
+      COMMUNICATION_SERVICE_BASE_URL: http://communication-service:8080/api/v1
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PAYMENT_COMMISSION_PERCENT: ${PAYMENT_COMMISSION_PERCENT}
+      PAYMENT_MOCK_SUCCESS_RATE: ${PAYMENT_MOCK_SUCCESS_RATE}
+    depends_on:
+      - postgres
+      - kafka
+
+  communication-service:
+    image: renting-service-app:local
+    pull_policy: never
+    container_name: communication-service
+    restart: unless-stopped
+    mem_limit: 192m
+    environment:
+      SPRING_PROFILES_ACTIVE: communication
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=30.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: comm_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_BASE_URL: http://user-service:8080/api/v1
+      PROPERTY_SERVICE_BASE_URL: http://property-service:8080/api/v1
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+
+  notification-service:
+    image: renting-service-app:local
+    pull_policy: never
+    container_name: notification-service
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      SPRING_PROFILES_ACTIVE: notification
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=30.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: notification_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+      - mailhog
+
+volumes:
+  postgres_data:
