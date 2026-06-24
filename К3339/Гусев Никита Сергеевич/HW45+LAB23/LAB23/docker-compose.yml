@@ -1,0 +1,105 @@
+services:
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  auth-db:
+    image: postgres:16
+    container_name: auth_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - auth_data:/var/lib/postgresql/data
+
+  recipe-db:
+    image: postgres:16
+    container_name: recipe_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: recipe_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - recipe_data:/var/lib/postgresql/data
+
+  comment-db:
+    image: postgres:16
+    container_name: comment_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: comment_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - comment_data:/var/lib/postgresql/data
+
+
+  auth-service:
+    build: .
+    container_name: auth_service
+    command: node dist/auth-service/src/index.js
+    ports:
+      - "8081:8081"
+    depends_on:
+      - auth-db
+    restart: always
+
+  recipe-service:
+    build: .
+    container_name: recipe_service
+    command: node dist/recipe-service/src/index.js
+    ports:
+      - "8082:8082"
+    depends_on:
+      - recipe-db
+    restart: always
+
+  comment-service:
+    build: .
+    container_name: comment_service
+    command: node dist/comment-service/src/index.js
+    ports:
+      - "8083:8083"
+    depends_on:
+      - comment-db
+    restart: always
+
+
+  api-gateway:
+    image: nginx:latest
+    container_name: api_gateway
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - auth-service
+      - recipe-service
+      - comment-service
+
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger_ui
+    ports:
+      - "3001:8080"
+    environment:
+      SWAGGER_JSON: /openapi.yaml
+    volumes:
+      - ./openapi.yaml:/openapi.yaml:ro
+
+
+volumes:
+  auth_data:
+  recipe_data:
+  comment_data:

@@ -1,0 +1,488 @@
+openapi: 3.0.3
+
+info:
+  title: Recipe Sharing API
+  description: API для сервиса обмена рецептами
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Recipes
+  - name: Comments
+  - name: Likes
+  - name: Saved
+  - name: Follows
+
+paths:
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Регистрация
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+
+      responses:
+        "201":
+          description: Успешная регистрация
+
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Авторизация
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+
+      responses:
+        "200":
+          description: Успешная авторизация
+
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags:
+        - Users
+      summary: Получить мой профиль
+
+      security:
+        - bearerAuth: [ ]
+
+      responses:
+        "200":
+          description: OK
+
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /recipes:
+    get:
+      tags:
+        - Recipes
+      summary: Получить список рецептов
+
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum:
+              - easy
+              - medium
+              - hard
+
+      responses:
+        "200":
+          description: OK
+
+    post:
+      tags:
+        - Recipes
+      summary: Создать рецепт
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeCreate'
+
+      responses:
+        "201":
+          description: Рецепт создан
+
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /recipes/{id}:
+    get:
+      tags:
+        - Recipes
+      summary: Получить рецепт
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "200":
+          description: OK
+
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Recipes
+      summary: Обновить рецепт
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeCreate'
+
+      responses:
+        "200":
+          description: Рецепт обновлен
+
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Recipes
+      summary: Удалить рецепт
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "204":
+          description: Рецепт удален
+
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /comments/{id}:
+    get:
+      tags:
+        - Comments
+      summary: Получить комментарии рецепта
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "200":
+          description: Комментарии получены
+
+    post:
+      tags:
+        - Comments
+      summary: Добавить комментарий
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreate'
+
+      responses:
+        "201":
+          description: Комментарий добавлен
+
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /recipes/{id}/like:
+    post:
+      tags:
+        - Likes
+      summary: Поставить лайк
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "201":
+          description: Лайк поставлен
+
+    delete:
+      tags:
+        - Likes
+      summary: Убрать лайк
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "204":
+          description: Лайк удален
+
+  /recipes/{id}/save:
+    post:
+      tags:
+        - Saved
+      summary: Сохранить рецепт
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "201":
+          description: Рецепт сохранен
+
+    delete:
+      tags:
+        - Saved
+      summary: Удалить из сохраненных
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "204":
+          description: Удалено из сохраненных
+
+  /users/{id}/follow:
+    post:
+      tags:
+        - Follows
+      summary: Подписаться на пользователя
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowRequest'
+
+      responses:
+        "201":
+          description: Подписка оформлена
+
+    delete:
+      tags:
+        - Follows
+      summary: Отписаться от пользователя
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowRequest'
+
+      responses:
+        "204":
+          description: Подписка удалена
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    RegisterRequest:
+      type: object
+
+      required:
+        - username
+        - email
+        - password
+
+      properties:
+        username:
+          type: string
+          example: nikita
+
+        email:
+          type: string
+          example: nikita@mail.com
+
+        password:
+          type: string
+          example: 123456
+
+    LoginRequest:
+      type: object
+
+      required:
+        - email
+        - password
+
+      properties:
+        email:
+          type: string
+          example: nikita@mail.com
+
+        password:
+          type: string
+          example: 123456
+
+    RecipeCreate:
+      type: object
+
+      required:
+        - title
+        - difficulty
+
+      properties:
+        title:
+          type: string
+          example: Carbonara
+
+        description:
+          type: string
+          example: Very tasty pasta
+
+        difficulty:
+          type: string
+
+          enum:
+            - easy
+            - medium
+            - hard
+
+        cooking_time:
+          type: integer
+          example: 30
+
+        servings:
+          type: integer
+          example: 2
+
+    CommentCreate:
+      type: object
+
+      required:
+        - text
+        - user_id
+
+      properties:
+        text:
+          type: string
+          example: Very tasty
+
+        user_id:
+          type: integer
+          example: 1
+
+    FollowRequest:
+      type: object
+
+      required:
+        - follower_id
+
+      properties:
+        follower_id:
+          type: integer
+          example: 1
+
+    ErrorResponse:
+      type: object
+
+      properties:
+        error:
+          type: string
+          example: BadRequest
+
+        message:
+          type: string
+          example: Неверные данные
+
+  responses:
+
+    BadRequest:
+      description: Неверный запрос
+
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Не авторизован
+
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Не найдено
+
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
