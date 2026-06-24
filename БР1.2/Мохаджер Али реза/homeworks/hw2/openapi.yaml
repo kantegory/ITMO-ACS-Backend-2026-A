@@ -1,0 +1,1782 @@
+openapi: 3.0.0
+info:
+  title: CarpetShop API
+  description: |
+    API для интернет-магазина по продаже ковров.
+    
+    ## Функциональные требования
+    - Регистрация и авторизация пользователей
+    - Каталог ковров с фильтрацией по категории, форме, материалу, цвету, цене
+    - Страница товара с фотографиями и характеристиками
+    - Корзина покупок
+    - Оформление и отслеживание заказов
+    - Отзывы и рейтинги товаров
+    - Личный кабинет покупателя
+    - Панель администратора
+
+    ## Нефункциональные требования
+    - Формат API: REST API
+    - Аутентификация: Bearer JWT
+    - Формат данных: JSON
+    - Пагинация для списков (limit/offset)
+    - Все защищённые маршруты требуют заголовок Authorization: Bearer <token>
+
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ==================== Authentication ====================
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Регистрация пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        "201":
+          description: Пользователь успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        "400":
+          description: Ошибка валидации (например, email уже занят)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Авторизация пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        "200":
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        "401":
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Users ====================
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить профиль текущего пользователя
+      responses:
+        "200":
+          description: Профиль текущего пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserFullRead'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Users]
+      summary: Обновить профиль текущего пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        "200":
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserFullRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Users]
+      summary: Удалить аккаунт текущего пользователя
+      responses:
+        "204":
+          description: Аккаунт удалён
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/orders:
+    get:
+      tags: [Users]
+      summary: Получить список заказов текущего пользователя
+      responses:
+        "200":
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderReadList'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/reviews:
+    get:
+      tags: [Users]
+      summary: Получить список отзывов текущего пользователя
+      responses:
+        "200":
+          description: Список отзывов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewReadList'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Categories ====================
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Получить список всех категорий
+      security: []
+      responses:
+        "200":
+          description: Список категорий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryReadList'
+    post:
+      tags: [Categories]
+      summary: Создать категорию (только админ)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryCreate'
+      responses:
+        "201":
+          description: Созданная категория
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /categories/{id}:
+    get:
+      tags: [Categories]
+      summary: Получить категорию по ID
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Категория
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryRead'
+        "404":
+          description: Категория не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Categories]
+      summary: Обновить категорию (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryUpdate'
+      responses:
+        "200":
+          description: Обновлённая категория
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Категория не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Categories]
+      summary: Удалить категорию (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Категория удалена
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Категория не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Carpets ====================
+
+  /carpets:
+    get:
+      tags: [Carpets]
+      summary: Получить список ковров с фильтрацией и пагинацией
+      security: []
+      parameters:
+        - name: category_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Фильтр по категории
+        - name: shape
+          in: query
+          schema:
+            type: string
+            enum: [RECTANGLE, SQUARE, CIRCLE, OVAL, RUNNER, CUSTOM]
+          description: Фильтр по форме
+        - name: material
+          in: query
+          schema:
+            type: string
+          description: Фильтр по материалу
+        - name: color
+          in: query
+          schema:
+            type: string
+          description: Фильтр по цвету
+        - name: is_handmade
+          in: query
+          schema:
+            type: boolean
+          description: Фильтр — ручная работа
+        - name: price_min
+          in: query
+          schema:
+            type: number
+          description: Минимальная цена
+        - name: price_max
+          in: query
+          schema:
+            type: number
+          description: Максимальная цена
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список ковров
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarpetShortReadPage'
+    post:
+      tags: [Carpets]
+      summary: Создать товар — ковёр (только админ)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarpetCreate'
+      responses:
+        "201":
+          description: Созданный ковёр
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarpetFullRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /carpets/{id}:
+    get:
+      tags: [Carpets]
+      summary: Получить карточку ковра по ID
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Полная карточка ковра
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarpetFullRead'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Carpets]
+      summary: Обновить данные ковра (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarpetUpdate'
+      responses:
+        "200":
+          description: Обновлённая карточка ковра
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarpetFullRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Carpets]
+      summary: Удалить ковёр (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Ковёр удалён
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Carpet Images ====================
+
+  /carpets/{id}/images:
+    get:
+      tags: [CarpetImages]
+      summary: Получить все изображения ковра
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Список изображений
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarpetImageReadList'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [CarpetImages]
+      summary: Добавить изображение к ковру (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarpetImageCreate'
+      responses:
+        "201":
+          description: Добавленное изображение
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarpetImageRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /carpets/{carpet_id}/images/{image_id}:
+    delete:
+      tags: [CarpetImages]
+      summary: Удалить изображение ковра (только админ)
+      parameters:
+        - name: carpet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: image_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Изображение удалено
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр или изображение не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Reviews ====================
+
+  /carpets/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Получить все отзывы к ковру
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список отзывов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewReadList'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [Reviews]
+      summary: Оставить отзыв на ковёр (только покупатель, купивший товар)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreate'
+      responses:
+        "201":
+          description: Отзыв добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Отзыв можно оставить только после покупки товара
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Отзыв на этот товар уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /carpets/{carpet_id}/reviews/{review_id}:
+    patch:
+      tags: [Reviews]
+      summary: Обновить отзыв (автор или админ)
+      parameters:
+        - name: carpet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: review_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewUpdate'
+      responses:
+        "200":
+          description: Обновлённый отзыв
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр или отзыв не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Reviews]
+      summary: Удалить отзыв (автор или админ)
+      parameters:
+        - name: carpet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: review_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Отзыв удалён
+        "403":
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр или отзыв не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Cart ====================
+
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Получить корзину текущего пользователя
+      responses:
+        "200":
+          description: Корзина пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartRead'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cart/items:
+    post:
+      tags: [Cart]
+      summary: Добавить товар в корзину
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemCreate'
+      responses:
+        "201":
+          description: Товар добавлен в корзину
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartRead'
+        "400":
+          description: Ошибка валидации или недостаточно товара на складе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Ковёр не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cart/items/{item_id}:
+    patch:
+      tags: [Cart]
+      summary: Изменить количество товара в корзине
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemUpdate'
+      responses:
+        "200":
+          description: Обновлённая корзина
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartRead'
+        "400":
+          description: Ошибка валидации или недостаточно товара на складе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Позиция в корзине не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Cart]
+      summary: Удалить товар из корзины
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Обновлённая корзина после удаления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartRead'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Позиция в корзине не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cart/clear:
+    delete:
+      tags: [Cart]
+      summary: Очистить корзину
+      responses:
+        "204":
+          description: Корзина очищена
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Orders ====================
+
+  /orders:
+    post:
+      tags: [Orders]
+      summary: Оформить заказ из текущей корзины
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreate'
+      responses:
+        "201":
+          description: Заказ оформлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderFullRead'
+        "400":
+          description: Корзина пуста или товар недоступен в нужном количестве
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Получить заказ по ID (владелец или админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Заказ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderFullRead'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Отменить заказ (владелец, только если статус PENDING)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Заказ отменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderFullRead'
+        "400":
+          description: Заказ нельзя отменить (уже оплачен или отправлен)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Admin ====================
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Получить список всех пользователей (только админ)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список пользователей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserFullReadList'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/{id}:
+    get:
+      tags: [Admin]
+      summary: Получить полные данные пользователя (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserFullRead'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Admin]
+      summary: Удалить пользователя (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Пользователь удалён
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/users/{id}/role:
+    patch:
+      tags: [Admin]
+      summary: Изменить роль пользователя (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleUpdate'
+      responses:
+        "200":
+          description: Роль обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserFullRead'
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/orders:
+    get:
+      tags: [Admin]
+      summary: Получить все заказы (только админ)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, PAID, SHIPPED, DELIVERED, CANCELED]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderReadList'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/orders/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: Изменить статус заказа (только админ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderStatusUpdate'
+      responses:
+        "200":
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderFullRead'
+        "400":
+          description: Ошибка валидации или недопустимый переход статуса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "403":
+          description: Доступ запрещён (не админ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    # ==================== Error ====================
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Ресурс не найден"
+
+    # ==================== Auth ====================
+
+    AuthRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/UserFullRead'
+
+    # ==================== User ====================
+
+    UserFullRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [ADMIN, CUSTOMER]
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        is_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UserFullReadList:
+      type: array
+      items:
+        $ref: '#/components/schemas/UserFullRead'
+
+    UserCreate:
+      type: object
+      required: [first_name, last_name, email, password]
+      properties:
+        first_name:
+          type: string
+          example: "Иван"
+        last_name:
+          type: string
+          example: "Иванов"
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        phone:
+          type: string
+          example: "+79991234567"
+
+    UserUpdate:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+        password:
+          type: string
+          format: password
+          minLength: 8
+
+    RoleUpdate:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, CUSTOMER]
+
+    # ==================== Category ====================
+
+    CategoryRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Персидские ковры"
+        description:
+          type: string
+        is_published:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CategoryReadList:
+      type: array
+      items:
+        $ref: '#/components/schemas/CategoryRead'
+
+    CategoryCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        is_published:
+          type: boolean
+          default: true
+
+    CategoryUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        is_published:
+          type: boolean
+
+    # ==================== CarpetImage ====================
+
+    CarpetImageRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        image_url:
+          type: string
+          format: uri
+        is_main:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CarpetImageReadList:
+      type: array
+      items:
+        $ref: '#/components/schemas/CarpetImageRead'
+
+    CarpetImageCreate:
+      type: object
+      required: [image_url]
+      properties:
+        image_url:
+          type: string
+          format: uri
+        is_main:
+          type: boolean
+          default: false
+
+    # ==================== Carpet ====================
+
+    CarpetShortRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Ковёр «Бухара» 200×300"
+        category:
+          $ref: '#/components/schemas/CategoryRead'
+        price:
+          type: number
+          format: float
+          example: 14990.00
+        stock:
+          type: integer
+          example: 5
+        shape:
+          type: string
+          enum: [RECTANGLE, SQUARE, CIRCLE, OVAL, RUNNER, CUSTOM]
+        material:
+          type: string
+          example: "Шерсть"
+        color:
+          type: string
+          example: "Красный"
+        is_handmade:
+          type: boolean
+        is_published:
+          type: boolean
+        main_image_url:
+          type: string
+          format: uri
+          nullable: true
+        rating_avg:
+          type: number
+          format: float
+          nullable: true
+          example: 4.7
+        reviews_count:
+          type: integer
+          example: 12
+
+    CarpetShortReadPage:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 100
+        limit:
+          type: integer
+          example: 20
+        offset:
+          type: integer
+          example: 0
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CarpetShortRead'
+
+    CarpetFullRead:
+      allOf:
+        - $ref: '#/components/schemas/CarpetShortRead'
+        - type: object
+          properties:
+            description:
+              type: string
+            length:
+              type: number
+              nullable: true
+            width:
+              type: number
+              nullable: true
+            diameter:
+              type: number
+              nullable: true
+            pattern:
+              type: string
+            images:
+              $ref: '#/components/schemas/CarpetImageReadList'
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    CarpetCreate:
+      type: object
+      required: [title, category_id, price, stock, shape]
+      properties:
+        title:
+          type: string
+        category_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+          minimum: 0
+        stock:
+          type: integer
+          minimum: 0
+        shape:
+          type: string
+          enum: [RECTANGLE, SQUARE, CIRCLE, OVAL, RUNNER, CUSTOM]
+        length:
+          type: number
+          nullable: true
+        width:
+          type: number
+          nullable: true
+        diameter:
+          type: number
+          nullable: true
+        material:
+          type: string
+        pattern:
+          type: string
+        color:
+          type: string
+        is_handmade:
+          type: boolean
+          default: false
+        is_published:
+          type: boolean
+          default: false
+
+    CarpetUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        category_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+          minimum: 0
+        stock:
+          type: integer
+          minimum: 0
+        shape:
+          type: string
+          enum: [RECTANGLE, SQUARE, CIRCLE, OVAL, RUNNER, CUSTOM]
+        length:
+          type: number
+          nullable: true
+        width:
+          type: number
+          nullable: true
+        diameter:
+          type: number
+          nullable: true
+        material:
+          type: string
+        pattern:
+          type: string
+        color:
+          type: string
+        is_handmade:
+          type: boolean
+        is_published:
+          type: boolean
+
+    # ==================== Review ====================
+
+    ReviewRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user:
+          $ref: '#/components/schemas/UserFullRead'
+        carpet_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ReviewReadList:
+      type: array
+      items:
+        $ref: '#/components/schemas/ReviewRead'
+
+    ReviewCreate:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+
+    ReviewUpdate:
+      type: object
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+
+    # ==================== Cart ====================
+
+    CartItemRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        carpet:
+          $ref: '#/components/schemas/CarpetShortRead'
+        quantity:
+          type: integer
+          minimum: 1
+        subtotal:
+          type: number
+          format: float
+          description: price * quantity
+        created_at:
+          type: string
+          format: date-time
+
+    CartRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItemRead'
+        total_price:
+          type: number
+          format: float
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CartItemCreate:
+      type: object
+      required: [carpet_id, quantity]
+      properties:
+        carpet_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+
+    CartItemUpdate:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+
+    # ==================== Order ====================
+
+    OrderItemRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        carpet:
+          $ref: '#/components/schemas/CarpetShortRead'
+        quantity:
+          type: integer
+        price:
+          type: number
+          format: float
+          description: Цена на момент заказа
+
+    OrderShortRead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, PAID, SHIPPED, DELIVERED, CANCELED]
+        total_price:
+          type: number
+          format: float
+        address:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OrderFullRead:
+      allOf:
+        - $ref: '#/components/schemas/OrderShortRead'
+        - type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/UserFullRead'
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderItemRead'
+
+    OrderReadList:
+      type: array
+      items:
+        $ref: '#/components/schemas/OrderShortRead'
+
+    OrderCreate:
+      type: object
+      required: [address]
+      properties:
+        address:
+          type: string
+          example: "г. Москва, ул. Ленина 1, кв. 42"
+
+    OrderStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, PAID, SHIPPED, DELIVERED, CANCELED]
