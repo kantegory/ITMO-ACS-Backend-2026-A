@@ -1,0 +1,56 @@
+name: Deploy backend
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+          cache-dependency-path: |
+            БР1.2/Сачук Алина/labs/lab1/go.sum
+            БР1.2/Сачук Алина/labs/lab2/go.sum
+            БР1.2/Сачук Алина/labs/lab3/go.sum
+
+      - name: Test lab1
+        working-directory: "БР1.2/Сачук Алина/labs/lab1"
+        run: go test ./...
+
+      - name: Test lab2
+        working-directory: "БР1.2/Сачук Алина/labs/lab2"
+        run: go test ./...
+
+      - name: Test lab3
+        working-directory: "БР1.2/Сачук Алина/labs/lab3"
+        run: go test ./...
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - name: Deploy to Yandex Cloud VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            cd "$HOME/apps/ITMO-ACS-Backend-2026-A/БР1.2/Сачук Алина/labs/lab3"
+            git pull --ff-only origin main
+            docker compose build
+            docker compose up -d --remove-orphans
+            docker compose ps
