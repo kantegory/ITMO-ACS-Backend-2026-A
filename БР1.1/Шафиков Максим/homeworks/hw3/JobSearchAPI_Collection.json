@@ -1,0 +1,636 @@
+{
+	"info": {
+		"_postman_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+		"name": "Job Search API — Комплексный сценарий",
+		"description": "Комплексный сценарий тестирования API платформы поиска работы.\n\nЧасть 1 — Подготовка данных (работодатель): регистрация, вход, создание компании, создание двух вакансий (одна remote, одна office).\n\nЧасть 2 — Основной сценарий (соискатель): регистрация, вход, создание резюме, поиск с фильтрацией, просмотр деталей вакансии, отклик.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Генерируем уникальный run_id для изоляции тестовых данных",
+					"if (!pm.collectionVariables.get('run_id') || pm.collectionVariables.get('run_id') === '') {",
+					"    const runId = Math.random().toString(36).substring(2, 8);",
+					"    pm.collectionVariables.set('run_id', runId);",
+					"    console.log('[Collection] Новый run_id:', runId);",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{ "key": "base_url",        "value": "http://localhost:8080/v1", "type": "string" },
+		{ "key": "run_id",          "value": "",                         "type": "string" },
+		{ "key": "employer_token",  "value": "",                         "type": "string" },
+		{ "key": "candidate_token", "value": "",                         "type": "string" },
+		{ "key": "vacancy_id_1",    "value": "",                         "type": "string" },
+		{ "key": "vacancy_id_2",    "value": "",                         "type": "string" },
+		{ "key": "resume_id",       "value": "",                         "type": "string" },
+		{ "key": "found_vacancy_id","value": "",                         "type": "string" },
+		{ "key": "application_id",  "value": "",                         "type": "string" }
+	],
+	"item": [
+		{
+			"name": "Часть 1 — Подготовка данных (Работодатель)",
+			"item": [
+				{
+					"name": "1. Регистрация работодателя",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 — успешная регистрация', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Ответ содержит access_token', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('access_token');",
+									"    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+									"});",
+									"",
+									"pm.test('Ответ содержит объект user с корректными полями', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('user');",
+									"    pm.expect(json.user).to.have.property('id');",
+									"    pm.expect(json.user).to.have.property('email');",
+									"    pm.expect(json.user).to.have.property('role', 'employer');",
+									"    pm.expect(json.user).to.have.property('created_at');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"employer_{{run_id}}@test.com\",\n    \"password\": \"Password123!\",\n    \"role\": \"employer\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "register"]
+						}
+					}
+				},
+				{
+					"name": "2. Вход работодателя",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200 — успешный вход', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Ответ содержит access_token и token_type', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('access_token');",
+									"    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+									"    pm.expect(json).to.have.property('token_type');",
+									"});",
+									"",
+									"pm.test('Сохраняем токен работодателя', function () {",
+									"    const json = pm.response.json();",
+									"    pm.collectionVariables.set('employer_token', json.access_token);",
+									"    console.log('[2] employer_token сохранён');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"employer_{{run_id}}@test.com\",\n    \"password\": \"Password123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "3. Создание профиля компании",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200 — компания создана/обновлена', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Ответ содержит данные компании', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json).to.have.property('name');",
+									"    pm.expect(json.id).to.be.a('string').and.not.empty;",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{employer_token}}", "type": "string" }
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"TestCorp {{run_id}}\",\n    \"description\": \"Тестовая компания для автоматизированного сценария run_id={{run_id}}\",\n    \"location\": \"Москва\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/profiles/company",
+							"host": ["{{base_url}}"],
+							"path": ["profiles", "company"]
+						}
+					}
+				},
+				{
+					"name": "4. Создание вакансии 1 — Remote (попадёт под фильтр)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 — вакансия создана', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Ответ содержит id вакансии', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json.id).to.be.a('string').and.not.empty;",
+									"    pm.collectionVariables.set('vacancy_id_1', json.id);",
+									"    console.log('[4] vacancy_id_1:', json.id);",
+									"});",
+									"",
+									"pm.test('Вакансия имеет корректный формат remote', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('format', 'remote');",
+									"});",
+									"",
+									"pm.test('Вакансия имеет статус active', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('status', 'active');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{employer_token}}", "type": "string" }
+							]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Senior Go Developer {{run_id}}\",\n    \"description\": \"Ищем опытного Go-разработчика. run_id={{run_id}}\",\n    \"format\": \"remote\",\n    \"status\": \"active\",\n    \"experience_level\": \"one_to_three\",\n    \"salary_min\": 150000,\n    \"salary_max\": 250000,\n    \"currency_code\": \"RUB\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/vacancies",
+							"host": ["{{base_url}}"],
+							"path": ["vacancies"]
+						}
+					}
+				},
+				{
+					"name": "5. Создание вакансии 2 — Office (НЕ попадёт под фильтр)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 — вакансия создана', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Ответ содержит id вакансии', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json.id).to.be.a('string').and.not.empty;",
+									"    pm.collectionVariables.set('vacancy_id_2', json.id);",
+									"    console.log('[5] vacancy_id_2:', json.id);",
+									"});",
+									"",
+									"pm.test('Вакансия имеет формат office', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('format', 'office');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{employer_token}}", "type": "string" }
+							]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Junior PHP Developer {{run_id}}\",\n    \"description\": \"Ищем Junior PHP разработчика. run_id={{run_id}}\",\n    \"format\": \"office\",\n    \"status\": \"active\",\n    \"experience_level\": \"no_experience\",\n    \"salary_min\": 50000,\n    \"salary_max\": 80000,\n    \"currency_code\": \"RUB\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/vacancies",
+							"host": ["{{base_url}}"],
+							"path": ["vacancies"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Часть 2 — Основной сценарий (Соискатель)",
+			"item": [
+				{
+					"name": "6. Регистрация соискателя",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 — успешная регистрация', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Ответ содержит access_token', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('access_token');",
+									"    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+									"});",
+									"",
+									"pm.test('Ответ содержит user с ролью candidate', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('user');",
+									"    pm.expect(json.user).to.have.property('id');",
+									"    pm.expect(json.user).to.have.property('email');",
+									"    pm.expect(json.user).to.have.property('role', 'candidate');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"candidate_{{run_id}}@test.com\",\n    \"password\": \"Password123!\",\n    \"role\": \"candidate\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "register"]
+						}
+					}
+				},
+				{
+					"name": "7. Вход соискателя",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200 — успешный вход', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Ответ содержит access_token', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('access_token');",
+									"    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+									"});",
+									"",
+									"pm.test('Сохраняем токен соискателя', function () {",
+									"    const json = pm.response.json();",
+									"    pm.collectionVariables.set('candidate_token', json.access_token);",
+									"    console.log('[7] candidate_token сохранён');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"candidate_{{run_id}}@test.com\",\n    \"password\": \"Password123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "8. Создание резюме соискателя",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 — резюме создано', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Ответ содержит id резюме', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json.id).to.be.a('string').and.not.empty;",
+									"    pm.collectionVariables.set('resume_id', json.id);",
+									"    console.log('[8] resume_id:', json.id);",
+									"});",
+									"",
+									"pm.test('Резюме содержит обязательные поля', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('full_name');",
+									"    pm.expect(json).to.have.property('title');",
+									"    pm.expect(json).to.have.property('user_id');",
+									"    pm.expect(json).to.have.property('created_at');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{candidate_token}}", "type": "string" }
+							]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"full_name\": \"Иван Тестов {{run_id}}\",\n    \"title\": \"Go Developer\",\n    \"bio\": \"Опытный разработчик, ищу remote-работу\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/resumes",
+							"host": ["{{base_url}}"],
+							"path": ["resumes"]
+						}
+					}
+				},
+				{
+					"name": "9. Поиск вакансий с фильтром (format=remote)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Вспомогательная функция для извлечения массива вакансий из разных форматов ответа",
+									"function extractVacancies(json) {",
+									"    if (Array.isArray(json)) return json;",
+									"    for (const key of ['items', 'vacancies', 'data', 'results']) {",
+									"        if (json[key] && Array.isArray(json[key])) return json[key];",
+									"    }",
+									"    // Fallback: ищем любой массив в корне ответа",
+									"    const arrVal = Object.values(json).find(v => Array.isArray(v));",
+									"    return arrVal || [];",
+									"}",
+									"",
+									"pm.test('Status 200 — запрос успешен', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Ответ содержит массив вакансий', function () {",
+									"    const json = pm.response.json();",
+									"    const vacancies = extractVacancies(json);",
+									"    pm.expect(vacancies).to.be.an('array');",
+									"    pm.collectionVariables.set('found_vacancy_id', vacancies.length > 0 ? vacancies[0].id : '');",
+									"});",
+									"",
+									"pm.test('Найдена хотя бы одна вакансия', function () {",
+									"    const json = pm.response.json();",
+									"    const vacancies = extractVacancies(json);",
+									"    pm.expect(vacancies.length).to.be.at.least(1, 'Фильтр должен вернуть хотя бы одну вакансию');",
+									"});",
+									"",
+									"pm.test('Vacancy 1 (remote) присутствует в результатах', function () {",
+									"    const json = pm.response.json();",
+									"    const vacancies = extractVacancies(json);",
+									"    const vacancy1Id = pm.collectionVariables.get('vacancy_id_1');",
+									"    const ids = vacancies.map(v => v.id);",
+									"    pm.expect(ids).to.include(vacancy1Id, 'Вакансия remote должна быть в результатах');",
+									"    // Сохраняем id найденной вакансии для следующих шагов",
+									"    pm.collectionVariables.set('found_vacancy_id', vacancy1Id);",
+									"    console.log('[9] found_vacancy_id:', vacancy1Id);",
+									"});",
+									"",
+									"pm.test('Vacancy 2 (office) отсутствует в результатах — фильтр работает', function () {",
+									"    const json = pm.response.json();",
+									"    const vacancies = extractVacancies(json);",
+									"    const vacancy2Id = pm.collectionVariables.get('vacancy_id_2');",
+									"    const ids = vacancies.map(v => v.id);",
+									"    pm.expect(ids).to.not.include(vacancy2Id, 'Вакансия office НЕ должна быть в результатах');",
+									"});",
+									"",
+									"pm.test('Все найденные вакансии имеют format=remote', function () {",
+									"    const json = pm.response.json();",
+									"    const vacancies = extractVacancies(json);",
+									"    vacancies.forEach(function (v) {",
+									"        pm.expect(v.format).to.equal('remote', 'Все вакансии в выдаче должны быть remote');",
+									"    });",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/vacancies?format=remote&status=active&search_query={{run_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["vacancies"],
+							"query": [
+								{ "key": "format",       "value": "remote" },
+								{ "key": "status",       "value": "active" },
+								{ "key": "search_query", "value": "{{run_id}}" }
+							]
+						}
+					}
+				},
+				{
+					"name": "10. Просмотр деталей вакансии",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 200 — детали вакансии получены', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Ответ содержит обязательные поля VacancyDetail', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json).to.have.property('title');",
+									"    pm.expect(json).to.have.property('format');",
+									"    pm.expect(json).to.have.property('status');",
+									"    pm.expect(json).to.have.property('created_at');",
+									"    pm.expect(json).to.have.property('updated_at');",
+									"});",
+									"",
+									"pm.test('id вакансии совпадает с ожидаемым', function () {",
+									"    const json = pm.response.json();",
+									"    const expectedId = pm.collectionVariables.get('found_vacancy_id');",
+									"    pm.expect(json.id).to.equal(expectedId);",
+									"});",
+									"",
+									"pm.test('Вакансия содержит детальные поля', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('description');",
+									"    if (json.skills !== undefined) {",
+									"        pm.expect(json.skills).to.be.an('array')",
+									"    }",
+									"    if (json.company !== undefined) {",
+									"        pm.expect(json.company).to.have.property('id');",
+									"        pm.expect(json.company).to.have.property('name');",
+									"    }",
+									"});",
+									"",
+									"pm.test('Формат вакансии — remote', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.format).to.equal('remote');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/vacancies/{{found_vacancy_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["vacancies", "{{found_vacancy_id}}"]
+						}
+					}
+				},
+				{
+					"name": "11. Отклик на вакансию",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status 201 — отклик создан', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Ответ содержит id отклика', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
+									"    pm.expect(json.id).to.be.a('string').and.not.empty;",
+									"    pm.collectionVariables.set('application_id', json.id);",
+									"    console.log('[11] application_id:', json.id);",
+									"});",
+									"",
+									"pm.test('Отклик содержит обязательные поля', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('vacancy_id');",
+									"    pm.expect(json).to.have.property('resume_id');",
+									"    pm.expect(json).to.have.property('status');",
+									"    pm.expect(json).to.have.property('applied_at');",
+									"});",
+									"",
+									"pm.test('Статус отклика — pending', function () {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json.status).to.equal('pending');",
+									"});",
+									"",
+									"pm.test('Отклик привязан к правильной вакансии', function () {",
+									"    const json = pm.response.json();",
+									"    const expectedVacancyId = pm.collectionVariables.get('found_vacancy_id');",
+									"    pm.expect(json.vacancy_id).to.equal(expectedVacancyId);",
+									"});",
+									"",
+									"pm.test('Отклик привязан к правильному резюме', function () {",
+									"    const json = pm.response.json();",
+									"    const expectedResumeId = pm.collectionVariables.get('resume_id');",
+									"    pm.expect(json.resume_id).to.equal(expectedResumeId);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{candidate_token}}", "type": "string" }
+							]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"resume_id\": \"{{resume_id}}\",\n    \"cover_letter\": \"Добрый день! Очень хочу работать в вашей компании. Мой run_id={{run_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/vacancies/{{found_vacancy_id}}/apply",
+							"host": ["{{base_url}}"],
+							"path": ["vacancies", "{{found_vacancy_id}}", "apply"]
+						}
+					}
+				}
+			]
+		}
+	]
+}
