@@ -1,0 +1,353 @@
+name: restaurant-booking-microservices
+
+x-common-env: &common-env
+  JWT_SECRET: restaurant_booking_microservices_secret
+  SERVICE_TOKEN: internal_service_token_123
+  AUTH_SERVICE_URL: http://auth-user-service:3001
+  CATALOG_SERVICE_URL: http://catalog-service:3002
+  MENU_SERVICE_URL: http://menu-service:3003
+  MEDIA_SERVICE_URL: http://media-service:3004
+  BOOKING_SERVICE_URL: http://booking-service:3005
+  REVIEW_SERVICE_URL: http://review-service:3006
+  NOTIFICATION_SERVICE_URL: http://notification-service:3007
+  RABBITMQ_URL: amqp://rabbitmq:5672
+  RABBITMQ_EXCHANGE: restaurant.events
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks:
+    - restaurant-network
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: restaurant-booking-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - restaurant-network
+
+  auth-user-seed:
+    build:
+      context: .
+      dockerfile: services/auth-user-service/Dockerfile
+    command: ["node", "services/auth-user-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - auth_user_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  catalog-seed:
+    build:
+      context: .
+      dockerfile: services/catalog-service/Dockerfile
+    command: ["node", "services/catalog-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - catalog_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  menu-seed:
+    build:
+      context: .
+      dockerfile: services/menu-service/Dockerfile
+    command: ["node", "services/menu-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - menu_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  media-seed:
+    build:
+      context: .
+      dockerfile: services/media-service/Dockerfile
+    command: ["node", "services/media-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - media_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  booking-seed:
+    build:
+      context: .
+      dockerfile: services/booking-service/Dockerfile
+    command: ["node", "services/booking-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - booking_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  review-seed:
+    build:
+      context: .
+      dockerfile: services/review-service/Dockerfile
+    command: ["node", "services/review-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - review_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  notification-seed:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    command: ["node", "services/notification-service/src/seed.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - notification_data:/app/data
+    networks:
+      - restaurant-network
+    restart: "no"
+
+  auth-user-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/auth-user-service/Dockerfile
+    container_name: restaurant-booking-auth-user-service
+    environment:
+      <<: *common-env
+      AUTH_SERVICE_PORT: 3001
+    volumes:
+      - auth_user_data:/app/data
+    depends_on:
+      auth-user-seed:
+        condition: service_completed_successfully
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  catalog-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/catalog-service/Dockerfile
+    container_name: restaurant-booking-catalog-service
+    environment:
+      <<: *common-env
+      CATALOG_SERVICE_PORT: 3002
+    volumes:
+      - catalog_data:/app/data
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "3002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  menu-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/menu-service/Dockerfile
+    container_name: restaurant-booking-menu-service
+    environment:
+      <<: *common-env
+      MENU_SERVICE_PORT: 3003
+    volumes:
+      - menu_data:/app/data
+    depends_on:
+      menu-seed:
+        condition: service_completed_successfully
+      catalog-service:
+        condition: service_healthy
+    expose:
+      - "3003"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  media-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/media-service/Dockerfile
+    container_name: restaurant-booking-media-service
+    environment:
+      <<: *common-env
+      MEDIA_SERVICE_PORT: 3004
+    volumes:
+      - media_data:/app/data
+    depends_on:
+      media-seed:
+        condition: service_completed_successfully
+      catalog-service:
+        condition: service_healthy
+    expose:
+      - "3004"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3004/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  booking-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/booking-service/Dockerfile
+    container_name: restaurant-booking-booking-service
+    environment:
+      <<: *common-env
+      BOOKING_SERVICE_PORT: 3005
+    volumes:
+      - booking_data:/app/data
+    depends_on:
+      booking-seed:
+        condition: service_completed_successfully
+      auth-user-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "3005"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3005/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  review-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/review-service/Dockerfile
+    container_name: restaurant-booking-review-service
+    environment:
+      <<: *common-env
+      REVIEW_SERVICE_PORT: 3006
+    volumes:
+      - review_data:/app/data
+    depends_on:
+      review-seed:
+        condition: service_completed_successfully
+      auth-user-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "3006"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3006/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  notification-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: restaurant-booking-notification-service
+    environment:
+      <<: *common-env
+      NOTIFICATION_SERVICE_PORT: 3007
+    volumes:
+      - notification_data:/app/data
+    depends_on:
+      notification-seed:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "3007"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3007/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api-gateway:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: restaurant-booking-api-gateway
+    environment:
+      <<: *common-env
+      GATEWAY_PORT: 3000
+    depends_on:
+      auth-user-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      menu-service:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      review-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rabbitmq_data:
+  auth_user_data:
+  catalog_data:
+  menu_data:
+  media_data:
+  booking_data:
+  review_data:
+  notification_data:
+
+networks:
+  restaurant-network:
+    driver: bridge

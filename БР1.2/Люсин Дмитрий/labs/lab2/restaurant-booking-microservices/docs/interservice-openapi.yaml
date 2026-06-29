@@ -1,0 +1,824 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking Microservices Interservice API
+  version: 1.0.0
+  description: |
+    Internal REST API specification for communication between microservices
+    in the Restaurant Booking application. External client traffic goes through
+    the API Gateway. Services do not read databases owned by other services.
+servers:
+  - url: http://auth-service:3001/api
+    description: Auth & User Service
+  - url: http://catalog-service:3002/api
+    description: Restaurant Catalog Service
+  - url: http://menu-service:3003/api
+    description: Menu Service
+  - url: http://media-service:3004/api
+    description: Media Service
+  - url: http://booking-service:3005/api
+    description: Booking Service
+  - url: http://review-service:3006/api
+    description: Review Service
+tags:
+  - name: Auth internal
+  - name: Catalog internal
+  - name: Menu internal
+  - name: Media internal
+  - name: Booking internal
+  - name: Review internal
+security:
+  - serviceToken: []
+paths:
+  /internal/auth/token/verify:
+    post:
+      tags: [Auth internal]
+      summary: Verify JWT token for a service request
+      operationId: verifyToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenVerifyRequest'
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenVerifyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /internal/users/{userId}:
+    get:
+      tags: [Auth internal]
+      summary: Get minimal user profile by id
+      operationId: getInternalUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/users/{userId}/exists:
+    get:
+      tags: [Auth internal]
+      summary: Check whether user exists and is active
+      operationId: checkUserExists
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User existence result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exists]
+                properties:
+                  exists:
+                    type: boolean
+                  user_id:
+                    type: integer
+                    example: 10
+                  role:
+                    type: string
+                    example: user
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}:
+    get:
+      tags: [Catalog internal]
+      summary: Get restaurant data for other services
+      operationId: getInternalRestaurant
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Restaurant found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}/exists:
+    get:
+      tags: [Catalog internal]
+      summary: Check whether restaurant exists and is active
+      operationId: checkRestaurantExists
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Restaurant existence result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exists]
+                properties:
+                  exists:
+                    type: boolean
+                  restaurant_id:
+                    type: integer
+                    example: 1
+                  is_active:
+                    type: boolean
+                    example: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}/tables:
+    get:
+      tags: [Catalog internal]
+      summary: Get active tables for a restaurant
+      operationId: getInternalRestaurantTables
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Active tables
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TableInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}/tables/{tableId}:
+    get:
+      tags: [Catalog internal]
+      summary: Get table metadata for validation before booking
+      operationId: getInternalRestaurantTable
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - $ref: '#/components/parameters/TableId'
+      responses:
+        '200':
+          description: Table found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}/menu:
+    get:
+      tags: [Menu internal]
+      summary: Get menu for restaurant page aggregation
+      operationId: getInternalRestaurantMenu
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Menu grouped by categories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MenuCategoryInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}/photos:
+    get:
+      tags: [Media internal]
+      summary: Get photos for restaurant page aggregation
+      operationId: getInternalRestaurantPhotos
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Restaurant photos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PhotoInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/bookings:
+    post:
+      tags: [Booking internal]
+      summary: Create a booking after gateway validation
+      operationId: createInternalBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingInternalRequest'
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingInternal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /internal/bookings/check-availability:
+    post:
+      tags: [Booking internal]
+      summary: Check whether a table is free for the selected time interval
+      operationId: checkAvailability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityRequest'
+      responses:
+        '200':
+          description: Availability result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /internal/bookings/{bookingId}:
+    get:
+      tags: [Booking internal]
+      summary: Get booking by id for another service
+      operationId: getInternalBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingInternal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/bookings/{bookingId}/review-permission:
+    get:
+      tags: [Booking internal]
+      summary: Check whether a user may leave a review for this booking
+      operationId: checkReviewPermission
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 10
+        - name: restaurant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Review permission result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewPermission'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/bookings/{bookingId}/status:
+    patch:
+      tags: [Booking internal]
+      summary: Update booking status from admin flow or automation
+      operationId: updateInternalBookingStatus
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, confirmed, cancelled, completed]
+                  example: confirmed
+      responses:
+        '200':
+          description: Booking status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingInternal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /internal/reviews:
+    post:
+      tags: [Review internal]
+      summary: Create a review after booking validation
+      operationId: createInternalReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewInternalRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewInternal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /internal/restaurants/{restaurantId}/reviews:
+    get:
+      tags: [Review internal]
+      summary: Get reviews for restaurant page aggregation
+      operationId: getInternalRestaurantReviews
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Reviews page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReviewInternal'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /internal/restaurants/{restaurantId}/reviews/summary:
+    get:
+      tags: [Review internal]
+      summary: Get rating summary for catalog card or restaurant page
+      operationId: getInternalReviewSummary
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Review summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Service JWT
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+      example: 10
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema:
+        type: integer
+      example: 1
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema:
+        type: integer
+      example: 5
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: integer
+      example: 100
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+  responses:
+    BadRequest:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Token is absent or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Service or user has no permission for the operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Operation conflicts with current resource state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [statusCode, error, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 409
+        error:
+          type: string
+          example: Conflict
+        message:
+          type: string
+          example: Table is already booked for the selected time interval
+        details:
+          type: object
+          additionalProperties: true
+    TokenVerifyRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6...
+    TokenVerifyResponse:
+      type: object
+      required: [valid, user]
+      properties:
+        valid:
+          type: boolean
+          example: true
+        user:
+          $ref: '#/components/schemas/UserInternal'
+    UserInternal:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id:
+          type: integer
+          example: 10
+        name:
+          type: string
+          example: Ivan Petrov
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        phone:
+          type: string
+          example: '+79990000002'
+        role:
+          type: string
+          enum: [user, admin]
+          example: user
+        is_active:
+          type: boolean
+          example: true
+    RestaurantInternal:
+      type: object
+      required: [id, name, address, city, average_check, price_category]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Trattoria Bella
+        description:
+          type: string
+          example: Italian restaurant with pasta and pizza
+        address:
+          type: string
+          example: Central street, 10
+        city:
+          type: string
+          example: Moscow
+        district:
+          type: string
+          example: Center
+        average_check:
+          type: number
+          example: 1800
+        price_category:
+          type: string
+          enum: [low, medium, high]
+          example: medium
+        is_active:
+          type: boolean
+          example: true
+    TableInternal:
+      type: object
+      required: [id, restaurant_id, table_number, seats_count, is_active]
+      properties:
+        id:
+          type: integer
+          example: 5
+        restaurant_id:
+          type: integer
+          example: 1
+        table_number:
+          type: string
+          example: T-05
+        seats_count:
+          type: integer
+          example: 4
+        is_active:
+          type: boolean
+          example: true
+    MenuCategoryInternal:
+      type: object
+      required: [id, restaurant_id, name, items]
+      properties:
+        id:
+          type: integer
+          example: 1
+        restaurant_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Main dishes
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItemInternal'
+    MenuItemInternal:
+      type: object
+      required: [id, menu_category_id, name, price, is_available]
+      properties:
+        id:
+          type: integer
+          example: 1
+        menu_category_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Pasta Carbonara
+        description:
+          type: string
+          example: Pasta with bacon and parmesan
+        price:
+          type: number
+          example: 650
+        is_available:
+          type: boolean
+          example: true
+    PhotoInternal:
+      type: object
+      required: [id, restaurant_id, photo_url, is_main]
+      properties:
+        id:
+          type: integer
+          example: 1
+        restaurant_id:
+          type: integer
+          example: 1
+        photo_url:
+          type: string
+          example: https://example.com/photos/restaurant-1.jpg
+        is_main:
+          type: boolean
+          example: true
+    CreateBookingInternalRequest:
+      type: object
+      required: [user_id, restaurant_id, table_id, guests_count, booking_start, booking_end]
+      properties:
+        user_id:
+          type: integer
+          example: 10
+        restaurant_id:
+          type: integer
+          example: 1
+        table_id:
+          type: integer
+          example: 5
+        guests_count:
+          type: integer
+          minimum: 1
+          example: 4
+        booking_start:
+          type: string
+          format: date-time
+          example: '2026-06-12T18:00:00.000Z'
+        booking_end:
+          type: string
+          format: date-time
+          example: '2026-06-12T20:00:00.000Z'
+    AvailabilityRequest:
+      type: object
+      required: [restaurant_id, table_id, booking_start, booking_end]
+      properties:
+        restaurant_id:
+          type: integer
+          example: 1
+        table_id:
+          type: integer
+          example: 5
+        booking_start:
+          type: string
+          format: date-time
+          example: '2026-06-12T18:00:00.000Z'
+        booking_end:
+          type: string
+          format: date-time
+          example: '2026-06-12T20:00:00.000Z'
+    AvailabilityResponse:
+      type: object
+      required: [available]
+      properties:
+        available:
+          type: boolean
+          example: true
+        reason:
+          type: string
+          nullable: true
+          example: null
+    BookingInternal:
+      type: object
+      required: [id, user_id, restaurant_id, table_id, guests_count, booking_start, booking_end, status]
+      properties:
+        id:
+          type: integer
+          example: 100
+        user_id:
+          type: integer
+          example: 10
+        restaurant_id:
+          type: integer
+          example: 1
+        table_id:
+          type: integer
+          example: 5
+        guests_count:
+          type: integer
+          example: 4
+        booking_start:
+          type: string
+          format: date-time
+          example: '2026-06-12T18:00:00.000Z'
+        booking_end:
+          type: string
+          format: date-time
+          example: '2026-06-12T20:00:00.000Z'
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+          example: pending
+    ReviewPermission:
+      type: object
+      required: [allowed]
+      properties:
+        allowed:
+          type: boolean
+          example: true
+        reason:
+          type: string
+          nullable: true
+          example: null
+    CreateReviewInternalRequest:
+      type: object
+      required: [user_id, restaurant_id, booking_id, rating, comment]
+      properties:
+        user_id:
+          type: integer
+          example: 10
+        restaurant_id:
+          type: integer
+          example: 1
+        booking_id:
+          type: integer
+          example: 100
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: Great service and food
+    ReviewInternal:
+      type: object
+      required: [id, user_id, restaurant_id, booking_id, rating, comment, created_at]
+      properties:
+        id:
+          type: integer
+          example: 25
+        user_id:
+          type: integer
+          example: 10
+        restaurant_id:
+          type: integer
+          example: 1
+        booking_id:
+          type: integer
+          example: 100
+        rating:
+          type: integer
+          example: 5
+        comment:
+          type: string
+          example: Great service and food
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-06-12T21:00:00.000Z'
+    ReviewSummary:
+      type: object
+      required: [restaurant_id, rating_avg, reviews_count]
+      properties:
+        restaurant_id:
+          type: integer
+          example: 1
+        rating_avg:
+          type: number
+          format: float
+          example: 4.6
+        reviews_count:
+          type: integer
+          example: 128
+    PaginationMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 128
