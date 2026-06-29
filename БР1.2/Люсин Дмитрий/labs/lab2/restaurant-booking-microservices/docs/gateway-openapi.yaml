@@ -1,0 +1,556 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking API Gateway
+  version: 1.0.0
+  description: External REST API exposed by API Gateway for the microservice version of the restaurant booking application.
+servers:
+  - url: http://localhost:3000/api
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Users
+  - name: Restaurants
+  - name: Cuisines
+  - name: Menu
+  - name: Media
+  - name: Bookings
+  - name: Reviews
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: User logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /users/profile:
+    get:
+      tags: [Users]
+      summary: Get profile
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+    patch:
+      tags: [Users]
+      summary: Update profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+  /cuisines:
+    get:
+      tags: [Cuisines]
+      security: []
+      summary: Get cuisines
+      responses:
+        '200':
+          description: Cuisines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Cuisine' }
+    post:
+      tags: [Cuisines]
+      summary: Create cuisine, admin only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: Французская }
+      responses:
+        '201':
+          description: Created
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /restaurants:
+    get:
+      tags: [Restaurants]
+      security: []
+      summary: Search restaurants
+      parameters:
+        - in: query
+          name: cuisine_id
+          schema: { type: integer }
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: district
+          schema: { type: string }
+        - in: query
+          name: price_category
+          schema: { type: string, enum: [low, medium, high] }
+        - in: query
+          name: min_average_check
+          schema: { type: number }
+        - in: query
+          name: max_average_check
+          schema: { type: number }
+      responses:
+        '200':
+          description: Restaurants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Restaurant' }
+    post:
+      tags: [Restaurants]
+      summary: Create restaurant, admin only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantCreateRequest' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /restaurants/{restaurantId}:
+    get:
+      tags: [Restaurants]
+      security: []
+      summary: Get restaurant by id
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Restaurant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restaurant: { $ref: '#/components/schemas/Restaurant' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /restaurants/{restaurantId}/menu:
+    get:
+      tags: [Menu]
+      security: []
+      summary: Get restaurant menu
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Menu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MenuCategory' }
+  /restaurants/{restaurantId}/photos:
+    get:
+      tags: [Media]
+      security: []
+      summary: Get restaurant photos
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Photos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Photo' }
+  /restaurants/{restaurantId}/tables:
+    get:
+      tags: [Restaurants]
+      security: []
+      summary: Get restaurant tables
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Tables
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Table' }
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Create booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingCreateRequest' }
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  booking: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /bookings/my:
+    get:
+      tags: [Bookings]
+      summary: Get current user's bookings
+      responses:
+        '200':
+          description: My bookings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Booking' }
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Get booking by id
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  booking: { $ref: '#/components/schemas/Booking' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /bookings/{bookingId}/cancel:
+    patch:
+      tags: [Bookings]
+      summary: Cancel booking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Cancelled
+        '409': { $ref: '#/components/responses/Conflict' }
+  /restaurants/{restaurantId}/reviews:
+    get:
+      tags: [Reviews]
+      security: []
+      summary: Get restaurant reviews
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Review' }
+    post:
+      tags: [Reviews]
+      summary: Create review
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewCreateRequest' }
+      responses:
+        '201':
+          description: Review created
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reviews/{reviewId}:
+    patch:
+      tags: [Reviews]
+      summary: Update review
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Reviews]
+      summary: Delete review
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      responses:
+        '204': { description: Deleted }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    RestaurantId:
+      in: path
+      name: restaurantId
+      required: true
+      schema: { type: integer }
+    BookingId:
+      in: path
+      name: bookingId
+      required: true
+      schema: { type: integer }
+    ReviewId:
+      in: path
+      name: reviewId
+      required: true
+      schema: { type: integer }
+  responses:
+    BadRequest:
+      description: Invalid request data
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer, example: 400 }
+        error: { type: string, example: Request Error }
+        message: { type: string, example: Некорректные данные }
+        details: { nullable: true }
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string, example: Test User }
+        email: { type: string, example: test@example.com }
+        password: { type: string, example: User12345 }
+        phone: { type: string, example: '+79990000003' }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, example: user@example.com }
+        password: { type: string, example: User12345 }
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        role: { type: string }
+        is_active: { type: boolean }
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        phone: { type: string }
+    Cuisine:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+    Restaurant:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        city: { type: string }
+        district: { type: string }
+        average_check: { type: number }
+        price_category: { type: string }
+        cuisines:
+          type: array
+          items: { $ref: '#/components/schemas/Cuisine' }
+    RestaurantCreateRequest:
+      type: object
+      required: [name, description, address, city, average_check, price_category]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        city: { type: string }
+        district: { type: string }
+        average_check: { type: number }
+        price_category: { type: string }
+        cuisine_ids:
+          type: array
+          items: { type: integer }
+    Table:
+      type: object
+      properties:
+        id: { type: integer }
+        restaurant_id: { type: integer }
+        table_number: { type: string }
+        seats_count: { type: integer }
+        is_active: { type: boolean }
+    MenuCategory:
+      type: object
+      properties:
+        id: { type: integer }
+        restaurant_id: { type: integer }
+        name: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MenuItem' }
+    MenuItem:
+      type: object
+      properties:
+        id: { type: integer }
+        menu_category_id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        is_available: { type: boolean }
+    Photo:
+      type: object
+      properties:
+        id: { type: integer }
+        restaurant_id: { type: integer }
+        photo_url: { type: string }
+        is_main: { type: boolean }
+    BookingCreateRequest:
+      type: object
+      required: [restaurant_id, table_id, guests_count, booking_start, booking_end]
+      properties:
+        restaurant_id: { type: integer, example: 1 }
+        table_id: { type: integer, example: 2 }
+        guests_count: { type: integer, example: 4 }
+        booking_start: { type: string, format: date-time, example: '2026-06-25T18:00:00.000Z' }
+        booking_end: { type: string, format: date-time, example: '2026-06-25T20:00:00.000Z' }
+    Booking:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        restaurant_id: { type: integer }
+        table_id: { type: integer }
+        guests_count: { type: integer }
+        booking_start: { type: string, format: date-time }
+        booking_end: { type: string, format: date-time }
+        status: { type: string }
+    ReviewCreateRequest:
+      type: object
+      required: [booking_id, rating]
+      properties:
+        booking_id: { type: integer, example: 1 }
+        rating: { type: integer, example: 5 }
+        comment: { type: string, example: Отличный ресторан }
+    Review:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        restaurant_id: { type: integer }
+        booking_id: { type: integer }
+        rating: { type: integer }
+        comment: { type: string }
