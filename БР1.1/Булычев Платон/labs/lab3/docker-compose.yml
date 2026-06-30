@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  node-editor:
+    build:
+      context: .
+      dockerfile: Dockerfile.node-editor
+    ports:
+      - "3001:3001"
+    environment:
+      SUPABASE_URL: http://db:5432
+      IMAGE_TO_VIDEO_API_URL: http://image-to-video:3002
+      RUN_QUEUE_URL: http://queue:9324/queue/NodeEditorRunQueue
+      NODE_EDITOR_CALLBACK_QUEUE_URL: http://queue:9324/queue/NodeEditorCallbackQueue
+      CREDITS_SQS_URL: http://queue:9324/queue/creditsQueue
+    depends_on:
+      - db
+      - queue
+    networks:
+      - bigmotion
+
+  image-to-video:
+    build:
+      context: .
+      dockerfile: Dockerfile.image-to-video
+    ports:
+      - "3002:3002"
+    environment:
+      SUPABASE_URL: http://db:5432
+      NODE_EDITOR_CALLBACK_QUEUE_URL: http://queue:9324/queue/NodeEditorCallbackQueue
+      CREDITS_SQS_URL: http://queue:9324/queue/creditsQueue
+    depends_on:
+      - db
+      - queue
+    networks:
+      - bigmotion
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bigmotion
+      POSTGRES_PASSWORD: bigmotion
+      POSTGRES_DB: bigmotion
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - bigmotion
+
+  queue:
+    image: softwaremill/elasticmq-native:latest
+    ports:
+      - "9324:9324"
+    networks:
+      - bigmotion
+
+networks:
+  bigmotion:
+    driver: bridge
+
+volumes:
+  db-data:
