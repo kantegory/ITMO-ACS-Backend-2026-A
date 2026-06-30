@@ -1,0 +1,219 @@
+org: bigmotion
+app: big-motion
+service: node-editor
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  domain: node-editor.${sls:stage}.bigmotion.ai
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - sqs:*
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::${env:S3_BUCKET_NAME}/compositor/*"
+        - "arn:aws:s3:::${env:S3_BUCKET_NAME}/node-editor/*"
+    - Effect: Allow
+      Action:
+        - lambda:*
+      Resource: arn:aws:lambda:${aws:region}:${aws:accountId}:function:${env:REMOTION_FUNCTION_NAME, '*'}
+  environment:
+    SUPABASE_URL: ${env:SUPABASE_URL}
+    SUPABASE_SERVICE_ROLE_KEY: ${env:SUPABASE_SERVICE_ROLE_KEY}
+    SUPABASE_JWT_SECRET: ${env:SUPABASE_JWT_SECRET}
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY}
+    KIE_API_KEY: ${env:KIE_API_KEY}
+    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME}
+    S3_BUCKET_PUBLIC_URL: ${env:S3_BUCKET_PUBLIC_URL}
+    REMOTION_SERVE_URL: ${env:REMOTION_SERVE_URL, ''}
+    REMOTION_FUNCTION_NAME: ${env:REMOTION_FUNCTION_NAME, ''}
+    TEXT_TO_IMAGE_API_URL: https://text-to-image.${sls:stage}.bigmotion.ai
+    IMAGE_TO_VIDEO_API_URL: https://image-to-video.${sls:stage}.bigmotion.ai
+    RUN_QUEUE_URL:
+      Ref: NodeEditorRunQueue
+    NODE_EDITOR_CALLBACK_QUEUE_URL:
+      Ref: NodeEditorCallbackQueue
+    COMPOSITOR_SQS_URL:
+      Ref: CompositorQueue
+    CREDITS_SQS_URL: ${cf:credits-service-${sls:stage}.creditsQueueUrl}
+    REPLICATE_API_KEY: ${env:REPLICATE_API_KEY}
+    REPLICATE_WEBHOOK_URL:
+      Fn::Join:
+        - ""
+        - - "https://"
+          - Ref: ApiGatewayRestApi
+          - ".execute-api.${aws:region}.amazonaws.com/${sls:stage}/replicate/webhook"
+    KIE_WEBHOOK_URL:
+      Fn::Join:
+        - ""
+        - - "https://"
+          - Ref: ApiGatewayRestApi
+          - ".execute-api.${aws:region}.amazonaws.com/${sls:stage}/kie/webhook"
+
+useDotenv: true
+
+build:
+  esbuild:
+    bundle: true
+    external:
+      - "@ffmpeg-installer/ffmpeg"
+      - "@ffmpeg-installer/linux-x64"
+    minify: true
+    sourcemap: false
+    target: node20
+    platform: node
+
+package:
+  individually: true
+  exclude:
+    - .serverless/**
+    - node_modules/**
+  excludeDevDependencies: false
+
+# Self-published ffmpeg layer (static build with `scdet`). The `before:package` scriptHook (see
+# custom.scriptHooks) downloads ffmpeg into layers/ffmpeg/bin before packaging; serverless then
+# publishes it and wires its ARN into advanceRun via `{ Ref: FfmpegScdetLambdaLayer }`.
+layers:
+  ffmpegScdet:
+    path: layers/ffmpeg
+    name: ${self:service}-ffmpeg-scdet-${sls:stage}
+    description: Static ffmpeg (>=4.2, scdet) for node-editor scene detection
+    compatibleRuntimes:
+      - nodejs20.x
+
+functions:
+  startRun:
+    handler: src/handlers/run/handler.startRun
+    timeout: 29
+    events:
+      - http:
+          path: /workflows/run
+          method: post
+          cors: true
+
+  startNodesRun:
+    handler: src/handlers/run/handler.startNodesRun
+    timeout: 29
+    events:
+      - http:
+          path: /workflows/run-nodes
+          method: post
+          cors: true
+
+  cancelRun:
+    handler: src/handlers/run/handler.cancelRun
+    timeout: 29
+    events:
+      - http:
+          path: /workflows/cancel
+          method: post
+          cors: true
+
+  cancelNodeRun:
+    handler: src/handlers/run/handler.cancelNodeRun
+    timeout: 29
+    events:
+      - http:
+          path: /workflows/cancel-node
+          method: post
+          cors: true
+
+  advanceRun:
+    handler: src/handlers/run/handler.advanceRun
+    timeout: 900
+    memorySize: 3008
+    ephemeralStorageSize: 4096
+    layers:
+      - { Ref: FfmpegScdetLambdaLayer }
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [ NodeEditorRunQueue, Arn ]
+          batchSize: 1
+
+  processCallback:
+    handler: src/handlers/run/handler.processCallback
+    timeout: 30
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [ NodeEditorCallbackQueue, Arn ]
+          batchSize: 1
+
+  replicateWebhook:
+    handler: src/handlers/run/handler.replicateWebhook
+    timeout: 30
+    events:
+      - http:
+          path: /replicate/webhook
+          method: post
+          cors: true
+
+  kieWebhook:
+    handler: src/handlers/run/handler.kieWebhook
+    timeout: 30
+    events:
+      - http:
+          path: /kie/webhook
+          method: post
+          cors: true
+
+  runComposition:
+    handler: src/handlers/composition/handler.runComposition
+    timeout: 900
+    memorySize: 3008
+    ephemeralStorageSize: 4096
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [ CompositorQueue, Arn ]
+          batchSize: 1
+
+resources:
+  Resources:
+    NodeEditorRunQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: NodeEditorRunQueue-${sls:stage}
+        VisibilityTimeout: 1000
+    NodeEditorCallbackQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: NodeEditorCallbackQueue-${sls:stage}
+        VisibilityTimeout: 60
+    CompositorQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: CompositorQueue-${sls:stage}
+        VisibilityTimeout: 1000
+
+  Outputs:
+    nodeEditorCallbackQueueUrl:
+      Value:
+        Ref: NodeEditorCallbackQueue
+      Export:
+        Name: node-editor-${sls:stage}-nodeEditorCallbackQueueUrl
+    nodeEditorRunQueueUrl:
+      Value:
+        Ref: NodeEditorRunQueue
+      Export:
+        Name: node-editor-${sls:stage}-nodeEditorRunQueueUrl
+
+plugins:
+  - serverless-iam-roles-per-function
+  - serverless-scriptable-plugin
+
+custom:
+  scriptHooks:
+    before:package:createDeploymentArtifacts: >
+      mkdir -p layers/ffmpeg/bin;
+      [ -x layers/ffmpeg/bin/ffmpeg ] ||
+      (curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o /tmp/ffmpeg-scdet.tar.xz
+      && tar -xJf /tmp/ffmpeg-scdet.tar.xz -C /tmp
+      && cp /tmp/ffmpeg-*-linux64-gpl/bin/ffmpeg layers/ffmpeg/bin/ffmpeg
+      && chmod +x layers/ffmpeg/bin/ffmpeg)
