@@ -1,0 +1,86 @@
+name: Deploy Node Editor to Serverless AWS
+
+on:
+  workflow_call:
+    inputs:
+      DEPLOY_ENV:
+        required: true
+        type: string
+    outputs:
+      api_endpoint:
+        value: ${{ jobs.deploy-node-editor.outputs.api_endpoint }}
+
+jobs:
+  deploy-node-editor:
+    name: Deploy Node Editor
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.DEPLOY_ENV }}
+      url: ${{ steps.deploy.outputs.api_endpoint }}
+    outputs:
+      api_endpoint: ${{ steps.deploy.outputs.api_endpoint }}
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: 🐧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: "pnpm"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.SLS_REGION }}
+
+      - name: 🔍 Installation
+        run: pnpm install
+
+      - name: 🗃️ Cache @bigmotion/* dist
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/*/dist
+          key: ${{ runner.os }}-pkgs-dist-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pkgs-dist-
+
+      - name: 🔧 Build
+        run: pnpm packages -r build
+
+      - name: 🗃️ Cache node-editor build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/node-editor/.serverless/build
+            apps/node-editor/.serverless/cache
+          key: ${{ runner.os }}-node-editor-build-${{ hashFiles('apps/node-editor/src/**', 'apps/node-editor/serverless.yml', 'apps/node-editor/package.json', 'packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-editor-build-
+
+      - name: 🚀 Deploy
+        id: deploy
+        working-directory: ./apps/node-editor
+        run: |
+          pnpm serverless deploy --verbose --stage ${{ vars.SLS_STAGE }} --region ${{ vars.SLS_REGION }}
+          echo "api_endpoint=$(pnpm serverless info --stage ${{ vars.SLS_STAGE }} --region ${{ vars.SLS_REGION }} --verbose 2>&1 | grep 'ServiceEndpoint' | awk -F': ' '{print $2}')" >> $GITHUB_OUTPUT
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          DEPLOY_ENV: ${{ inputs.DEPLOY_ENV }}
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          REPLICATE_API_KEY: ${{ secrets.REPLICATE_API_KEY }}
+          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+          S3_BUCKET_PUBLIC_URL: ${{ vars.S3_BUCKET_PUBLIC_URL }}
+          KIE_API_KEY: ${{ secrets.KIE_API_KEY }}
+          REMOTION_SERVE_URL: ${{ vars.REMOTION_SERVE_URL }}
+          REMOTION_FUNCTION_NAME: ${{ vars.REMOTION_FUNCTION_NAME }}

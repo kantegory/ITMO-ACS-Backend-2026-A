@@ -1,0 +1,113 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Межсервисное API (node-editor, image-to-video, bigmotion)",
+    "description": "Эндпоинты для взаимодействия между сервисами. Их вызывает не пользователь, а другой сервис с системным токеном в заголовке X-Jwt-Token. Пользовательские эндпоинты сюда не входят. Эндпоинт /image-to-video/generate существует в проекте сейчас, эндпоинты ядра bigmotion спроектированы под разделение базы.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://image-to-video.${stage}.bigmotion.ai", "description": "Сервис image-to-video" },
+    { "url": "https://bigmotion.${stage}.bigmotion.ai", "description": "Ядро bigmotion" }
+  ],
+  "tags": [
+    { "name": "generation", "description": "Генерация видео, сервис image-to-video" },
+    { "name": "credits", "description": "Кредиты, ядро bigmotion" },
+    { "name": "subscriptions", "description": "Подписки, ядро bigmotion" }
+  ],
+  "paths": {
+    "/image-to-video/generate": {
+      "post": {
+        "tags": ["generation"],
+        "summary": "Системный запуск генерации видео",
+        "description": "Вызывает node-editor для узла генерации. Сервис сразу отвечает идентификатором, сама генерация идёт в фоне через Step Functions. По готовности результат уходит в очередь node-editor (метка задачи возвращается без изменений).",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Генерация принята", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateResponse" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "Недостаточно кредитов", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/internal/wallet/{userId}": {
+      "parameters": [ { "name": "userId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+      "get": {
+        "tags": ["credits"],
+        "summary": "Баланс кошелька пользователя",
+        "description": "Ядро bigmotion. После разделения базы node-editor и image-to-video спрашивают баланс здесь, вместо прямого чтения таблицы кошелька.",
+        "responses": {
+          "200": { "description": "Баланс", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Wallet" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/internal/subscriptions/{userId}": {
+      "parameters": [ { "name": "userId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+      "get": {
+        "tags": ["subscriptions"],
+        "summary": "Статус подписки пользователя",
+        "description": "Ядро bigmotion. image-to-video спрашивает статус, чтобы понять, нужен ли водяной знак (он ставится, если подписка не активна).",
+        "responses": {
+          "200": { "description": "Статус подписки", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SubscriptionStatus" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "systemToken": { "type": "apiKey", "in": "header", "name": "X-Jwt-Token", "description": "Системный токен сервиса (SUPABASE_JWT_SECRET)" }
+    },
+    "responses": {
+      "ValidationError": { "description": "Ошибка валидации", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Неверный системный токен", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Ресурс не найден", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" }, "detail": { "type": "string" } },
+        "required": ["error"]
+      },
+      "GenerateRequest": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "providerBody": { "type": "object", "additionalProperties": true, "description": "Параметры генерации под выбранную модель (model, prompt, image и т.д.)" },
+          "externalTaskToken": { "type": "string", "description": "Метка задачи для колбэка, формат node-editor:runId:nodeId:uuid" },
+          "externalCallbackType": { "type": "string", "enum": ["sqs", "sfn"], "default": "sqs", "description": "Куда вернуть результат: очередь node-editor (sqs) или Step Functions (sfn)" },
+          "source": { "type": "string", "nullable": true }
+        },
+        "required": ["userId", "providerBody"]
+      },
+      "GenerateResponse": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "format": "uuid", "description": "Идентификатор записи генерации" } },
+        "required": ["id"]
+      },
+      "Wallet": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "total": { "type": "integer", "example": 120, "description": "Доступный баланс кредитов" }
+        },
+        "required": ["userId", "total"]
+      },
+      "SubscriptionStatus": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "active": { "type": "boolean" },
+          "plan": { "type": "string", "nullable": true, "example": "pro" }
+        },
+        "required": ["userId", "active"]
+      }
+    }
+  },
+  "security": [ { "systemToken": [] } ]
+}
