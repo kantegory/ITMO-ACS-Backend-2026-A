@@ -1,0 +1,468 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Node Editor API",
+    "description": "API визуального редактора рабочих процессов для генерации видео. Пользователь собирает граф из узлов, сохраняет версии графа, запускает выполнение и следит за статусом каждого узла.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://node-editor.example.com/api", "description": "Основной сервер" },
+    { "url": "http://localhost:3000/api", "description": "Локальный запуск" }
+  ],
+  "tags": [
+    { "name": "auth", "description": "Регистрация, вход, текущий пользователь" },
+    { "name": "workflows", "description": "Рабочие процессы пользователя" },
+    { "name": "states", "description": "Версии графа рабочего процесса" },
+    { "name": "runs", "description": "Запуски рабочего процесса и их узлы" }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Регистрация пользователя",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Пользователь создан", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "409": { "description": "Почта уже занята", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Вход пользователя",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Успешный вход", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "description": "Неверная почта или пароль", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Данные текущего пользователя",
+        "responses": {
+          "200": { "description": "Текущий пользователь", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/workflows": {
+      "get": {
+        "tags": ["workflows"],
+        "summary": "Список рабочих процессов",
+        "parameters": [
+          { "name": "search", "in": "query", "description": "Поиск по названию", "schema": { "type": "string" } },
+          { "name": "archived", "in": "query", "description": "Показывать архивные", "schema": { "type": "boolean", "default": false } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Список процессов", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowList" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["workflows"],
+        "summary": "Создать рабочий процесс",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateWorkflowRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Процесс создан", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/workflows/{workflowId}": {
+      "parameters": [ { "$ref": "#/components/parameters/WorkflowId" } ],
+      "get": {
+        "tags": ["workflows"],
+        "summary": "Получить рабочий процесс",
+        "responses": {
+          "200": { "description": "Рабочий процесс", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["workflows"],
+        "summary": "Изменить или заархивировать процесс",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateWorkflowRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Обновлённый процесс", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["workflows"],
+        "summary": "Удалить рабочий процесс",
+        "responses": {
+          "204": { "description": "Удалено" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workflows/{workflowId}/states": {
+      "parameters": [ { "$ref": "#/components/parameters/WorkflowId" } ],
+      "get": {
+        "tags": ["states"],
+        "summary": "История версий графа",
+        "responses": {
+          "200": { "description": "Список версий", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/WorkflowStateShort" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["states"],
+        "summary": "Сохранить новую версию графа",
+        "description": "Создаёт новую версию графа и делает её текущей для процесса. Граф проверяется на корректность (тип узлов, совпадение портов, отсутствие циклов).",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateStateRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Версия сохранена", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowState" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "description": "Граф не прошёл проверку", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/workflows/{workflowId}/states/{stateId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/WorkflowId" },
+        { "$ref": "#/components/parameters/StateId" }
+      ],
+      "get": {
+        "tags": ["states"],
+        "summary": "Получить версию графа",
+        "responses": {
+          "200": { "description": "Версия графа", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowState" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workflows/{workflowId}/runs": {
+      "parameters": [ { "$ref": "#/components/parameters/WorkflowId" } ],
+      "get": {
+        "tags": ["runs"],
+        "summary": "Список запусков процесса",
+        "responses": {
+          "200": { "description": "Список запусков", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/WorkflowRun" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["runs"],
+        "summary": "Запустить процесс",
+        "description": "Запускает текущую версию графа. Если передан список nodeIds, запускаются только эти узлы. API сразу возвращает идентификатор запуска, само выполнение идёт в фоне.",
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StartRunRequest" } } }
+        },
+        "responses": {
+          "202": { "description": "Запуск принят", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StartRunResponse" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "description": "Граф пуст или не прошёл проверку", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/runs/{runId}": {
+      "parameters": [ { "$ref": "#/components/parameters/RunId" } ],
+      "get": {
+        "tags": ["runs"],
+        "summary": "Статус запуска и его узлов",
+        "responses": {
+          "200": { "description": "Запуск со списком узлов", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunDetail" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/runs/{runId}/cancel": {
+      "parameters": [ { "$ref": "#/components/parameters/RunId" } ],
+      "post": {
+        "tags": ["runs"],
+        "summary": "Отменить запуск",
+        "responses": {
+          "200": { "description": "Запуск отменён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Запуск уже завершён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/runs/{runId}/nodes/{nodeId}/cancel": {
+      "parameters": [
+        { "$ref": "#/components/parameters/RunId" },
+        { "name": "nodeId", "in": "path", "required": true, "description": "Идентификатор узла в графе", "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["runs"],
+        "summary": "Отменить отдельный узел запуска",
+        "description": "Отменяет узел и все узлы, которые от него зависят. Параллельные ветки продолжают выполняться.",
+        "responses": {
+          "200": { "description": "Узел отменён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Узел уже завершён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "parameters": {
+      "WorkflowId": { "name": "workflowId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "StateId": { "name": "stateId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "RunId": { "name": "runId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "responses": {
+      "ValidationError": { "description": "Ошибка валидации входных данных", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Нужна авторизация", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Forbidden": { "description": "Доступ к чужому ресурсу запрещён", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Ресурс не найден", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "Workflow not found" },
+          "detail": { "type": "string", "example": "Нет процесса с таким id" }
+        },
+        "required": ["error"]
+      },
+      "OkResponse": {
+        "type": "object",
+        "properties": { "ok": { "type": "boolean", "example": true } },
+        "required": ["ok"]
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8 },
+          "name": { "type": "string" }
+        },
+        "required": ["email", "password", "name"]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": ["email", "password"]
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "JWT токен" },
+          "user": { "$ref": "#/components/schemas/User" }
+        },
+        "required": ["token", "user"]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "name": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "email", "name", "createdAt"]
+      },
+      "CreateWorkflowRequest": {
+        "type": "object",
+        "properties": { "name": { "type": "string", "example": "Реклама для Instagram" } },
+        "required": ["name"]
+      },
+      "UpdateWorkflowRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "archived": { "type": "boolean" }
+        }
+      },
+      "Workflow": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "currentStateId": { "type": "string", "format": "uuid", "nullable": true },
+          "archivedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "name", "createdAt", "updatedAt"]
+      },
+      "WorkflowList": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Workflow" } },
+          "total": { "type": "integer", "example": 42 }
+        },
+        "required": ["items", "total"]
+      },
+      "GraphNode": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "type": { "type": "string", "example": "image-to-video" },
+          "position": {
+            "type": "object",
+            "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+          },
+          "parameters": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["id", "type", "position", "parameters"]
+      },
+      "GraphEdge": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "source": { "type": "string", "format": "uuid" },
+          "sourcePort": { "type": "string" },
+          "target": { "type": "string", "format": "uuid" },
+          "targetPort": { "type": "string" }
+        },
+        "required": ["id", "source", "sourcePort", "target", "targetPort"]
+      },
+      "Graph": {
+        "type": "object",
+        "description": "Граф процесса: узлы и связи между ними",
+        "properties": {
+          "nodes": { "type": "array", "items": { "$ref": "#/components/schemas/GraphNode" } },
+          "edges": { "type": "array", "items": { "$ref": "#/components/schemas/GraphEdge" } }
+        },
+        "required": ["nodes", "edges"]
+      },
+      "CreateStateRequest": {
+        "type": "object",
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/Graph" },
+          "parentStateId": { "type": "string", "format": "uuid", "nullable": true }
+        },
+        "required": ["graph"]
+      },
+      "WorkflowStateShort": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "parentStateId": { "type": "string", "format": "uuid", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "createdAt"]
+      },
+      "WorkflowState": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "workflowId": { "type": "string", "format": "uuid" },
+          "graph": { "$ref": "#/components/schemas/Graph" },
+          "parentStateId": { "type": "string", "format": "uuid", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "workflowId", "graph", "createdAt"]
+      },
+      "StartRunRequest": {
+        "type": "object",
+        "properties": {
+          "nodeIds": {
+            "type": "array",
+            "description": "Если задано, запускаются только эти узлы. Если не задано, запускается весь граф.",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        }
+      },
+      "StartRunResponse": {
+        "type": "object",
+        "properties": {
+          "runId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["queued"] }
+        },
+        "required": ["runId", "status"]
+      },
+      "WorkflowRun": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "workflowId": { "type": "string", "format": "uuid" },
+          "stateId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["queued", "running", "done", "failed", "partial"] },
+          "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "finishedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "error": { "type": "string", "nullable": true }
+        },
+        "required": ["id", "workflowId", "stateId", "status"]
+      },
+      "NodeRun": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "nodeId": { "type": "string" },
+          "nodeType": { "type": "string", "example": "text-to-image" },
+          "status": { "type": "string", "enum": ["queued", "running", "done", "failed", "cancelled"] },
+          "input": { "type": "object", "nullable": true, "additionalProperties": true },
+          "output": { "type": "object", "nullable": true, "additionalProperties": true },
+          "error": { "type": "string", "nullable": true },
+          "startedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "finishedAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "required": ["id", "nodeId", "nodeType", "status"]
+      },
+      "RunDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WorkflowRun" },
+          {
+            "type": "object",
+            "properties": {
+              "nodeRuns": { "type": "array", "items": { "$ref": "#/components/schemas/NodeRun" } }
+            },
+            "required": ["nodeRuns"]
+          }
+        ]
+      }
+    }
+  },
+  "security": [ { "bearerAuth": [] } ]
+}
