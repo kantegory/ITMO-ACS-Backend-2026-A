@@ -1,0 +1,356 @@
+name: fitness-microservices-lab3
+
+x-common-app-env: &common-app-env
+  NODE_ENV: production
+  SERVICE_TOKEN: lab3-service-token
+  GATEWAY_TOKEN: lab3-gateway-token
+  JWT_SECRET_KEY: lab3-change-me
+  JWT_ACCESS_TOKEN_LIFETIME_SECONDS: 900
+  JWT_REFRESH_TOKEN_LIFETIME_SECONDS: 604800
+  DB_HOST: postgres
+  DB_PORT: 5432
+  RABBITMQ_URL: amqp://fitness:fitness@rabbitmq:5672
+  RABBITMQ_EXCHANGE: fitness.events
+  RABBITMQ_DEAD_LETTER_EXCHANGE: fitness.events.dlx
+  RABBITMQ_RETRY_DELAY_MS: 3000
+  IDENTITY_SERVICE_URL: http://identity-service:3001
+  CATALOG_SERVICE_URL: http://workout-catalog-service:3002
+  PLANS_SERVICE_URL: http://training-plan-service:3003
+  PROGRESS_SERVICE_URL: http://progress-service:3004
+  CONTENT_SERVICE_URL: http://content-service:3005
+  MEDIA_SERVICE_URL: http://media-service:3006
+  NOTIFICATION_SERVICE_URL: http://notification-service:3007
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks:
+    - fitness-network
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fitness-lab3-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '15432:5432'
+    volumes:
+      - fitness_lab3_postgres_data:/var/lib/postgresql/data
+      - ./db/init-multiple-databases.sh:/docker-entrypoint-initdb.d/01-init-multiple-databases.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - fitness-network
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: fitness-lab3-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: fitness
+      RABBITMQ_DEFAULT_PASS: fitness
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    volumes:
+      - fitness_lab3_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - fitness-network
+
+  identity-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/identity-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      IDENTITY_PORT: 3001
+      IDENTITY_DB_NAME: identity_db
+      IDENTITY_DB_USER: identity_user
+      IDENTITY_DB_PASSWORD: identity_password
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  workout-catalog-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/workout-catalog-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      CATALOG_PORT: 3002
+      CATALOG_DB_NAME: catalog_db
+      CATALOG_DB_USER: catalog_user
+      CATALOG_DB_PASSWORD: catalog_password
+    ports:
+      - '3002:3002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  training-plan-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/training-plan-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      PLANS_PORT: 3003
+      PLANS_DB_NAME: plans_db
+      PLANS_DB_USER: plans_user
+      PLANS_DB_PASSWORD: plans_password
+    ports:
+      - '3003:3003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      workout-catalog-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3003/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  progress-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/progress-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      PROGRESS_PORT: 3004
+      PROGRESS_DB_NAME: progress_db
+      PROGRESS_DB_USER: progress_user
+      PROGRESS_DB_PASSWORD: progress_password
+    ports:
+      - '3004:3004'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      workout-catalog-service:
+        condition: service_healthy
+      training-plan-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3004/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  content-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/content-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      CONTENT_PORT: 3005
+      CONTENT_DB_NAME: content_db
+      CONTENT_DB_USER: content_user
+      CONTENT_DB_PASSWORD: content_password
+    ports:
+      - '3005:3005'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3005/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  media-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/media-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      MEDIA_PORT: 3006
+      MEDIA_DB_NAME: media_db
+      MEDIA_DB_USER: media_user
+      MEDIA_DB_PASSWORD: media_password
+    ports:
+      - '3006:3006'
+    volumes:
+      - fitness_lab3_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3006/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  notification-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/notification-service.Dockerfile
+    environment:
+      <<: *common-app-env
+      NOTIFICATION_PORT: 3007
+      NOTIFICATION_DB_NAME: notification_db
+      NOTIFICATION_DB_USER: notification_user
+      NOTIFICATION_DB_PASSWORD: notification_password
+    ports:
+      - '3007:3007'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3007/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  api-gateway:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/api-gateway.Dockerfile
+    environment:
+      <<: *common-app-env
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_PORT: 3000
+    ports:
+      - '3000:3000'
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      workout-catalog-service:
+        condition: service_healthy
+      training-plan-service:
+        condition: service_healthy
+      progress-service:
+        condition: service_healthy
+      content-service:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  seed:
+    build:
+      context: .
+      dockerfile: docker/seed.Dockerfile
+    profiles: ['tools']
+    environment:
+      <<: *common-app-env
+      IDENTITY_DB_NAME: identity_db
+      IDENTITY_DB_USER: identity_user
+      IDENTITY_DB_PASSWORD: identity_password
+      CATALOG_DB_NAME: catalog_db
+      CATALOG_DB_USER: catalog_user
+      CATALOG_DB_PASSWORD: catalog_password
+      PLANS_DB_NAME: plans_db
+      PLANS_DB_USER: plans_user
+      PLANS_DB_PASSWORD: plans_password
+      CONTENT_DB_NAME: content_db
+      CONTENT_DB_USER: content_user
+      CONTENT_DB_PASSWORD: content_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fitness-network
+
+networks:
+  fitness-network:
+    driver: bridge
+
+volumes:
+  fitness_lab3_postgres_data:
+  fitness_lab3_rabbitmq_data:
+  fitness_lab3_uploads:

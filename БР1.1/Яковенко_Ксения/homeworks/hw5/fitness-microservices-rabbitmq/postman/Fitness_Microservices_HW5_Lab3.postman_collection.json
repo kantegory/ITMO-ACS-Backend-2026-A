@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "Fitness Microservices HW5 + Lab3",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Проверка микросервисов, RabbitMQ-события training-plan.enrolled и контейнерного запуска."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "trainerToken",
+      "value": ""
+    },
+    {
+      "key": "userTrainingPlanId",
+      "value": "1"
+    },
+    {
+      "key": "eventId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/health/services",
+          "host": ["{{baseUrl}}"],
+          "path": ["health", "services"]
+        }
+      }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('userToken', data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"user@example.com\", \"password\": \"User12345!\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login trainer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('trainerToken', data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"trainer@example.com\", \"password\": \"Trainer123!\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "List workouts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/workouts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "workouts"]
+            }
+          }
+        },
+        {
+          "name": "List metadata",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/metadata/difficulty-levels",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "metadata", "difficulty-levels"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Training plans",
+      "item": [
+        {
+          "name": "List plans",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/training-plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training-plans"]
+            }
+          }
+        },
+        {
+          "name": "Enroll user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Enrollment created\", () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.eventQueued).to.eql(true);",
+                  "pm.expect(data.eventId).to.be.a(\"string\");",
+                  "if (data.userTrainingPlan) pm.collectionVariables.set(\"userTrainingPlanId\", data.userTrainingPlan.id);",
+                  "if (data.eventId) pm.collectionVariables.set(\"eventId\", data.eventId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"startDate\": \"2026-06-29\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/training-plans/1/enroll",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training-plans", "1", "enroll"]
+            },
+            "description": "Создаёт user_training_plans и outbox_events в одной транзакции. Фоновый publisher отправляет training-plan.enrolled в RabbitMQ."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Progress",
+      "item": [
+        {
+          "name": "Create body metric",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"measuredAt\": \"2026-06-29\", \"weightKg\": 60.5, \"waistCm\": 70}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/body-metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "body-metrics"]
+            }
+          }
+        },
+        {
+          "name": "Complete workout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"workoutId\": 1, \"userTrainingPlanId\": \"{{userTrainingPlanId}}\", \"startedAt\": \"2026-06-29T10:00:00.000Z\", \"completedAt\": \"2026-06-29T10:30:00.000Z\", \"durationFactMin\": 30, \"rating\": 5}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/workout-sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "workout-sessions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/me/notifications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "me", "notifications"]
+        }
+      }
+    },
+    {
+      "name": "RabbitMQ diagnostics",
+      "item": [
+        {
+          "name": "Training Plan RabbitMQ health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3003/health/rabbitmq",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3003",
+              "path": ["health", "rabbitmq"]
+            }
+          }
+        },
+        {
+          "name": "Notification consumer health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3007/health/rabbitmq",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3007",
+              "path": ["health", "rabbitmq"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

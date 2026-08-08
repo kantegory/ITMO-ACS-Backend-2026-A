@@ -1,0 +1,337 @@
+openapi: 3.0.3
+info:
+  title: Fitness Microservices Gateway API
+  version: 1.1.0
+  description: Публичный API микросервисов для ДЗ5 и ЛР3. Все запросы клиента проходят через API Gateway.
+servers:
+  - url: http://localhost:3000
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Workouts
+  - name: Training plans
+  - name: Progress
+  - name: Blog
+  - name: Media
+  - name: Notifications
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Зарегистрировать пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, firstName, lastName]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                firstName: { type: string }
+                lastName: { type: string }
+                birthDate: { type: string, format: date }
+                heightCm: { type: integer }
+                fitnessGoal: { type: string }
+      responses:
+        '201': { description: Пользователь создан }
+        '409': { description: Email уже используется }
+        '422': { description: Ошибка валидации }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Войти
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Токены и пользователь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string }
+                  user: { type: object }
+                  profile: { type: object, nullable: true }
+        '400': { description: Неверный логин или пароль }
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Выпустить новый access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200': { description: Новый access token }
+        '401': { description: Токен недействителен }
+  /api/users/me:
+    get:
+      tags: [Auth]
+      summary: Получить текущего пользователя и профиль
+      responses:
+        '200': { description: Пользователь найден }
+        '401': { description: Требуется авторизация }
+  /api/users/me/profile:
+    patch:
+      tags: [Auth]
+      summary: Изменить профиль
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Профиль изменён }
+  /api/workouts:
+    get:
+      tags: [Workouts]
+      security: []
+      summary: Список тренировок
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: difficultyLevelId, schema: { type: integer } }
+        - { in: query, name: typeIds, schema: { type: string }, description: ID через запятую }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        '200': { description: Страница тренировок }
+    post:
+      tags: [Workouts]
+      summary: Создать тренировку
+      description: Требуется роль trainer или admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, durationMin, difficultyLevelId, typeIds]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                instructions: { type: string }
+                durationMin: { type: integer, minimum: 1 }
+                caloriesEstimate: { type: integer, minimum: 0 }
+                difficultyLevelId: { type: integer }
+                typeIds: { type: array, items: { type: integer } }
+      responses:
+        '201': { description: Тренировка создана }
+        '403': { description: Недостаточно прав }
+  /api/workouts/{id}:
+    get:
+      tags: [Workouts]
+      security: []
+      summary: Получить тренировку
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Тренировка }
+        '404': { description: Не найдена }
+  /api/training-plans:
+    get:
+      tags: [Training plans]
+      security: []
+      summary: Список тренировочных планов
+      responses:
+        '200': { description: Страница планов }
+    post:
+      tags: [Training plans]
+      summary: Создать тренировочный план
+      description: Требуется роль trainer или admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, difficultyLevelId, durationWeeks, workouts]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                difficultyLevelId: { type: integer }
+                durationWeeks: { type: integer }
+                workouts:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [workoutId, weekNo, dayNo, orderNo]
+                    properties:
+                      workoutId: { type: integer }
+                      weekNo: { type: integer }
+                      dayNo: { type: integer }
+                      orderNo: { type: integer }
+                      note: { type: string }
+      responses:
+        '201': { description: План создан }
+  /api/training-plans/{id}:
+    get:
+      tags: [Training plans]
+      security: []
+      summary: Получить план с тренировками из Catalog Service
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: План }
+        '404': { description: Не найден }
+  /api/training-plans/{id}/enroll:
+    post:
+      tags: [Training plans]
+      summary: Записаться на план
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate]
+              properties:
+                startDate: { type: string, format: date }
+      responses:
+        '201':
+          description: Запись создана, событие сохранено в outbox и будет отправлено через RabbitMQ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userTrainingPlan: { type: object }
+                  eventQueued: { type: boolean, example: true }
+                  eventId: { type: string, format: uuid }
+        '409': { description: Уже есть активная запись }
+  /api/users/me/training-plans:
+    get:
+      tags: [Training plans]
+      summary: Планы текущего пользователя
+      responses:
+        '200': { description: Список записей }
+  /api/users/me/body-metrics:
+    get:
+      tags: [Progress]
+      summary: Метрики тела
+      responses:
+        '200': { description: Список метрик }
+    post:
+      tags: [Progress]
+      summary: Добавить метрику
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [measuredAt]
+              properties:
+                measuredAt: { type: string, format: date }
+                weightKg: { type: number }
+                chestCm: { type: number }
+                waistCm: { type: number }
+                hipsCm: { type: number }
+                bodyFatPercent: { type: number }
+                comment: { type: string }
+      responses:
+        '201': { description: Метрика создана }
+  /api/users/me/workout-sessions:
+    get:
+      tags: [Progress]
+      summary: История тренировок
+      responses:
+        '200': { description: Список с данными тренировок из Catalog Service }
+    post:
+      tags: [Progress]
+      summary: Зафиксировать выполненную тренировку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workoutId, startedAt, durationFactMin]
+              properties:
+                workoutId: { type: integer }
+                userTrainingPlanId: { type: integer }
+                startedAt: { type: string, format: date-time }
+                completedAt: { type: string, format: date-time }
+                durationFactMin: { type: integer }
+                caloriesFact: { type: integer }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                notes: { type: string }
+      responses:
+        '201': { description: Сессия создана, прогресс плана обновлён }
+  /api/blog/categories:
+    get:
+      tags: [Blog]
+      security: []
+      summary: Категории блога
+      responses:
+        '200': { description: Категории }
+    post:
+      tags: [Blog]
+      summary: Создать категорию
+      description: Требуется роль trainer или admin.
+      responses:
+        '201': { description: Категория создана }
+  /api/blog/posts:
+    get:
+      tags: [Blog]
+      security: []
+      summary: Опубликованные посты
+      responses:
+        '200': { description: Посты }
+    post:
+      tags: [Blog]
+      summary: Создать пост
+      description: Требуется роль trainer или admin.
+      responses:
+        '201': { description: Пост создан }
+  /api/uploads/blog-image:
+    post:
+      tags: [Media]
+      summary: Загрузить изображение в Base64
+      description: Требуется роль trainer или admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageBase64]
+              properties:
+                imageBase64: { type: string }
+                fileName: { type: string }
+      responses:
+        '201': { description: Файл сохранён и создана запись media_files }
+  /api/users/me/notifications:
+    get:
+      tags: [Notifications]
+      summary: Уведомления текущего пользователя
+      responses:
+        '200': { description: Уведомления }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
