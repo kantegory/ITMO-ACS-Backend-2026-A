@@ -1,0 +1,161 @@
+{
+  "info": {
+    "_postman_id": "843cd8fb-eed5-4db1-a2ea-8de38d92b619",
+    "name": "FitFlow — комплексный сценарий",
+    "description": "ДЗ 3. Последовательно проверяет health, регистрацию и JWT, RBAC, CRUD тренировки, плана, прогресса и статьи, затем очищает созданные данные. Перед запуском Collection Runner база должна содержать администратора из environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('userEmail')) {",
+          "  pm.environment.set('userEmail', `student.${Date.now()}@example.com`);",
+          "}",
+          "if (!pm.environment.get('articleSlug')) {",
+          "  pm.environment.set('articleSlug', `safe-training-${Date.now()}`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01 — Доступность",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "header": [], "url": "{{healthUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('200 и status=ok', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('ok'); });"] } }]
+        }
+      ]
+    },
+    {
+      "name": "02 — Аутентификация",
+      "item": [
+        {
+          "name": "Регистрация пользователя",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"name\": \"Руслан\"\n}" },
+            "url": "{{apiBaseUrl}}/auth/register"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('201 и токен получен', () => { pm.response.to.have.status(201); const data = pm.response.json(); pm.expect(data.accessToken).to.be.a('string'); pm.environment.set('userToken', data.accessToken); });"] } }]
+        },
+        {
+          "name": "Профиль пользователя",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }], "url": "{{apiBaseUrl}}/auth/me" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('JWT идентифицирует пользователя', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().email).to.eql(pm.environment.get('userEmail')); });"] } }]
+        },
+        {
+          "name": "Вход администратора",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+            "url": "{{apiBaseUrl}}/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Администратор вошёл', () => { pm.response.to.have.status(200); const data = pm.response.json(); pm.expect(data.user.role).to.eql('admin'); pm.environment.set('adminToken', data.accessToken); });"] } }]
+        },
+        {
+          "name": "RBAC: пользователь не может создать тренировку",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Forbidden\",\"type\":\"cardio\",\"level\":\"beginner\",\"durationMinutes\":10,\"description\":\"Проверка RBAC\"}" },
+            "url": "{{apiBaseUrl}}/workouts"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Доступ запрещён', () => pm.response.to.have.status(403));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "03 — Основной сценарий",
+      "item": [
+        {
+          "name": "Администратор создаёт тренировку",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Утренняя мобильность\",\n  \"type\": \"mobility\",\n  \"level\": \"beginner\",\n  \"durationMinutes\": 20,\n  \"description\": \"Комплекс на всё тело\",\n  \"videoUrl\": \"https://example.com/videos/mobility\"\n}" },
+            "url": "{{apiBaseUrl}}/workouts"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Тренировка создана', () => { pm.response.to.have.status(201); const data = pm.response.json(); pm.environment.set('workoutId', data.id); pm.expect(data.durationMinutes).to.eql(20); });"] } }]
+        },
+        {
+          "name": "Каталог фильтруется",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{apiBaseUrl}}/workouts?type=mobility&level=beginner", "host": ["{{apiBaseUrl}}"], "path": ["workouts"], "query": [{ "key": "type", "value": "mobility" }, { "key": "level", "value": "beginner" }] } },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Созданная тренировка присутствует', () => { pm.response.to.have.status(200); const data = pm.response.json(); const items = Array.isArray(data) ? data : data.items; pm.expect(items.some(x => x.id === pm.environment.get('workoutId'))).to.be.true; });"] } }]
+        },
+        {
+          "name": "Администратор изменяет тренировку",
+          "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"durationMinutes\":25}" }, "url": "{{apiBaseUrl}}/workouts/{{workoutId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Тренировка изменена', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().durationMinutes).to.eql(25); });"] } }]
+        },
+        {
+          "name": "Пользователь создаёт план",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"name\":\"Стартовая неделя\"}" }, "url": "{{apiBaseUrl}}/plans" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('План создан', () => { pm.response.to.have.status(201); pm.environment.set('planId', pm.response.json().id); });"] } }]
+        },
+        {
+          "name": "Пользователь добавляет тренировку в план",
+          "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"workoutIds\":[\"{{workoutId}}\"]}" }, "url": "{{apiBaseUrl}}/plans/{{planId}}/workouts" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Состав плана обновлён', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().workouts).to.have.length(1); });"] } }]
+        },
+        {
+          "name": "Пользователь отмечает выполнение",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"workoutId\": \"{{workoutId}}\",\n  \"durationMinutes\": 20,\n  \"notes\": \"Выполнено полностью\",\n  \"completedAt\": \"{{$isoTimestamp}}\"\n}" }, "url": "{{apiBaseUrl}}/progress" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Прогресс записан', () => { pm.response.to.have.status(201); pm.environment.set('progressId', pm.response.json().id); });"] } }]
+        },
+        {
+          "name": "Сводка прогресса",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }], "url": "{{apiBaseUrl}}/progress/summary" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Агрегаты учли выполнение', () => { pm.response.to.have.status(200); const data = pm.response.json(); pm.expect(data.completedWorkouts).to.be.at.least(1); pm.expect(data.totalMinutes).to.be.at.least(20); });"] } }]
+        },
+        {
+          "name": "Администратор создаёт статью",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"Безопасная тренировка\",\n  \"slug\": \"{{articleSlug}}\",\n  \"content\": \"Разминка и постепенное увеличение нагрузки снижают риск травм.\"\n}" }, "url": "{{apiBaseUrl}}/articles" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Статья создана', () => { pm.response.to.have.status(201); const data = pm.response.json(); pm.environment.set('articleId', data.id); pm.environment.set('articleSlug', data.slug); });"] } }]
+        },
+        {
+          "name": "Гость читает статью",
+          "request": { "method": "GET", "header": [], "url": "{{apiBaseUrl}}/articles/{{articleSlug}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Статья публична', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().slug).to.eql(pm.environment.get('articleSlug')); });"] } }]
+        },
+        {
+          "name": "Администратор изменяет статью",
+          "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"title\":\"Безопасная тренировка: памятка\"}" }, "url": "{{apiBaseUrl}}/articles/{{articleId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Статья изменена', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().title).to.contain('памятка'); });"] } }]
+        }
+      ]
+    },
+    {
+      "name": "04 — Очистка",
+      "item": [
+        {
+          "name": "Удалить прогресс",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }], "url": "{{apiBaseUrl}}/progress/{{progressId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('204', () => pm.response.to.have.status(204));"] } }]
+        },
+        {
+          "name": "Удалить план",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }], "url": "{{apiBaseUrl}}/plans/{{planId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('204', () => pm.response.to.have.status(204));"] } }]
+        },
+        {
+          "name": "Удалить статью",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{apiBaseUrl}}/articles/{{articleId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('204', () => pm.response.to.have.status(204));"] } }]
+        },
+        {
+          "name": "Удалить тренировку",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{apiBaseUrl}}/workouts/{{workoutId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('204', () => pm.response.to.have.status(204));"] } }]
+        }
+      ]
+    }
+  ]
+}
