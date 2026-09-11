@@ -1,0 +1,596 @@
+openapi: 3.0.3
+info:
+  title: FitFlow API
+  version: 1.0.0
+  description: REST API фитнес-платформы FitFlow. Управление тренировками требует role=admin; статью изменяет её автор либо администратор.
+servers:
+  - url: http://localhost:3000
+    description: Monolith
+  - url: http://localhost
+    description: Microservices through gateway
+tags:
+  - name: System
+  - name: Auth
+  - name: Workouts
+  - name: Plans
+  - name: Progress
+  - name: Articles
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/workouts:
+    get:
+      tags: [Workouts]
+      operationId: listWorkouts
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Offset' }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/WorkoutType' }
+        - name: level
+          in: query
+          schema: { $ref: '#/components/schemas/WorkoutLevel' }
+        - name: maxDuration
+          in: query
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Paginated workouts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, offset, limit, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Workout' } }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  total: { type: integer }
+    post:
+      tags: [Workouts]
+      operationId: createWorkout
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkoutInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workout' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/workouts/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [Workouts]
+      operationId: getWorkout
+      responses:
+        '200':
+          description: Workout
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workout' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Workouts]
+      operationId: updateWorkout
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkoutPatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workout' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Workouts]
+      operationId: deleteWorkout
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/plans:
+    get:
+      tags: [Plans]
+      operationId: listPlans
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current user's plans
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/TrainingPlan' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Plans]
+      operationId: createPlan
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120, example: My first week }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingPlan' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/plans/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [Plans]
+      operationId: getPlan
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Plan with workouts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingPlan' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Plans]
+      operationId: updatePlan
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingPlan' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Plans]
+      operationId: deletePlan
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/plans/{id}/workouts:
+    put:
+      tags: [Plans]
+      operationId: replacePlanWorkouts
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workoutIds]
+              properties:
+                workoutIds:
+                  type: array
+                  uniqueItems: true
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Plan composition replaced
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrainingPlan' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/progress:
+    get:
+      tags: [Progress]
+      operationId: listProgress
+      security: [{ bearerAuth: [] }]
+      parameters:
+      responses:
+        '200':
+          description: Current user's entries
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ProgressEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Progress]
+      operationId: createProgress
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgressInput' }
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProgressEntry' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/progress/summary:
+    get:
+      tags: [Progress]
+      operationId: getProgressSummary
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Aggregate for current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProgressSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/progress/{id}:
+    delete:
+      tags: [Progress]
+      operationId: deleteProgress
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/articles:
+    get:
+      tags: [Articles]
+      operationId: listArticles
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Articles
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Article' } }
+    post:
+      tags: [Articles]
+      operationId: createArticle
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArticleInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Article' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/articles/{key}:
+    get:
+      tags: [Articles]
+      operationId: getArticleBySlug
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Slug статьи для операции GET
+          schema: { type: string }
+      responses:
+        '200':
+          description: Article
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Article' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Articles]
+      operationId: updateArticle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: UUID статьи для операции PATCH
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArticlePatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Article' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Articles]
+      operationId: deleteArticle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: UUID статьи для операции DELETE
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    ValidationError:
+      description: Validation failed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Authentication required or token invalid
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Operation is not allowed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Unique value already exists
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Health:
+      type: object
+      required: [service, status, timestamp]
+      properties:
+        service: { type: string, example: monolith }
+        status: { type: string, enum: [ok] }
+        timestamp: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: VALIDATION_ERROR }
+        message: { type: string }
+        details: { type: array, items: { type: object, additionalProperties: true } }
+    User:
+      type: object
+      required: [id, email, name, role, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [user, admin] }
+        createdAt: { type: string, format: date-time }
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, name]
+      properties:
+        email: { type: string, format: email, example: student@example.com }
+        password: { type: string, format: password, minLength: 8, example: StrongPass123 }
+        name: { type: string, minLength: 2, maxLength: 100, example: Student }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    AuthResponse:
+      type: object
+      required: [accessToken, user]
+      properties:
+        accessToken: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    WorkoutType:
+      type: string
+      enum: [cardio, strength, mobility]
+    WorkoutLevel:
+      type: string
+      enum: [beginner, intermediate, advanced]
+    WorkoutInput:
+      type: object
+      additionalProperties: false
+      required: [name, type, level, durationMinutes, description]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        type: { $ref: '#/components/schemas/WorkoutType' }
+        level: { $ref: '#/components/schemas/WorkoutLevel' }
+        durationMinutes: { type: integer, minimum: 5, maximum: 300 }
+        description: { type: string, minLength: 10, maxLength: 5000 }
+        videoUrl: { type: string, format: uri, nullable: true }
+    WorkoutPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        type: { $ref: '#/components/schemas/WorkoutType' }
+        level: { $ref: '#/components/schemas/WorkoutLevel' }
+        durationMinutes: { type: integer, minimum: 5, maximum: 300 }
+        description: { type: string, minLength: 10, maxLength: 5000 }
+        videoUrl: { type: string, format: uri, nullable: true }
+    Workout:
+      allOf:
+        - type: object
+          required: [id, createdAt]
+          properties:
+            id: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+        - $ref: '#/components/schemas/WorkoutInput'
+    TrainingPlan:
+      type: object
+      required: [id, userId, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        name: { type: string }
+        workouts: { type: array, items: { $ref: '#/components/schemas/Workout' } }
+        createdAt: { type: string, format: date-time }
+    ProgressInput:
+      type: object
+      additionalProperties: false
+      required: [workoutId, durationMinutes]
+      properties:
+        workoutId: { type: string, format: uuid }
+        durationMinutes: { type: integer, minimum: 1, maximum: 600 }
+        notes: { type: string, nullable: true, maxLength: 2000 }
+        completedAt: { type: string, format: date-time }
+    ProgressEntry:
+      allOf:
+        - type: object
+          required: [id, userId, createdAt]
+          properties:
+            id: { type: string, format: uuid }
+            userId: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+        - $ref: '#/components/schemas/ProgressInput'
+    ProgressSummary:
+      type: object
+      required: [completedWorkouts, totalMinutes]
+      properties:
+        completedWorkouts: { type: integer, minimum: 0 }
+        totalMinutes: { type: integer, minimum: 0 }
+    ArticleInput:
+      type: object
+      additionalProperties: false
+      required: [title, slug, content]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 160 }
+        slug: { type: string, minLength: 2, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 180 }
+        content: { type: string, minLength: 20, maxLength: 50000 }
+    ArticlePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 3, maxLength: 160 }
+        content: { type: string, minLength: 20, maxLength: 50000 }
+    Article:
+      type: object
+      required: [id, authorId, title, slug, content, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        content: { type: string }
+        createdAt: { type: string, format: date-time }

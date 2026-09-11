@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: 'БР1.2/KamalovRuslan/project'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 'БР1.2/KamalovRuslan/project/package-lock.json'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: docker compose --profile monolith config --quiet
+      - run: docker compose --profile microservices config --quiet
+      - name: Проверить монолит
+        run: |
+          docker compose --profile monolith up -d --build --wait --wait-timeout 180
+          npx --yes newman@6 run postman/FitFlow.postman_collection.json -e postman/FitFlow.local.postman_environment.json --env-var apiBaseUrl=http://localhost:8080/api/v1 --env-var healthUrl=http://localhost:8080 --bail
+          docker compose --profile monolith down --volumes
+      - name: Проверить микросервисы
+        run: |
+          docker compose --profile microservices up -d --build --wait --wait-timeout 180
+          npx --yes newman@6 run postman/FitFlow.postman_collection.json -e postman/FitFlow.local.postman_environment.json --env-var apiBaseUrl=http://localhost:8080/api/v1 --env-var healthUrl=http://localhost:8080 --bail
+      - name: Проверить доставку события
+        run: |
+          for attempt in 1 2 3 4 5; do
+            count=$(docker compose exec -T progress-db psql -U fitflow -d fitflow -tAc 'SELECT COUNT(*) FROM workout_snapshots')
+            if [ "$count" -gt 0 ]; then
+              echo "Событие workout.created обработано"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Снимок тренировки не появился"
+          exit 1
+      - name: Журналы при ошибке
+        if: failure()
+        run: docker compose --profile monolith --profile microservices logs --tail=100
+      - name: Очистить тестовый стенд
+        if: always()
+        run: docker compose --profile monolith --profile microservices down --volumes
