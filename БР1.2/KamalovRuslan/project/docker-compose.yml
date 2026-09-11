@@ -1,0 +1,235 @@
+name: fitflow
+
+x-app-common: &app-common
+  restart: unless-stopped
+  networks: [backend]
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$${PORT}/health"]
+    interval: 10s
+    timeout: 3s
+    retries: 12
+
+x-postgres-common: &postgres-common
+  image: postgres:17-alpine
+  restart: unless-stopped
+  networks: [backend]
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U fitflow -d fitflow"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  monolith-db:
+    <<: *postgres-common
+    profiles: [monolith]
+    environment:
+      POSTGRES_USER: fitflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_local}
+      POSTGRES_DB: fitflow
+    volumes:
+      - monolith-db-data:/var/lib/postgresql/data
+
+  monolith:
+    <<: *app-common
+    profiles: [monolith]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        APP_PATH: apps/monolith
+    command: ["node", "apps/monolith/dist/index.js"]
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://fitflow:${POSTGRES_PASSWORD:-fitflow_local}@monolith-db:5432/fitflow
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fitflow.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminPass123}
+    depends_on:
+      monolith-db:
+        condition: service_healthy
+
+  auth-db:
+    <<: *postgres-common
+    profiles: [microservices]
+    environment:
+      POSTGRES_USER: fitflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_local}
+      POSTGRES_DB: fitflow
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+
+  workout-db:
+    <<: *postgres-common
+    profiles: [microservices]
+    environment:
+      POSTGRES_USER: fitflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_local}
+      POSTGRES_DB: fitflow
+    volumes:
+      - workout-db-data:/var/lib/postgresql/data
+
+  progress-db:
+    <<: *postgres-common
+    profiles: [microservices]
+    environment:
+      POSTGRES_USER: fitflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_local}
+      POSTGRES_DB: fitflow
+    volumes:
+      - progress-db-data:/var/lib/postgresql/data
+
+  content-db:
+    <<: *postgres-common
+    profiles: [microservices]
+    environment:
+      POSTGRES_USER: fitflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_local}
+      POSTGRES_DB: fitflow
+    volumes:
+      - content-db-data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    profiles: [microservices]
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-fitflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-fitflow_local}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+
+  auth:
+    <<: *app-common
+    profiles: [microservices]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      args: {APP_PATH: services/auth}
+    command: ["node", "services/auth/dist/index.js"]
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://fitflow:${POSTGRES_PASSWORD:-fitflow_local}@auth-db:5432/fitflow
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-fitflow}:${RABBITMQ_PASSWORD:-fitflow_local}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@fitflow.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-AdminPass123}
+    depends_on:
+      auth-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  workout:
+    <<: *app-common
+    profiles: [microservices]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      args: {APP_PATH: services/workout}
+    command: ["node", "services/workout/dist/index.js"]
+    environment:
+      PORT: 3002
+      DATABASE_URL: postgres://fitflow:${POSTGRES_PASSWORD:-fitflow_local}@workout-db:5432/fitflow
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-fitflow}:${RABBITMQ_PASSWORD:-fitflow_local}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+    depends_on:
+      workout-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  progress:
+    <<: *app-common
+    profiles: [microservices]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      args: {APP_PATH: services/progress}
+    command: ["node", "services/progress/dist/index.js"]
+    environment:
+      PORT: 3003
+      DATABASE_URL: postgres://fitflow:${POSTGRES_PASSWORD:-fitflow_local}@progress-db:5432/fitflow
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-fitflow}:${RABBITMQ_PASSWORD:-fitflow_local}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+    depends_on:
+      progress-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  content:
+    <<: *app-common
+    profiles: [microservices]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      args: {APP_PATH: services/content}
+    command: ["node", "services/content/dist/index.js"]
+    environment:
+      PORT: 3004
+      DATABASE_URL: postgres://fitflow:${POSTGRES_PASSWORD:-fitflow_local}@content-db:5432/fitflow
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-fitflow}:${RABBITMQ_PASSWORD:-fitflow_local}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+    depends_on:
+      content-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  nginx-monolith:
+    image: nginx:1.27-alpine
+    profiles: [monolith]
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    networks: [backend]
+    volumes:
+      - ./deploy/nginx/monolith.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      monolith: {condition: service_healthy}
+    security_opt:
+      - no-new-privileges:true
+
+  nginx:
+    image: nginx:1.27-alpine
+    profiles: [microservices]
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    networks: [backend]
+    volumes:
+      - ./deploy/nginx/microservices.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/proxy_params:/etc/nginx/proxy_params:ro
+    depends_on:
+      auth: {condition: service_healthy}
+      workout: {condition: service_healthy}
+      progress: {condition: service_healthy}
+      content: {condition: service_healthy}
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  monolith-db-data:
+  auth-db-data:
+  workout-db-data:
+  progress-db-data:
+  content-db-data:
+  rabbitmq-data:
