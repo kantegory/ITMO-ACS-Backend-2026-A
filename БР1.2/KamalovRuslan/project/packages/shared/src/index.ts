@@ -127,3 +127,9 @@ export function health(service: string) {
   return { service, status: "ok", timestamp: new Date().toISOString() };
 }
 
+export interface DomainEvent<T = Record<string, unknown>> {
+  id: string;
+  type: string;
+  occurredAt: string;
+  payload: T;
+}

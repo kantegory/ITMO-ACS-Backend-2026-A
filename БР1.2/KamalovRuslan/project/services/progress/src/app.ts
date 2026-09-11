@@ -10,7 +10,7 @@ import {
   validate,
 } from "@fitflow/shared";
 import { dataSource } from "./data-source.js";
-import { ProgressEntry } from "./entities.js";
+import { ProgressEntry, WorkoutSnapshot } from "./entities.js";
 
 const uuid = z.string().uuid();
 const bodySchema = z.object({
@@ -70,6 +70,18 @@ export function createApp() {
     "/progress",
     asyncHandler(async (req, res) => {
       const body = validate(bodySchema, req.body);
+      if (
+        process.env.REQUIRE_KNOWN_WORKOUT === "true" &&
+        !(await dataSource
+          .getRepository(WorkoutSnapshot)
+          .existsBy({ id: body.workoutId }))
+      ) {
+        throw new HttpError(
+          400,
+          "Workout is not present in the local projection",
+          "UNKNOWN_WORKOUT",
+        );
+      }
       const entry = dataSource
         .getRepository(ProgressEntry)
         .create({ ...body, notes: body.notes ?? null, userId: req.auth!.sub });

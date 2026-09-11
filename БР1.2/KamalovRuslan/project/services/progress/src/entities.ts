@@ -11,3 +11,12 @@ export class ProgressEntry {
   @CreateDateColumn({ name: "created_at" }) createdAt!: Date;
 }
 
+@Entity("workout_snapshots")
+export class WorkoutSnapshot {
+  @PrimaryColumn({ type: "uuid" }) id!: string;
+  @Column({ length: 120 }) name!: string;
+  @Column({ type: "varchar" }) type!: string;
+  @Column({ type: "varchar" }) level!: string;
+  @Column({ name: "source_event_id", type: "uuid", unique: true }) sourceEventId!: string;
+  @UpdateDateColumn({ name: "updated_at" }) updatedAt!: Date;
+}

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { adminRequired, asyncHandler, authRequired, errorHandler, health, HttpError, notFound, validate } from "@fitflow/shared";
 import { dataSource } from "./data-source.js";
 import { PlanWorkout, TrainingPlan, Workout } from "./entities.js";
+import { publishWorkoutCreated } from "./events.js";
 
 const uuid = z.string().uuid();
 const workoutBody = z.object({
@@ -50,6 +51,7 @@ export function createApp() {
   app.post("/workouts", authRequired, adminRequired, asyncHandler(async (req, res) => {
     const workout = dataSource.getRepository(Workout).create(validate(workoutBody, req.body));
     await dataSource.getRepository(Workout).save(workout);
+    publishWorkoutCreated({ id: workout.id, name: workout.name, type: workout.type, level: workout.level });
     res.status(201).json(workout);
   }));
   app.patch("/workouts/:id", authRequired, adminRequired, asyncHandler(async (req, res) => {
