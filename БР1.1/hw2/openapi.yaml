@@ -1,0 +1,547 @@
+openapi: 3.0.0
+info:
+  title: RentEase API - Сервис аренды недвижимости
+  version: 1.0.0
+  description: API по требованию в дз2
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный сервер (демо)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          example: "Некорректные данные"
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [tenant, landlord]
+
+    Property:
+      type: object
+      properties:
+        property_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        property_type:
+          type: string
+          enum: [apartment, house, room, commercial]
+        price_per_month:
+          type: number
+          format: double
+        city:
+          type: string
+        address:
+          type: string
+        rooms_count:
+          type: integer
+        is_active:
+          type: boolean
+
+    Booking:
+      type: object
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+        property_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+
+    Message:
+      type: object
+      properties:
+        message_id:
+          type: string
+          format: uuid
+        sender_id:
+          type: string
+          format: uuid
+        receiver_id:
+          type: string
+          format: uuid
+        message_text:
+          type: string
+        sent_at:
+          type: string
+          format: date-time
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Health check для демо
+  /health:
+    get:
+      summary: Проверка работоспособности
+      security: []
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+
+  # Auth endpoints
+  /auth/register:
+    post:
+      summary: Регистрация пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name, phone]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+                full_name:
+                  type: string
+                phone:
+                  type: string
+                role:
+                  type: string
+                  enum: [tenant, landlord]
+                  default: tenant
+      responses:
+        201:
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        409:
+          description: Email уже существует
+
+  /auth/login:
+    post:
+      summary: Вход в систему
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: bearer
+        401:
+          description: Неверные учетные данные
+
+  # Users
+  /users/me:
+    get:
+      summary: Получить текущего пользователя
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        401:
+          description: Не авторизован
+
+  # Properties
+  /properties:
+    get:
+      summary: Поиск недвижимости
+      description: Фильтрация по типу, цене, городу и количеству комнат
+      security: []
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+          description: Город
+        - name: property_type
+          in: query
+          schema:
+            type: string
+            enum: [apartment, house, room, commercial]
+        - name: min_price
+          in: query
+          schema:
+            type: number
+        - name: max_price
+          in: query
+          schema:
+            type: number
+        - name: rooms_count
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Список объектов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Property'
+
+    post:
+      summary: Создать объект недвижимости
+      description: Только для роли landlord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description, property_type, price_per_month, city, address]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                property_type:
+                  $ref: '#/components/schemas/Property/properties/property_type'
+                price_per_month:
+                  type: number
+                security_deposit:
+                  type: number
+                city:
+                  type: string
+                address:
+                  type: string
+                rooms_count:
+                  type: integer
+      responses:
+        201:
+          description: Объект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        403:
+          description: Доступ запрещен (нужна роль landlord)
+
+  /properties/{property_id}:
+    get:
+      summary: Получить объект по ID
+      security: []
+      parameters:
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        404:
+          description: Объект не найден
+
+  # Favorites
+  /favorites:
+    get:
+      summary: Избранные объекты
+      responses:
+        200:
+          description: Список избранного
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+
+    post:
+      summary: Добавить в избранное
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [property_id]
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+      responses:
+        201:
+          description: Добавлено
+
+  # Bookings
+  /bookings:
+    get:
+      summary: Мои бронирования
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, completed]
+      responses:
+        200:
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+
+    post:
+      summary: Создать бронирование
+      description: Только для арендатора (tenant)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [property_id, start_date, end_date]
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                message:
+                  type: string
+      responses:
+        201:
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        409:
+          description: Даты уже заняты
+
+  /bookings/{booking_id}/status:
+    patch:
+      summary: Изменить статус бронирования
+      description: Только для арендодателя (подтвердить/отклонить)
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, cancelled]
+      responses:
+        200:
+          description: Статус обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        403:
+          description: Нет прав
+
+  # Messages
+  /messages:
+    get:
+      summary: Список диалогов
+      responses:
+        200:
+          description: Список диалогов с последними сообщениями
+
+    post:
+      summary: Отправить сообщение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiver_id, property_id, message_text]
+              properties:
+                receiver_id:
+                  type: string
+                  format: uuid
+                property_id:
+                  type: string
+                  format: uuid
+                message_text:
+                  type: string
+      responses:
+        201:
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /messages/dialogs/{user_id}/{property_id}:
+    get:
+      summary: История переписки
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        200:
+          description: История сообщений
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+
+  # Contracts
+  /contracts:
+    get:
+      summary: История сделок
+      description: Все договоры текущего пользователя
+      responses:
+        200:
+          description: Список договоров
+
+  # Reviews
+  /reviews:
+    post:
+      summary: Оставить отзыв
+      description: По завершенному договору
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contract_id, rating, comment]
+              properties:
+                contract_id:
+                  type: string
+                  format: uuid
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                comment:
+                  type: string
+      responses:
+        201:
+          description: Отзыв оставлен
+        403:
+          description: Нет прав (только после завершения договора)
