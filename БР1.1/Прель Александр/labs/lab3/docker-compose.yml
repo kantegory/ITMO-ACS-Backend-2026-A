@@ -1,0 +1,139 @@
+x-runtime: &runtime
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
+  pids_limit: 128
+  mem_limit: 256m
+  cpus: 1
+  stop_grace_period: 15s
+  networks: [backend]
+  logging:
+    driver: json-file
+    options: { max-size: 5m, max-file: '2' }
+  healthcheck:
+    test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health',{signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 10s
+
+x-network-env: &network-env
+  APP_NETWORK_MODE: compose
+  ACCOUNTS_URL: http://accounts:3000
+  CATALOG_URL: http://catalog:3000
+  BOOKINGS_URL: http://bookings:3000
+  NOTIFICATIONS_URL: http://notifications:3000
+
+x-messaging-env: &messaging-env
+  MESSAGING_ENABLED: 'true'
+  RABBITMQ_URL: amqp://itmo:${RABBITMQ_PASSWORD:?Run npm run setup}@rabbitmq:5672/itmo?heartbeat=2
+  RABBITMQ_NAMESPACE: itmo.booking
+
+services:
+  accounts:
+    <<: *runtime
+    image: ${IMAGE_PREFIX:?Run npm run setup}-accounts:local
+    build: { context: ../lab2, dockerfile: ../lab3/docker/accounts.Dockerfile }
+    environment:
+      <<: *network-env
+      ACCOUNTS_PORT: '3000'
+      ACCOUNTS_DATABASE_PATH: /app/data/accounts.sqlite
+      JWT_SECRET: ${JWT_SECRET:?Run npm run setup}
+      SERVICE_KEY: ${SERVICE_KEY:?Run npm run setup}
+    volumes: [accounts_data:/app/data]
+
+  catalog:
+    <<: *runtime
+    image: ${IMAGE_PREFIX:?Run npm run setup}-catalog:local
+    build: { context: ../lab2, dockerfile: ../lab3/docker/catalog.Dockerfile }
+    environment:
+      <<: *network-env
+      CATALOG_PORT: '3000'
+      CATALOG_DATABASE_PATH: /app/data/catalog.sqlite
+      SERVICE_KEY: ${SERVICE_KEY:?Run npm run setup}
+    volumes: [catalog_data:/app/data]
+
+  bookings:
+    <<: *runtime
+    image: ${IMAGE_PREFIX:?Run npm run setup}-bookings:local
+    build: { context: ../lab2, dockerfile: ../lab3/docker/bookings.Dockerfile }
+    environment:
+      <<: [*network-env, *messaging-env]
+      BOOKINGS_PORT: '3000'
+      BOOKINGS_DATABASE_PATH: /app/data/bookings.sqlite
+      SERVICE_KEY: ${SERVICE_KEY:?Run npm run setup}
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+    volumes: [bookings_data:/app/data]
+
+  notifications:
+    <<: *runtime
+    image: ${IMAGE_PREFIX:?Run npm run setup}-notifications:local
+    build: { context: ../lab2, dockerfile: ../lab3/docker/notifications.Dockerfile }
+    environment:
+      <<: [*network-env, *messaging-env]
+      NOTIFICATIONS_PORT: '3000'
+      NOTIFICATIONS_DATABASE_PATH: /app/data/notifications.sqlite
+      SERVICE_KEY: ${SERVICE_KEY:?Run npm run setup}
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+    volumes: [notifications_data:/app/data]
+
+  gateway:
+    <<: *runtime
+    networks: [backend, edge]
+    image: ${IMAGE_PREFIX:?Run npm run setup}-gateway:local
+    build: { context: ../lab2, dockerfile: ../lab3/docker/gateway.Dockerfile }
+    environment:
+      <<: *network-env
+      MESSAGING_ENABLED: 'true'
+      GATEWAY_PORT: '3000'
+    ports: ['127.0.0.1:${API_PORT:?Run npm run setup}:3000']
+    depends_on:
+      accounts: { condition: service_healthy }
+      catalog: { condition: service_healthy }
+      bookings: { condition: service_healthy }
+      notifications: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(8000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 9s
+      retries: 12
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:4.3.5-management@sha256:8cbda4973b3053f3e3f76f4c28edcad1802896aec5a6e781ebc23bf1eb8273aa
+    hostname: rabbitmq
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+    environment:
+      RABBITMQ_DEFAULT_USER: itmo
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Run npm run setup}
+      RABBITMQ_DEFAULT_VHOST: itmo
+    volumes: [rabbitmq_data:/var/lib/rabbitmq]
+    networks: [backend]
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_running]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: 5m, max-file: '2' }
+
+networks:
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  accounts_data: {}
+  catalog_data: {}
+  bookings_data: {}
+  notifications_data: {}
+  rabbitmq_data: {}
