@@ -1,0 +1,196 @@
+name: job-search-lr3
+services:
+  db:
+    image: postgres:16
+    restart: always
+
+    ports: 
+      - 16432:5432
+
+    environment:
+      POSTGRES_USER: maindb
+      POSTGRES_PASSWORD: maindb
+      POSTGRES_DB: maindb
+
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+    #проверка готовности контейнера к работе
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d maindb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    restart: always
+
+    hostname: rabbitmq
+
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app
+
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    build:
+      context: ./user_service
+
+    restart: always
+
+    ports:
+      - 8101:8001
+
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8001
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: user_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+
+      JWT_SECRET_KEY: secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 3600
+
+      REFERENCE_SERVICE_URL: http://reference-service:8002/api/v1
+      INTERNAL_SERVICE_TOKEN: my-internal-service-token
+    
+    depends_on:
+    #сервис user_service будет ждать пока сервис db не будет готов к работе
+      db:
+        condition: service_healthy
+
+  reference-service:
+    build:
+      context: ./reference_service
+
+    restart: always
+
+    ports:
+      - 8102:8002
+    
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8002
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: reference_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+      
+      INTERNAL_SERVICE_TOKEN: my-internal-service-token
+
+    depends_on:
+      db:
+        condition: service_healthy
+  
+  vacancy-service:
+    build:
+      context: ./vacancy_service
+
+    restart: always
+
+    ports:
+      - "8103:8003"
+
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8003
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: vacancy_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+
+      JWT_SECRET_KEY: secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 3600
+
+      USER_SERVICE_URL: http://user-service:8001/api/v1
+      REFERENCE_SERVICE_URL: http://reference-service:8002/api/v1
+
+      INTERNAL_SERVICE_TOKEN: my-internal-service-token
+
+      RABBITMQ_URL: amqp://app:app@rabbitmq:5672
+
+    depends_on:
+      db:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      reference-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+  
+  response-service:
+    build:
+      context: ./response_service
+
+    restart: always
+
+    ports:
+      - "8104:8004"
+
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8004
+      APP_PROTOCOL: http
+      APP_API_PREFIX: /api/v1
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: response_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+
+      JWT_SECRET_KEY: secret
+      JWT_TOKEN_TYPE: Bearer
+      JWT_ACCESS_TOKEN_LIFETIME: 3600
+
+      USER_SERVICE_URL: http://user-service:8001/api/v1
+      VACANCY_SERVICE_URL: http://vacancy-service:8003/api/v1
+
+      INTERNAL_SERVICE_TOKEN: my-internal-service-token
+
+      RABBITMQ_URL: amqp://app:app@rabbitmq:5672
+
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      vacancy-service:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
