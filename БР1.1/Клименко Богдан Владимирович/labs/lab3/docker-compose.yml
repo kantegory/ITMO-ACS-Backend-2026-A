@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "3001:3001"
+    environment:
+      JWT_SECRET: your_super_secret_key_change_me
+      SERVICE_TOKEN: internal_service_token_change_me
+      DB_PATH: /app/data/auth.sqlite
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - auth-db:/app/data
+      - uploads-data:/app/uploads
+    networks:
+      - backend
+    depends_on:
+      - rabbitmq
+
+  post-service:
+    build:
+      context: ./post-service
+      dockerfile: Dockerfile
+    container_name: post-service
+    ports:
+      - "3002:3002"
+    environment:
+      JWT_SECRET: your_super_secret_key_change_me
+      SERVICE_TOKEN: internal_service_token_change_me
+      DB_PATH: /app/data/post.sqlite
+      UPLOADS_DIR: /app/uploads
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - post-db:/app/data
+      - uploads-data:/app/uploads
+    networks:
+      - backend
+    depends_on:
+      - rabbitmq
+      - auth-service
+
+  comment-service:
+    build:
+      context: ./comment-service
+      dockerfile: Dockerfile
+    container_name: comment-service
+    ports:
+      - "3003:3003"
+    environment:
+      JWT_SECRET: your_super_secret_key_change_me
+      SERVICE_TOKEN: internal_service_token_change_me
+      DB_PATH: /app/data/comment.sqlite
+      UPLOADS_DIR: /app/uploads
+      AUTH_SERVICE_URL: http://auth-service:3001
+      POST_SERVICE_URL: http://post-service:3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - comment-db:/app/data
+      - uploads-data:/app/uploads
+    networks:
+      - backend
+    depends_on:
+      - rabbitmq
+      - auth-service
+      - post-service
+
+  social-service:
+    build:
+      context: ./social-service
+      dockerfile: Dockerfile
+    container_name: social-service
+    ports:
+      - "3004:3004"
+    environment:
+      JWT_SECRET: your_super_secret_key_change_me
+      SERVICE_TOKEN: internal_service_token_change_me
+      DB_PATH: /app/data/social.sqlite
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - social-db:/app/data
+    networks:
+      - backend
+    depends_on:
+      - rabbitmq
+      - auth-service
+
+volumes:
+  auth-db:
+  post-db:
+  comment-db:
+  social-db:
+  uploads-data:
+
+networks:
+  backend:
+    driver: bridge
