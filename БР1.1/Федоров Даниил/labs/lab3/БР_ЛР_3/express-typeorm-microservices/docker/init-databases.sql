@@ -1,0 +1,4 @@
+CREATE DATABASE user_db;
+CREATE DATABASE reference_db;
+CREATE DATABASE vacancy_db;
+CREATE DATABASE response_db;
