@@ -1,0 +1,160 @@
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rental-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - rental-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  auth-db:
+    image: postgres:16-alpine
+    container_name: rental-auth-db
+    ports:
+      - "15432:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./user_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  property-db:
+    image: postgres:16-alpine
+    container_name: rental-property-db
+    ports:
+      - "15433:5432"
+    volumes:
+      - property-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./property_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  booking-db:
+    image: postgres:16-alpine
+    container_name: rental-booking-db
+    ports:
+      - "15434:5432"
+    volumes:
+      - booking-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./booking_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  engagement-db:
+    image: postgres:16-alpine
+    container_name: rental-engagement-db
+    ports:
+      - "15435:5432"
+    volumes:
+      - engagement-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./engagement_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  auth-service:
+    build: ./user_service
+    container_name: rental-auth-service
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./user_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-db:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  property-service:
+    build: ./property_service
+    container_name: rental-property-service
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./property_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      property-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  booking-service:
+    build: ./booking_service
+    container_name: rental-booking-service
+    ports:
+      - "8002:8002"
+    env_file:
+      - ./booking_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      booking-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  engagement-service:
+    build: ./engagement_service
+    container_name: rental-engagement-service
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./engagement_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      engagement-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+  auth-db-data:
+  property-db-data:
+  booking-db-data:
+  engagement-db-data:
+
+networks:
+  rental-network:
+    driver: bridge
