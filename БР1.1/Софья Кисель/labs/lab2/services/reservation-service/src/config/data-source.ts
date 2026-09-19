@@ -1,0 +1,16 @@
+import 'reflect-metadata';
+import { DataSource } from 'typeorm';
+import { settings } from './settings';
+import { Reservation } from '../models/reservation.entity';
+
+export const AppDataSource = new DataSource({
+  type: 'postgres',
+  host: settings.db.host,
+  port: settings.db.port,
+  username: settings.db.user,
+  password: settings.db.password,
+  database: settings.db.name,
+  entities: [Reservation],
+  synchronize: true,
+  logging: false,
+});
