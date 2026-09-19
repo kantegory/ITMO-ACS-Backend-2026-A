@@ -1,0 +1,395 @@
+openapi: 3.0.3
+info:
+  title: RentEase Internal Service API
+  version: 1.0.0
+  description: >
+    Внутренние контракты для миграции монолита RentEase к микросервисной
+    архитектуре. Endpoint'ы доступны только внутри приватной сети.
+servers:
+  - url: http://identity-service:8081
+    description: Identity Service
+  - url: http://property-service:8082
+    description: Property Service
+  - url: http://booking-service:8083
+    description: Booking Service
+  - url: http://contract-service:8084
+    description: Contract and Billing Service
+  - url: http://communication-service:8085
+    description: Communication Service
+  - url: http://review-service:8086
+    description: Review Service
+
+tags:
+  - name: Identity
+  - name: Property
+  - name: Contract
+
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Service JWT. Claims: iss, aud, sub, scope, exp. Пользовательский JWT
+        не заменяет сервисный токен.
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PropertyId:
+      name: property_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ContractId:
+      name: contract_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 100
+  headers:
+    RequestId:
+      description: Идентификатор сквозной трассировки запроса.
+      schema:
+        type: string
+  schemas:
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+          example: DATES_UNAVAILABLE
+        message:
+          type: string
+          example: Selected dates are already booked
+        trace_id:
+          type: string
+          example: 01JEXAMPLE7Y2K9K6K7J2M2Q6M
+        details:
+          type: object
+          additionalProperties: true
+    UserStatus:
+      type: object
+      required: [user_id, role, active]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [tenant, landlord, admin]
+        active:
+          type: boolean
+    PropertySummary:
+      type: object
+      required: [property_id, landlord_id, monthly_rent, active]
+      properties:
+        property_id:
+          type: string
+          format: uuid
+        landlord_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        city:
+          type: string
+        monthly_rent:
+          type: number
+          format: double
+          minimum: 0
+        active:
+          type: boolean
+    OwnershipResponse:
+      type: object
+      required: [property_id, landlord_id, active, owner]
+      properties:
+        property_id:
+          type: string
+          format: uuid
+        landlord_id:
+          type: string
+          format: uuid
+        active:
+          type: boolean
+        owner:
+          type: boolean
+    ConfirmedBooking:
+      type: object
+      required: [booking_id, property_id, tenant_id, landlord_id, start_date, end_date, monthly_rent]
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+        property_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        landlord_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        monthly_rent:
+          type: number
+          format: double
+          minimum: 0
+        security_deposit:
+          type: number
+          format: double
+          minimum: 0
+    ContractResponse:
+      type: object
+      required: [contract_id, booking_id, property_id, tenant_id, landlord_id, monthly_rent, status]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        booking_id:
+          type: string
+          format: uuid
+        property_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        landlord_id:
+          type: string
+          format: uuid
+        contract_number:
+          type: string
+          example: RE-D4162366
+        monthly_rent:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [active, completed, cancelled]
+    EligibilityResponse:
+      type: object
+      required: [eligible]
+      properties:
+        eligible:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          enum: [CONTRACT_NOT_FOUND, CONTRACT_NOT_COMPLETED, AUTHOR_NOT_PARTICIPANT, REVIEW_ALREADY_EXISTS]
+    UnauthorizedError:
+      description: Сервисный токен отсутствует или недействителен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ForbiddenError:
+      description: У вызывающего сервиса нет требуемого разрешения
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    DependencyUnavailableError:
+      description: Внутренняя зависимость недоступна
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+paths:
+  /internal/users/{user_id}/status:
+    get:
+      tags: [Identity]
+      summary: Проверить существование и активность пользователя
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Пользователь найден
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStatus'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /internal/properties/{property_id}/summary:
+    get:
+      tags: [Property]
+      summary: Получить минимальный снимок объявления для другого сервиса
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Снимок объявления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySummary'
+        '404':
+          description: Объект не найден или недоступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /internal/properties/{property_id}/ownership:
+    get:
+      tags: [Property]
+      summary: Проверить, является ли пользователь владельцем объекта
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: '#/components/parameters/PropertyId'
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Результат проверки владельца
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnershipResponse'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /internal/contracts:
+    post:
+      tags: [Contract]
+      summary: Создать договор по подтвержденному бронированию
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmedBooking'
+      responses:
+        '201':
+          description: Договор создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResponse'
+        '200':
+          description: Договор уже существовал для этого Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResponse'
+        '400':
+          description: Некорректный снимок бронирования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Договор для бронирования уже создан с другими данными
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '503':
+          $ref: '#/components/responses/DependencyUnavailableError'
+
+  /internal/contracts/{contract_id}/review-eligibility:
+    get:
+      tags: [Contract]
+      summary: Проверить право автора оставить отзыв
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+        - name: author_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibilityResponse'
+        '404':
+          description: Договор не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'

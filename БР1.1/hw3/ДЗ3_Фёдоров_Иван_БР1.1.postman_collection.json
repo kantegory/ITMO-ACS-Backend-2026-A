@@ -1,0 +1,588 @@
+{
+  "info": {
+    "_postman_id": "b8fd6f53-0e4f-4b85-b5b8-4c78f0b1a301",
+    "name": "RentEase - ДЗ3 API tests",
+    "description": "Комплексный сценарий ДЗ3: запуск API, регистрация landlord и tenant, вход, создание объявления, список и фильтрация объявлений, просмотр объекта и старт переписки.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Health check",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const runId = Date.now().toString();",
+              "pm.collectionVariables.set('runId', runId);",
+              "pm.collectionVariables.set('landlordEmail', `landlord.${runId}@example.com`);",
+              "pm.collectionVariables.set('tenantEmail', `tenant.${runId}@example.com`);",
+              "pm.collectionVariables.set('password', 'secret123');",
+              "pm.collectionVariables.set('propertyTitle', `Postman apartment ${runId}`);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Health endpoint returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Application is healthy', function () {",
+              "    pm.expect(pm.response.json().status).to.eql('healthy');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Register landlord",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Landlord registration returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Registered user has landlord role', function () {",
+              "    pm.expect(body.role).to.eql('landlord');",
+              "});",
+              "pm.collectionVariables.set('landlordId', body.user_id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{landlordEmail}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"Postman Landlord\",\n  \"phone\": \"+79990000001\",\n  \"role\": \"landlord\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Login landlord",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Landlord login returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Access token is returned', function () {",
+              "    pm.expect(body.access_token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.expect(body.token_type).to.eql('bearer');",
+              "pm.collectionVariables.set('landlordToken', body.access_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{landlordEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Create property",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Property creation returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Property id is returned', function () {",
+              "    pm.expect(body.property_id).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.collectionVariables.set('propertyId', body.property_id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{landlordToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"{{propertyTitle}}\",\n  \"description\": \"Apartment created by the Postman scenario\",\n  \"property_type\": \"apartment\",\n  \"price_per_month\": 65000,\n  \"security_deposit\": 65000,\n  \"city\": \"Saint Petersburg\",\n  \"address\": \"Kronverksky pr., 49\",\n  \"rooms_count\": 1,\n  \"area_sqm\": 32\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/properties",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "properties"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Register tenant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Tenant registration returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Registered user has tenant role', function () {",
+              "    pm.expect(body.role).to.eql('tenant');",
+              "});",
+              "pm.collectionVariables.set('tenantId', body.user_id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"Postman Tenant\",\n  \"phone\": \"+79990000002\",\n  \"role\": \"tenant\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Login tenant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Tenant login returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Tenant access token is returned', function () {",
+              "    pm.expect(body.access_token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.collectionVariables.set('tenantToken', body.access_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "7. Get properties",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Property list returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Property list contains items', function () {",
+              "    pm.expect(body.items).to.be.an('array').that.is.not.empty;",
+              "});",
+              "const property = body.items.find(item => item.property_id === pm.collectionVariables.get('propertyId'));",
+              "pm.test('Created property is in the list', function () {",
+              "    pm.expect(property).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/properties",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "properties"
+          ]
+        }
+      }
+    },
+    {
+      "name": "8. Filter properties",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Filtered property list returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('All filtered items match the requested city and type', function () {",
+              "    body.items.forEach(item => {",
+              "        pm.expect(item.city).to.eql('Saint Petersburg');",
+              "        pm.expect(item.property_type).to.eql('apartment');",
+              "    });",
+              "});",
+              "pm.test('Created property matches the filter', function () {",
+              "    pm.expect(body.items.some(item => item.property_id === pm.collectionVariables.get('propertyId'))).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/properties?city=Saint%20Petersburg&property_type=apartment&min_price=50000&max_price=80000&rooms_count=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "properties"
+          ],
+          "query": [
+            {
+              "key": "city",
+              "value": "Saint%20Petersburg"
+            },
+            {
+              "key": "property_type",
+              "value": "apartment"
+            },
+            {
+              "key": "min_price",
+              "value": "50000"
+            },
+            {
+              "key": "max_price",
+              "value": "80000"
+            },
+            {
+              "key": "rooms_count",
+              "value": "1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "9. Get selected property",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Property details return 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Returned property is the selected property', function () {",
+              "    pm.expect(body.property_id).to.eql(pm.collectionVariables.get('propertyId'));",
+              "});",
+              "pm.expect(body.title).to.eql(pm.collectionVariables.get('propertyTitle'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/properties/{{propertyId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "properties",
+            "{{propertyId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "10. Start conversation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Message creation returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Message is linked to the selected property', function () {",
+              "    pm.expect(body.property_id).to.eql(pm.collectionVariables.get('propertyId'));",
+              "});",
+              "pm.expect(body.receiver_id).to.eql(pm.collectionVariables.get('landlordId'));",
+              "pm.collectionVariables.set('messageId', body.message_id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tenantToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"receiver_id\": \"{{landlordId}}\",\n  \"property_id\": \"{{propertyId}}\",\n  \"message_text\": \"Hello! I am interested in this apartment.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/messages",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "messages"
+          ]
+        }
+      }
+    },
+    {
+      "name": "11. Get conversation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Dialog request returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Dialog contains the sent message', function () {",
+              "    pm.expect(body.some(item => item.message_id === pm.collectionVariables.get('messageId'))).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tenantToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/messages/dialogs/{{landlordId}}/{{propertyId}}?limit=50",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "messages",
+            "dialogs",
+            "{{landlordId}}",
+            "{{propertyId}}"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "50"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "landlordEmail",
+      "value": ""
+    },
+    {
+      "key": "tenantEmail",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": "secret123"
+    },
+    {
+      "key": "propertyTitle",
+      "value": ""
+    },
+    {
+      "key": "landlordId",
+      "value": ""
+    },
+    {
+      "key": "landlordToken",
+      "value": ""
+    },
+    {
+      "key": "tenantId",
+      "value": ""
+    },
+    {
+      "key": "tenantToken",
+      "value": ""
+    },
+    {
+      "key": "propertyId",
+      "value": ""
+    },
+    {
+      "key": "messageId",
+      "value": ""
+    }
+  ]
+}
