@@ -1,6 +1,7 @@
 package ru.itmo.rentease.booking;
 
 import jakarta.validation.Valid;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -17,15 +18,18 @@ public class BookingController {
     private final InternalHttpClient internal;
     private final String propertyServiceUrl;
     private final String contractServiceUrl;
+    private final RabbitTemplate rabbitTemplate;
 
     public BookingController(BookingRepository bookings,
                              BookingStatusHistoryRepository history,
                              InternalHttpClient internal,
+                             RabbitTemplate rabbitTemplate,
                              @Value("${property-service.url:http://localhost:8082}") String propertyServiceUrl,
                              @Value("${contract-service.url:http://localhost:8084}") String contractServiceUrl) {
         this.bookings = bookings;
         this.history = history;
         this.internal = internal;
+        this.rabbitTemplate = rabbitTemplate;
         this.propertyServiceUrl = propertyServiceUrl;
         this.contractServiceUrl = contractServiceUrl;
     }
@@ -111,6 +115,12 @@ public class BookingController {
         event.toStatus = booking.status;
         event.changedBy = actor;
         history.save(event);
+        if (booking.status == BookingStatus.confirmed) {
+            rabbitTemplate.convertAndSend(ru.itmo.rentease.common.MessagingConstants.EXCHANGE,
+                    ru.itmo.rentease.common.MessagingConstants.BOOKING_CONFIRMED_KEY,
+                    new ApiDtos.BookingConfirmedEvent(UUID.randomUUID(), booking.id, booking.propertyId,
+                            booking.tenantId, booking.landlordId, booking.status, java.time.Instant.now()));
+        }
         return response(booking);
     }
 

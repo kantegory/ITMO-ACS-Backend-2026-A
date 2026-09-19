@@ -97,4 +97,18 @@ public final class ApiDtos {
                                  @JsonProperty("contract_id") UUID contractId,
                                  @JsonProperty("author_id") UUID authorId,
                                  int rating, String comment) {}
+
+    public record BookingConfirmedEvent(@JsonProperty("event_id") UUID eventId,
+                                        @JsonProperty("booking_id") UUID bookingId,
+                                        @JsonProperty("property_id") UUID propertyId,
+                                        @JsonProperty("tenant_id") UUID tenantId,
+                                        @JsonProperty("landlord_id") UUID landlordId,
+                                        BookingStatus status,
+                                        @JsonProperty("occurred_at") Instant occurredAt) {}
+
+    public record NotificationResponse(@JsonProperty("notification_id") UUID notificationId,
+                                       @JsonProperty("recipient_id") UUID recipientId,
+                                       @JsonProperty("booking_id") UUID bookingId,
+                                       String type, String message,
+                                       @JsonProperty("created_at") Instant createdAt) {}
 }

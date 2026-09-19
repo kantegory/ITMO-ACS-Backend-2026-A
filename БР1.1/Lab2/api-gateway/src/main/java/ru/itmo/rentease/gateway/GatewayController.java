@@ -96,6 +96,7 @@ public class GatewayController {
         if (path.startsWith("/api/v1/messages") || path.startsWith("/api/v1/dialogs")) {
             return communicationServiceUrl;
         }
+        if (path.startsWith("/api/v1/notifications")) return communicationServiceUrl;
         if (path.startsWith("/api/v1/reviews")) return reviewServiceUrl;
         throw AppException.notFound("Route not found");
     }
