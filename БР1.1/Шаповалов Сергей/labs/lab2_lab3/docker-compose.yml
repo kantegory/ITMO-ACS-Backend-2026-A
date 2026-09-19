@@ -1,0 +1,213 @@
+version: '3.8'
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rbmq
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - app_net
+
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - '5433:5432'
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  users-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: users_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - '5434:5432'
+    volumes:
+      - users-db-data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  restaurants-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: restaurants_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - '5435:5432'
+    volumes:
+      - restaurants-db-data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  reservations-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reservations_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - '5436:5432'
+    volumes:
+      - reservations-db-data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  reviews-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reviews_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - '5437:5432'
+    volumes:
+      - reviews-db-data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  auth-service:
+    build: ./auth-service
+    working_dir: /app
+    volumes:
+      - ./auth-service:/app
+    command: npm run dev
+    depends_on:
+      - auth-db
+      - rabbitmq
+    ports:
+      - '3001:3001'
+    environment:
+      - JWT_SECRET=secret
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_HOST=auth-db
+      - DB_PORT=5432
+      - DB_USER=app
+      - DB_PASSWORD=app
+      - DB_NAME=auth_db
+    networks:
+      - app_net
+
+  users-service:
+    build: ./users-service
+    working_dir: /app
+    volumes:
+      - ./users-service:/app
+    command: npm run dev
+    depends_on:
+      - users-db
+      - rabbitmq
+    ports:
+      - '3002:3002'
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_HOST=users-db
+      - DB_PORT=5432
+      - DB_USER=app
+      - DB_PASSWORD=app
+      - DB_NAME=users_db
+    networks:
+      - app_net
+
+  restaurants-service:
+    build: ./restaurants-service
+    working_dir: /app
+    volumes:
+      - ./restaurants-service:/app
+    command: npm run dev
+    depends_on:
+      - restaurants-db
+      - rabbitmq
+    ports:
+      - '3003:3003'
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_HOST=restaurants-db
+      - DB_PORT=5432
+      - DB_USER=app
+      - DB_PASSWORD=app
+      - DB_NAME=restaurants_db
+    networks:
+      - app_net
+
+  reservations-service:
+    build: ./reservations-service
+    working_dir: /app
+    volumes:
+      - ./reservations-service:/app
+    command: npm run dev
+    depends_on:
+      - reservations-db
+      - rabbitmq
+    ports:
+      - '3004:3004'
+    environment:
+      - JWT_SECRET=secret
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_HOST=reservations-db
+      - DB_PORT=5432
+      - DB_USER=app
+      - DB_PASSWORD=app
+      - DB_NAME=reservations_db
+    networks:
+      - app_net
+
+  reviews-service:
+    build: ./reviews-service
+    working_dir: /app
+    volumes:
+      - ./reviews-service:/app
+    command: npm run dev
+    depends_on:
+      - reviews-db
+      - rabbitmq
+    ports:
+      - '3005:3005'
+    environment:
+      - JWT_SECRET=secret
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_HOST=reviews-db
+      - DB_PORT=5432
+      - DB_USER=app
+      - DB_PASSWORD=app
+      - DB_NAME=reviews_db
+    networks:
+      - app_net
+
+  http-logger:
+    build: ./http-logger
+    working_dir: /app
+    command: node index.js
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    networks:
+      - app_net
+
+volumes:
+  auth-db-data:
+  users-db-data:
+  restaurants-db-data:
+  reservations-db-data:
+  reviews-db-data:
+
+networks:
+  app_net:
+    driver: bridge
