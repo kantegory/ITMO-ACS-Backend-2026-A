@@ -1,0 +1,140 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    container_name: restaurant-booking-db
+    environment:
+      POSTGRES_USER: {{ env.POSTGRES_USER }}
+      POSTGRES_PASSWORD: {{ env.POSTGRES_PASSWORD }}
+      POSTGRES_DB: postgres
+      POSTGRES_MULTIPLE_DATABASES: auth,catalog,booking
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/00-init-db.sh:ro
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ env.POSTGRES_USER }}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    container_name: restaurant-booking-rabbitmq
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    image: {{ env.AUTH_IMAGE }}
+    restart: always
+    container_name: restaurant-booking-auth-service
+    ports:
+      - "{{ env.AUTH_SERVICE_PUBLISHED_PORT }}:8081"
+    depends_on:
+      auth-migrations:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      AUTH_DB_DSN: {{ env.AUTH_DB_DSN }}
+      AUTH_HTTP_ADDR: {{ env.AUTH_HTTP_ADDR }}
+      JWT_SECRET: {{ env.JWT_SECRET }}
+      JWT_EXPIRES: {{ env.JWT_EXPIRES }}
+      RABBITMQ_URL: {{ env.RABBITMQ_URL }}
+      COMPOSE_PROJECT_NAME: {{ env.COMPOSE_PROJECT_NAME }}
+    networks:
+      - restaurant-booking
+
+  auth-migrations:
+    image: {{ env.AUTH_IMAGE }}
+    restart: "no"
+    container_name: restaurant-booking-auth-migrations
+    command: ["sh", "-c", "/app/migrate -path /app/migrations -database \"$$AUTH_DB_DSN\" up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AUTH_DB_DSN: {{ env.AUTH_DB_DSN }}
+    networks:
+      - restaurant-booking
+
+  catalog-service:
+    image: {{ env.CATALOG_IMAGE }}
+    restart: always
+    container_name: restaurant-booking-catalog-service
+    ports:
+      - "{{ env.CATALOG_SERVICE_PUBLISHED_PORT }}:8082"
+    depends_on:
+      catalog-migrations:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      CATALOG_DB_DSN: {{ env.CATALOG_DB_DSN }}
+      CATALOG_HTTP_ADDR: {{ env.CATALOG_HTTP_ADDR }}
+      JWT_SECRET: {{ env.JWT_SECRET }}
+      RABBITMQ_URL: {{ env.RABBITMQ_URL }}
+      COMPOSE_PROJECT_NAME: {{ env.COMPOSE_PROJECT_NAME }}
+    networks:
+      - restaurant-booking
+
+  catalog-migrations:
+    image: {{ env.CATALOG_IMAGE }}
+    restart: "no"
+    container_name: restaurant-booking-catalog-migrations
+    command: ["sh", "-c", "/app/migrate -path /app/migrations -database \"$$CATALOG_DB_DSN\" up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CATALOG_DB_DSN: {{ env.CATALOG_DB_DSN }}
+    networks:
+      - restaurant-booking
+
+  booking-service:
+    image: {{ env.BOOKING_IMAGE }}
+    restart: always
+    container_name: restaurant-booking-booking-service
+    ports:
+      - "{{ env.BOOKING_SERVICE_PUBLISHED_PORT }}:8083"
+    depends_on:
+      booking-migrations:
+        condition: service_completed_successfully
+      catalog-service:
+        condition: service_started
+    environment:
+      BOOKING_DB_DSN: {{ env.BOOKING_DB_DSN }}
+      BOOKING_HTTP_ADDR: {{ env.BOOKING_HTTP_ADDR }}
+      JWT_SECRET: {{ env.JWT_SECRET }}
+      CATALOG_SERVICE_URL: {{ env.CATALOG_SERVICE_URL }}
+      COMPOSE_PROJECT_NAME: {{ env.COMPOSE_PROJECT_NAME }}
+    networks:
+      - restaurant-booking
+
+  booking-migrations:
+    image: {{ env.BOOKING_IMAGE }}
+    restart: "no"
+    container_name: restaurant-booking-booking-migrations
+    command: ["sh", "-c", "/app/migrate -path /app/migrations -database \"$$BOOKING_DB_DSN\" up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      BOOKING_DB_DSN: {{ env.BOOKING_DB_DSN }}
+    networks:
+      - restaurant-booking
+
+volumes:
+  dbdata:
+    name: restaurant_booking_dbdata
+
+networks:
+  restaurant-booking:
+    driver: bridge

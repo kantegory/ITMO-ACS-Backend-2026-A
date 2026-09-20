@@ -1,0 +1,1556 @@
+{
+  "info": {
+    "name": "restaurant-booking",
+    "_postman_id": "b7d6d2b8-9f1f-4d62-9c5b-4b6a2f2a1d2f",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Полная коллекция текущего архивного микросервисного API: Auth, Catalog, Booking. Запускать Runner сверху вниз: регистрация создает отдельного пользователя и сохраняет token/ID; Cleanup удаляет созданные ресторан, столик, блюдо и отзыв. Списки проверяют созданные сущности и не подменяют их ID первым чужим элементом. Даты брони задаются на следующий день.\n\nПо умолчанию API доступны на 127.0.0.1:8081/8082/8083. Для общего домена можно задать authBaseUrl, catalogBaseUrl и bookingBaseUrl равными https://api.preobart.ru. Внутренние запросы Service и /ready выполняются через прямые адреса/SSH-туннель: nginx не публикует их. Для прогона всех папок используйте прямые адреса сервисов. В Runner рекомендуется задержка 100 мс между запросами.\n\nФормат ответов проверяется по фактическому архивному API, включая Items, Item, Review, Booking, Bookings, Available. Создание/изменение отзыва требует rating от 1 до 5 и непустой text; изменять и удалять отзыв может его автор."
+  },
+  "variable": [
+    {
+      "key": "apiHost",
+      "value": "127.0.0.1"
+    },
+    {
+      "key": "authPublishedPort",
+      "value": "8081"
+    },
+    {
+      "key": "catalogPublishedPort",
+      "value": "8082"
+    },
+    {
+      "key": "bookingPublishedPort",
+      "value": "8083"
+    },
+    {
+      "key": "authBaseUrl",
+      "value": "http://{{apiHost}}:{{authPublishedPort}}"
+    },
+    {
+      "key": "catalogBaseUrl",
+      "value": "http://{{apiHost}}:{{catalogPublishedPort}}"
+    },
+    {
+      "key": "bookingBaseUrl",
+      "value": "http://{{apiHost}}:{{bookingPublishedPort}}"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "restaurantId",
+      "value": ""
+    },
+    {
+      "key": "tableId",
+      "value": ""
+    },
+    {
+      "key": "menuItemId",
+      "value": ""
+    },
+    {
+      "key": "reviewId",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": "Postman-example-12345!"
+    },
+    {
+      "key": "fullName",
+      "value": "Postman User"
+    },
+    {
+      "key": "phone",
+      "value": ""
+    },
+    {
+      "key": "startTime",
+      "value": ""
+    },
+    {
+      "key": "endTime",
+      "value": ""
+    },
+    {
+      "key": "guestsCount",
+      "value": "2"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth Service",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"full_name\": \"{{fullName}}\",\n  \"phone\": \"{{phone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/auth/register",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2);",
+                  "pm.collectionVariables.set(\"email\", \"postman-\" + suffix + \"@example.org\");",
+                  "for (const key of [\"token\", \"userId\", \"restaurantId\", \"tableId\", \"menuItemId\", \"reviewId\", \"bookingId\"]) pm.collectionVariables.set(key, \"\");",
+                  "const start = new Date(); start.setUTCDate(start.getUTCDate() + 1); start.setUTCHours(18, 0, 0, 0);",
+                  "pm.collectionVariables.set(\"startTime\", start.toISOString());",
+                  "pm.collectionVariables.set(\"endTime\", new Date(start.getTime() + 3600000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.user).to.be.an(\"object\");",
+                  "  pm.expect(json.user.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.token).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set(\"token\", json.token);",
+                  "pm.collectionVariables.set(\"userId\", json.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/auth/login",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.user).to.be.an(\"object\");",
+                  "  pm.expect(json.user.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.user.id).to.eql(pm.collectionVariables.get(\"userId\"));",
+                  "  pm.expect(json.token).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set(\"token\", json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{authBaseUrl}}/api/auth/me",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.be.an(\"object\");",
+                  "  pm.expect(json.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.id).to.eql(pm.collectionVariables.get(\"userId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Service: Get user by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{authBaseUrl}}/service/users/{{userId}}",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "service",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.be.an(\"object\");",
+                  "  pm.expect(json.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.id).to.eql(pm.collectionVariables.get(\"userId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Catalog Service",
+      "item": [
+        {
+          "name": "Create restaurant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Restaurant\",\n  \"description\": \"Test restaurant for defense\",\n  \"city\": \"Saint Petersburg\",\n  \"address\": \"Nevsky prospect, 1\",\n  \"cuisine_type\": \"european\",\n  \"price_category\": \"medium\",\n  \"photos\": [\"photo1\"]\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.restaurant).to.be.an(\"object\");",
+                  "  pm.expect(json.restaurant.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "});",
+                  "pm.collectionVariables.set(\"restaurantId\", json.restaurant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List restaurants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.have.property(\"restaurants\");",
+                  "  pm.expect(json.restaurants).to.be.an(\"array\");",
+                  "  pm.expect(json.restaurants.some(item => item.id === pm.collectionVariables.get(\"restaurantId\"))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get restaurant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.restaurant).to.be.an(\"object\");",
+                  "  pm.expect(json.restaurant.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.restaurant.id).to.eql(pm.collectionVariables.get(\"restaurantId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create table",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table_number\": 1,\n  \"seats_count\": 2\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/tables",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.table).to.be.an(\"object\");",
+                  "  pm.expect(json.table.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "});",
+                  "pm.collectionVariables.set(\"tableId\", json.table.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tables",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/tables",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.have.property(\"Items\");",
+                  "  pm.expect(json.Items).to.be.an(\"array\");",
+                  "  pm.expect(json.Items.some(item => item.id === pm.collectionVariables.get(\"tableId\"))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get table",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/tables/{{tableId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables",
+                "{{tableId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.table).to.be.an(\"object\");",
+                  "  pm.expect(json.table.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.table.id).to.eql(pm.collectionVariables.get(\"tableId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create menu item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo dish\",\n  \"description\": \"Demo dish for defense\",\n  \"price\": 500,\n  \"category\": \"main\",\n  \"is_available\": true,\n  \"proteins\": 10,\n  \"fats\": 10,\n  \"carbs\": 10\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/menu",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "menu"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.item).to.be.an(\"object\");",
+                  "  pm.expect(json.item.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "});",
+                  "pm.collectionVariables.set(\"menuItemId\", json.item.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List menu",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/menu",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "menu"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.have.property(\"Items\");",
+                  "  pm.expect(json.Items).to.be.an(\"array\");",
+                  "  pm.expect(json.Items.some(item => item.id === pm.collectionVariables.get(\"menuItemId\"))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get menu item",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/menu/{{menuItemId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "menu",
+                "{{menuItemId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.item).to.be.an(\"object\");",
+                  "  pm.expect(json.item.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.item.id).to.eql(pm.collectionVariables.get(\"menuItemId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"text\": \"Postman review\"\n}"
+            },
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Review).to.be.an(\"object\");",
+                  "  pm.expect(json.Review.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.Review.rating).to.eql(5);",
+                  "  pm.expect(json.Review.text).to.eql(\"Postman review\");",
+                  "});",
+                  "pm.collectionVariables.set(\"reviewId\", json.Review.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get review",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews/{{reviewId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews",
+                "{{reviewId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Item).to.be.an(\"object\");",
+                  "  pm.expect(json.Item.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.Item.id).to.eql(pm.collectionVariables.get(\"reviewId\"));",
+                  "  pm.expect(json.Item.author_name).to.eql(pm.collectionVariables.get(\"fullName\"));",
+                  "  pm.expect(json.Item.rating).to.eql(5);",
+                  "  pm.expect(json.Item.text).to.eql(\"Postman review\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.have.property(\"Items\");",
+                  "  pm.expect(json.Items).to.be.an(\"array\");",
+                  "  pm.expect(json.Items.some(item => item.id === pm.collectionVariables.get(\"reviewId\"))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update review",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews/{{reviewId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews",
+                "{{reviewId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"text\": \"Updated Postman review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Review).to.be.an(\"object\");",
+                  "  pm.expect(json.Review.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.Review.id).to.eql(pm.collectionVariables.get(\"reviewId\"));",
+                  "  pm.expect(json.Review.rating).to.eql(4);",
+                  "  pm.expect(json.Review.text).to.eql(\"Updated Postman review\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get updated review",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews/{{reviewId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews",
+                "{{reviewId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Item).to.be.an(\"object\");",
+                  "  pm.expect(json.Item.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.Item.id).to.eql(pm.collectionVariables.get(\"reviewId\"));",
+                  "  pm.expect(json.Item.author_name).to.eql(pm.collectionVariables.get(\"fullName\"));",
+                  "  pm.expect(json.Item.rating).to.eql(4);",
+                  "  pm.expect(json.Item.text).to.eql(\"Updated Postman review\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Service: Get table brief",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{catalogBaseUrl}}/service/restaurants/{{restaurantId}}/tables/{{tableId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "service",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables",
+                "{{tableId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.be.an(\"object\");",
+                  "  pm.expect(json.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.id).to.eql(pm.collectionVariables.get(\"tableId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Booking Service",
+      "item": [
+        {
+          "name": "Check availability",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/restaurants/{{restaurantId}}/tables/{{tableId}}/availability?start_time={{startTime}}&end_time={{endTime}}",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables",
+                "{{tableId}}",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "start_time",
+                  "value": "{{startTime}}"
+                },
+                {
+                  "key": "end_time",
+                  "value": "{{endTime}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Available).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": \"{{restaurantId}}\",\n  \"table_id\": \"{{tableId}}\",\n  \"start_time\": \"{{startTime}}\",\n  \"end_time\": \"{{endTime}}\",\n  \"guests_count\": {{guestsCount}}\n}"
+            },
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/bookings",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Booking).to.be.an(\"object\");",
+                  "  pm.expect(json.Booking.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.Booking.table_id).to.eql(pm.collectionVariables.get(\"tableId\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"bookingId\", json.Booking.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/me/bookings",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "bookings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json).to.have.property(\"Bookings\");",
+                  "  pm.expect(json.Bookings).to.be.an(\"array\");",
+                  "  pm.expect(json.Bookings.some(item => item.id === pm.collectionVariables.get(\"bookingId\"))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get my booking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/me/bookings/{{bookingId}}",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.Booking).to.be.an(\"object\");",
+                  "  pm.expect(json.Booking.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.Booking.id).to.eql(pm.collectionVariables.get(\"bookingId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel my booking",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/api/me/bookings/{{bookingId}}",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { pm.response.to.have.status(204); });",
+                  "pm.test(\"Empty response\", function () { pm.expect(pm.response.text()).to.eql(\"\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cleanup",
+      "item": [
+        {
+          "name": "Delete review",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews/{{reviewId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews",
+                "{{reviewId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { pm.response.to.have.status(204); });",
+                  "pm.test(\"Empty response\", function () { pm.expect(pm.response.text()).to.eql(\"\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get deleted review: 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/reviews/{{reviewId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "reviews",
+                "{{reviewId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete menu item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/menu/{{menuItemId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "menu",
+                "{{menuItemId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { pm.response.to.have.status(204); });",
+                  "pm.test(\"Empty response\", function () { pm.expect(pm.response.text()).to.eql(\"\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete table",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/tables/{{tableId}}",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                "tables",
+                "{{tableId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { pm.response.to.have.status(204); });",
+                  "pm.test(\"Empty response\", function () { pm.expect(pm.response.text()).to.eql(\"\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete restaurant",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/restaurants/{{restaurantId}}/",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "restaurants",
+                "{{restaurantId}}",
+                ""
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.restaurant).to.be.an(\"object\");",
+                  "  pm.expect(json.restaurant.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.expect(json.restaurant.id).to.eql(pm.collectionVariables.get(\"restaurantId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health and OpenAPI",
+      "item": [
+        {
+          "name": "auth ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authBaseUrl}}/ready",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.status).to.eql(\"ready\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "auth OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authBaseUrl}}/docs/auth/openapi.yaml",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "docs",
+                "auth",
+                "openapi.yaml"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"OpenAPI document\", function () { pm.expect(pm.response.text()).to.include(\"openapi:\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "catalog ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/ready",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.status).to.eql(\"ready\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "catalog OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/docs/catalog/openapi.yaml",
+              "host": [
+                "{{catalogBaseUrl}}"
+              ],
+              "path": [
+                "docs",
+                "catalog",
+                "openapi.yaml"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"OpenAPI document\", function () { pm.expect(pm.response.text()).to.include(\"openapi:\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "booking ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/ready",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response fields\", function () {",
+                  "  pm.expect(json.status).to.eql(\"ready\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "booking OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{bookingBaseUrl}}/docs/booking/openapi.yaml",
+              "host": [
+                "{{bookingBaseUrl}}"
+              ],
+              "path": [
+                "docs",
+                "booking",
+                "openapi.yaml"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"OpenAPI document\", function () { pm.expect(pm.response.text()).to.include(\"openapi:\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
