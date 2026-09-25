@@ -35,13 +35,17 @@ const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const EXCHANGE = 'restaurant_events';
 
 async function connectRabbitMQ() {
-  try {
-    const conn = await amqp.connect(RABBITMQ_URL);
-    amqpChannel = await conn.createChannel();
-    await amqpChannel.assertExchange(EXCHANGE, 'topic', { durable: true });
-    console.log('[booking-service] Connected to RabbitMQ');
-  } catch (err) {
-    console.warn('[booking-service] RabbitMQ connection failed (will retry):', err);
+  while (!amqpChannel) {
+    try {
+      const conn = await amqp.connect(RABBITMQ_URL);
+      amqpChannel = await conn.createChannel();
+      await amqpChannel.assertExchange(EXCHANGE, 'topic', { durable: true });
+      console.log('[booking-service] Connected to RabbitMQ');
+      break;
+    } catch (err) {
+      console.warn('[booking-service] RabbitMQ not ready yet, retrying in 3 seconds...');
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 }
 

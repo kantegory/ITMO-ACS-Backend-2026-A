@@ -9,28 +9,32 @@ const EXCHANGE = 'restaurant_events';
 const QUEUE = 'notifications_queue';
 
 async function startConsumer() {
-  try {
-    const conn = await amqp.connect(RABBITMQ_URL);
-    const channel = await conn.createChannel();
-    await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
-    const q = await channel.assertQueue(QUEUE, { durable: true });
-    await channel.bindQueue(q.queue, EXCHANGE, 'reservation.*');
+  while (true) {
+    try {
+      const conn = await amqp.connect(RABBITMQ_URL);
+      const channel = await conn.createChannel();
+      await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
+      const q = await channel.assertQueue(QUEUE, { durable: true });
+      await channel.bindQueue(q.queue, EXCHANGE, 'reservation.*');
 
-    console.log(`[notification-service] Listening for events on queue: ${QUEUE}`);
-    channel.consume(q.queue, (msg) => {
-      if (msg) {
-        const event = JSON.parse(msg.content.toString());
-        console.log(`[notification-service] EVENT RECEIVED [${msg.fields.routingKey}]:`, {
-          reservationId: event.id,
-          date: event.reservation_date,
-          time: `${event.start_time} - ${event.end_time}`
-        });
-        console.log(`[EMAIL DISPATCHER] Sending confirmation to user ${event.user_id}... [OK]`);
-        channel.ack(msg);
-      }
-    });
-  } catch (err) {
-    console.warn('[notification-service] Failed to connect to RabbitMQ broker:', err);
+      console.log(`[notification-service] Connected! Listening for events on queue: ${QUEUE}`);
+      channel.consume(q.queue, (msg) => {
+        if (msg) {
+          const event = JSON.parse(msg.content.toString());
+          console.log(`[notification-service] EVENT RECEIVED [${msg.fields.routingKey}]:`, {
+            reservationId: event.id,
+            date: event.reservation_date,
+            time: `${event.start_time} - ${event.end_time}`
+          });
+          console.log(`[EMAIL DISPATCHER] Sending confirmation to user ${event.user_id}... [OK]`);
+          channel.ack(msg);
+        }
+      });
+      break;
+    } catch (err) {
+      console.warn('[notification-service] RabbitMQ not ready yet, retrying in 3 seconds...');
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 }
 
