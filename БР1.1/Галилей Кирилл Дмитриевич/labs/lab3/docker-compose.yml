@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rmq_broker
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - backend-net
+
+  auth-db:
+    image: postgres:16-alpine
+    container_name: postgres_auth_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auth_db
+    ports:
+      - "5433:5432"
+    networks:
+      - backend-net
+
+  restaurant-db:
+    image: postgres:16-alpine
+    container_name: postgres_restaurant_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: restaurant_db
+    ports:
+      - "5434:5432"
+    networks:
+      - backend-net
+
+  booking-db:
+    image: postgres:16-alpine
+    container_name: postgres_booking_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: booking_db
+    ports:
+      - "5435:5432"
+    networks:
+      - backend-net
+
+  auth-service:
+    build:
+      context: ../lab2/services/auth-service
+      dockerfile: ../../../lab3/Dockerfile.auth-service
+    container_name: srv_auth
+    environment:
+      PORT: 5001
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: auth_db
+      JWT_SECRET: super_jwt_secret
+    ports:
+      - "5001:5001"
+    depends_on:
+      - auth-db
+    networks:
+      - backend-net
+
+  restaurant-service:
+    build:
+      context: ../lab2/services/restaurant-service
+      dockerfile: ../../../lab3/Dockerfile.restaurant-service
+    container_name: srv_restaurant
+    environment:
+      PORT: 5002
+      DB_HOST: restaurant-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: restaurant_db
+    ports:
+      - "5002:5002"
+    depends_on:
+      - restaurant-db
+    networks:
+      - backend-net
+
+  booking-service:
+    build:
+      context: ../lab2/services/booking-service
+      dockerfile: ../../../lab3/Dockerfile.booking-service
+    container_name: srv_booking
+    environment:
+      PORT: 5003
+      DB_HOST: booking-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: booking_db
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    ports:
+      - "5003:5003"
+    depends_on:
+      - booking-db
+      - rabbitmq
+    networks:
+      - backend-net
+
+  notification-service:
+    build:
+      context: ../lab2/services/notification-service
+      dockerfile: ../../../lab3/Dockerfile.notification-service
+    container_name: srv_notification
+    environment:
+      PORT: 5004
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    ports:
+      - "5004:5004"
+    depends_on:
+      - rabbitmq
+    networks:
+      - backend-net
+
+networks:
+  backend-net:
+    driver: bridge
