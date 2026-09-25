@@ -43,6 +43,29 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.post('/restaurants', async (req, res) => {
+  const { name, description, cuisine_type, price_range, address, city, phone } = req.body;
+  const repo = AppDataSource.getRepository(Restaurant);
+  const rest = repo.create({ name, description, cuisine_type: cuisine_type || 'Italian', price_range: price_range || 2, address, city, phone });
+  await repo.save(rest);
+  res.status(201).json(rest);
+});
+
+app.post('/restaurants/:restaurantId/tables', async (req, res) => {
+  const { restaurantId } = req.params;
+  const { table_number, capacity, location_zone } = req.body;
+  const repo = AppDataSource.getRepository(RestaurantTable);
+  const table = repo.create({
+    restaurant_id: restaurantId,
+    table_number: table_number || 1,
+    capacity: capacity || 4,
+    location_zone: location_zone || 'main_hall',
+    is_active: true
+  });
+  await repo.save(table);
+  res.status(201).json(table);
+});
+
 app.get('/restaurants', async (req, res) => {
   const { cuisine, city } = req.query;
   const repo = AppDataSource.getRepository(Restaurant);
