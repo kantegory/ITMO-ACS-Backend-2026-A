@@ -99,7 +99,18 @@ app.get('/reservations/my', async (req, res) => {
 });
 
 const PORT = 5003;
-AppDataSource.initialize().then(() => {
+async function start() {
+  while (!AppDataSource.isInitialized) {
+    try {
+      await AppDataSource.initialize();
+      console.log('[booking-service] Database connected successfully!');
+      break;
+    } catch (err) {
+      console.warn('[booking-service] Waiting for database... retrying in 3s');
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
   connectRabbitMQ();
-  app.listen(PORT, () => console.log(`[booking-service] running on port ${PORT}`));
-}).catch(console.error);
+  app.listen(PORT, '0.0.0.0', () => console.log(`[booking-service] running on port ${PORT}`));
+}
+start().catch(console.error);

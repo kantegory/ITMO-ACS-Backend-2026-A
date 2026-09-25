@@ -63,6 +63,17 @@ app.get('/internal/restaurants/:restaurantId/tables/:tableId/verify', async (req
 });
 
 const PORT = 5002;
-AppDataSource.initialize().then(() => {
-  app.listen(PORT, () => console.log(`[restaurant-service] running on port ${PORT}`));
-}).catch(console.error);
+async function start() {
+  while (!AppDataSource.isInitialized) {
+    try {
+      await AppDataSource.initialize();
+      console.log('[restaurant-service] Database connected successfully!');
+      break;
+    } catch (err) {
+      console.warn('[restaurant-service] Waiting for database... retrying in 3s');
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+  app.listen(PORT, '0.0.0.0', () => console.log(`[restaurant-service] running on port ${PORT}`));
+}
+start().catch(console.error);

@@ -41,7 +41,7 @@ async function startConsumer() {
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'notification-service' }));
 
 const PORT = 5004;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`[notification-service] running on port ${PORT}`);
   startConsumer();
 });
