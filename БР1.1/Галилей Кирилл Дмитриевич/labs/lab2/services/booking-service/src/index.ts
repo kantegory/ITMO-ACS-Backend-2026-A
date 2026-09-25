@@ -7,15 +7,15 @@ import { DataSource, Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, B
 @Entity('reservations')
 export class Reservation extends BaseEntity {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column() user_id: string;
-  @Column() restaurant_id: string;
-  @Column() table_id: string;
+  @Column({ type: 'varchar' }) user_id: string;
+  @Column({ type: 'varchar' }) restaurant_id: string;
+  @Column({ type: 'varchar' }) table_id: string;
   @Column({ type: 'date' }) reservation_date: string;
   @Column({ type: 'time' }) start_time: string;
   @Column({ type: 'time' }) end_time: string;
-  @Column({ default: 2 }) guests_count: number;
-  @Column({ default: 'confirmed' }) status: string;
-  @Column({ nullable: true }) special_requests: string;
+  @Column({ type: 'int', default: 2 }) guests_count: number;
+  @Column({ type: 'varchar', default: 'confirmed' }) status: string;
+  @Column({ type: 'text', nullable: true }) special_requests: string;
   @CreateDateColumn({ type: 'timestamptz' }) created_at: Date;
 }
 

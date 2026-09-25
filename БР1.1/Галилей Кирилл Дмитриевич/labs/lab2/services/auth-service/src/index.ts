@@ -8,11 +8,11 @@ import { DataSource, Entity, PrimaryGeneratedColumn, Column, BaseEntity } from '
 @Entity('users')
 export class User extends BaseEntity {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column({ unique: true }) email: string;
-  @Column({ select: false }) password_hash: string;
-  @Column() full_name: string;
-  @Column({ nullable: true }) phone: string;
-  @Column({ default: 'customer' }) role: string;
+  @Column({ type: 'varchar', unique: true }) email: string;
+  @Column({ type: 'varchar', select: false }) password_hash: string;
+  @Column({ type: 'varchar' }) full_name: string;
+  @Column({ type: 'varchar', nullable: true }) phone: string;
+  @Column({ type: 'varchar', default: 'customer' }) role: string;
 }
 
 const AppDataSource = new DataSource({

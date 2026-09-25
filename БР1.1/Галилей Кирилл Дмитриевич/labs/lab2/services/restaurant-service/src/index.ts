@@ -6,13 +6,13 @@ import { DataSource, Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMan
 @Entity('restaurants')
 export class Restaurant extends BaseEntity {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column() name: string;
-  @Column({ nullable: true }) description: string;
-  @Column() cuisine_type: string;
-  @Column({ default: 2 }) price_range: number;
-  @Column() address: string;
-  @Column() city: string;
-  @Column() phone: string;
+  @Column({ type: 'varchar' }) name: string;
+  @Column({ type: 'text', nullable: true }) description: string;
+  @Column({ type: 'varchar' }) cuisine_type: string;
+  @Column({ type: 'int', default: 2 }) price_range: number;
+  @Column({ type: 'varchar' }) address: string;
+  @Column({ type: 'varchar' }) city: string;
+  @Column({ type: 'varchar' }) phone: string;
   @Column({ type: 'numeric', default: 0 }) rating: number;
   @OneToMany(() => RestaurantTable, t => t.restaurant) tables: RestaurantTable[];
 }
@@ -20,11 +20,11 @@ export class Restaurant extends BaseEntity {
 @Entity('restaurant_tables')
 export class RestaurantTable extends BaseEntity {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column() restaurant_id: string;
-  @Column() table_number: number;
-  @Column() capacity: number;
-  @Column({ default: 'main_hall' }) location_zone: string;
-  @Column({ default: true }) is_active: boolean;
+  @Column({ type: 'varchar' }) restaurant_id: string;
+  @Column({ type: 'int' }) table_number: number;
+  @Column({ type: 'int' }) capacity: number;
+  @Column({ type: 'varchar', default: 'main_hall' }) location_zone: string;
+  @Column({ type: 'boolean', default: true }) is_active: boolean;
   @ManyToOne(() => Restaurant, r => r.tables) @JoinColumn({ name: 'restaurant_id' }) restaurant: Restaurant;
 }
 
