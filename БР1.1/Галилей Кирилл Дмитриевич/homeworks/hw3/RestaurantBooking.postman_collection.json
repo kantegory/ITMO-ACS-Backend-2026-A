@@ -1,0 +1,724 @@
+{
+  "info": {
+    "name": "Restaurant Booking API - E2E Tests",
+    "_postman_id": "7f8b1c20-a432-4d2b-8a5e-b830d93190e2",
+    "description": "Комплексный сквозной сценарий тестирования сервиса бронирования столиков (ИТМО, ДЗ3)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "managerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "restaurantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tableId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reservationId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "pm.test('Health status is ok', function () { var res = pm.response.json(); pm.expect(res.status).to.eql('ok'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Регистрация управляющего (Manager)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"manager_mario@restaurant.com\", \"password\": \"ManagerPassword123!\", \"full_name\": \"\\u041c\\u0430\\u0440\\u0438\\u043e \\u0420\\u043e\\u0441\\u0441\\u0438\", \"phone\": \"+78125556677\", \"role\": \"manager\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created or 409 Conflict', function () { pm.expect(pm.response.code).to.be.oneOf([201, 409]); });",
+              "if (pm.response.code === 201) {",
+              "    var data = pm.response.json();",
+              "    pm.collectionVariables.set('managerToken', data.token);",
+              "    pm.test('Token received', function () { pm.expect(data.token).to.be.a('string'); });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Вход управляющего (Manager Login)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"manager_mario@restaurant.com\", \"password\": \"ManagerPassword123!\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var data = pm.response.json();",
+              "pm.collectionVariables.set('managerToken', data.token);",
+              "pm.test('Manager role is manager', function () { pm.expect(data.user.role).to.eql('manager'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Создание заведения (Create Restaurant)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{managerToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Trattoria del Mare\", \"description\": \"\\u0410\\u0443\\u0442\\u0435\\u043d\\u0442\\u0438\\u0447\\u043d\\u044b\\u0439 \\u0440\\u0435\\u0441\\u0442\\u043e\\u0440\\u0430\\u043d \\u0438\\u0442\\u0430\\u043b\\u044c\\u044f\\u043d\\u0441\\u043a\\u043e\\u0439 \\u0438 \\u0441\\u0440\\u0435\\u0434\\u0438\\u0437\\u0435\\u043c\\u043d\\u043e\\u043c\\u043e\\u0440\\u0441\\u043a\\u043e\\u0439 \\u043a\\u0443\\u0445\\u043d\\u0438\", \"cuisine_type\": \"\\u0418\\u0442\\u0430\\u043b\\u044c\\u044f\\u043d\\u0441\\u043a\\u0430\\u044f\", \"price_range\": 2, \"address\": \"\\u043d\\u0430\\u0431. \\u0440\\u0435\\u043a\\u0438 \\u041c\\u043e\\u0439\\u043a\\u0438, \\u0434. 22\", \"city\": \"\\u0421\\u0430\\u043d\\u043a\\u0442-\\u041f\\u0435\\u0442\\u0435\\u0440\\u0431\\u0443\\u0440\\u0433\", \"phone\": \"+78121112233\", \"opening_time\": \"11:00:00\", \"closing_time\": \"23:00:00\", \"photo_url\": \"https://example.com/trattoria.jpg\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/restaurants",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "restaurants"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+              "var data = pm.response.json();",
+              "pm.collectionVariables.set('restaurantId', data.id);",
+              "pm.test('Restaurant has ID', function () { pm.expect(data.id).to.be.a('string'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Добавление столика (Add Table)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{managerToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"table_number\": 1, \"capacity\": 4, \"location_zone\": \"window\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/restaurants/{{restaurantId}}/tables",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "restaurants",
+            "{{restaurantId}}",
+            "tables"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+              "var data = pm.response.json();",
+              "pm.collectionVariables.set('tableId', data.id);",
+              "pm.test('Table capacity is 4', function () { pm.expect(data.capacity).to.eql(4); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Добавление блюда в меню (Add Menu Item)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{managerToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"\\u0420\\u0438\\u0437\\u043e\\u0442\\u0442\\u043e \\u0441 \\u043c\\u043e\\u0440\\u0435\\u043f\\u0440\\u043e\\u0434\\u0443\\u043a\\u0442\\u0430\\u043c\\u0438\", \"description\": \"\\u0421\\u043b\\u0438\\u0432\\u043e\\u0447\\u043d\\u043e\\u0435 \\u0440\\u0438\\u0437\\u043e\\u0442\\u0442\\u043e \\u0441 \\u043a\\u0440\\u0435\\u0432\\u0435\\u0442\\u043a\\u0430\\u043c\\u0438 \\u0438 \\u043c\\u0438\\u0434\\u0438\\u044f\\u043c\\u0438\", \"price\": 890.0, \"category\": \"main\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/restaurants/{{restaurantId}}/menu",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "restaurants",
+            "{{restaurantId}}",
+            "menu"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Регистрация гостя (Customer Register)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"customer_ivan@yandex.ru\", \"password\": \"IvanPassword2026!\", \"full_name\": \"\\u0418\\u0432\\u0430\\u043d \\u0421\\u043c\\u0438\\u0440\\u043d\\u043e\\u0432\", \"phone\": \"+79110001122\", \"role\": \"customer\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created or 409', function () { pm.expect(pm.response.code).to.be.oneOf([201, 409]); });",
+              "if (pm.response.code === 201) {",
+              "    var data = pm.response.json();",
+              "    pm.collectionVariables.set('userToken', data.token);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Вход гостя (Customer Login)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"customer_ivan@yandex.ru\", \"password\": \"IvanPassword2026!\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var data = pm.response.json();",
+              "pm.collectionVariables.set('userToken', data.token);",
+              "pm.test('Customer role is customer', function () { pm.expect(data.user.role).to.eql('customer'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Просмотр профиля (Get Profile)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "me"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var data = pm.response.json();",
+              "pm.test('Correct user email', function () { pm.expect(data.email).to.eql('customer_ivan@yandex.ru'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Поиск ресторанов с фильтрацией (Filter by Cuisine & City)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/restaurants?cuisine=Итальянская&city=Санкт-Петербург",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "restaurants"
+          ],
+          "query": [
+            {
+              "key": "cuisine",
+              "value": "Итальянская"
+            },
+            {
+              "key": "city",
+              "value": "Санкт-Петербург"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var data = pm.response.json();",
+              "pm.test('Items array is not empty', function () { pm.expect(data.items.length).to.be.above(0); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Проверка доступных столиков (Available Tables)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/restaurants/{{restaurantId}}/available-tables?date=2026-05-15&start_time=19:00:00&end_time=21:00:00&guests=2",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "restaurants",
+            "{{restaurantId}}",
+            "available-tables"
+          ],
+          "query": [
+            {
+              "key": "date",
+              "value": "2026-05-15"
+            },
+            {
+              "key": "start_time",
+              "value": "19:00:00"
+            },
+            {
+              "key": "end_time",
+              "value": "21:00:00"
+            },
+            {
+              "key": "guests",
+              "value": "2"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var tables = pm.response.json();",
+              "pm.test('Table is available', function () { pm.expect(tables.length).to.be.above(0); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Создание бронирования (Create Reservation)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"restaurant_id\": \"{{restaurantId}}\", \"table_id\": \"{{tableId}}\", \"reservation_date\": \"2026-05-15\", \"start_time\": \"19:00:00\", \"end_time\": \"21:00:00\", \"guests_count\": 2, \"special_requests\": \"\\u0421\\u0442\\u043e\\u043b\\u0438\\u043a \\u0443 \\u043e\\u043a\\u043d\\u0430 \\u0434\\u043b\\u044f \\u0434\\u0432\\u043e\\u0438\\u0445\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/reservations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "reservations"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+              "var data = pm.response.json();",
+              "pm.collectionVariables.set('reservationId', data.id);",
+              "pm.test('Reservation status is confirmed', function () { pm.expect(data.status).to.eql('confirmed'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Защита от овербукинга (Overbooking Conflict Check)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"restaurant_id\": \"{{restaurantId}}\", \"table_id\": \"{{tableId}}\", \"reservation_date\": \"2026-05-15\", \"start_time\": \"20:00:00\", \"end_time\": \"22:00:00\", \"guests_count\": 2}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/reservations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "reservations"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 409 Conflict', function () { pm.response.to.have.status(409); });",
+              "var err = pm.response.json();",
+              "pm.test('Error code is Conflict', function () { pm.expect(err.error).to.eql('Conflict'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Просмотр истории бронирований (My Reservations)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/reservations/my",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "reservations",
+            "my"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var list = pm.response.json();",
+              "pm.test('User has reservations', function () { pm.expect(list.length).to.be.above(0); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Оставление отзыва (Post Review)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"rating\": 5, \"comment\": \"\\u0412\\u0435\\u043b\\u0438\\u043a\\u043e\\u043b\\u0435\\u043f\\u043d\\u044b\\u0439 \\u0441\\u0435\\u0440\\u0432\\u0438\\u0441, \\u043f\\u0440\\u0435\\u043a\\u0440\\u0430\\u0441\\u043d\\u0430\\u044f \\u043f\\u0430\\u0441\\u0442\\u0430 \\u0438 \\u0443\\u044e\\u0442\\u043d\\u044b\\u0439 \\u0441\\u0442\\u043e\\u043b\\u0438\\u043a \\u0443 \\u043e\\u043a\\u043d\\u0430!\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/restaurants/{{restaurantId}}/reviews",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "restaurants",
+            "{{restaurantId}}",
+            "reviews"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', function () { pm.response.to.have.status(201); });",
+              "var rev = pm.response.json();",
+              "pm.test('Rating is 5', function () { pm.expect(rev.rating).to.eql(5); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Отмена бронирования (Cancel Reservation)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{userToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"status\": \"cancelled\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/reservations/{{reservationId}}/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "reservations",
+            "{{reservationId}}",
+            "status"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () { pm.response.to.have.status(200); });",
+              "var res = pm.response.json();",
+              "pm.test('Status is cancelled', function () { pm.expect(res.status).to.eql('cancelled'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

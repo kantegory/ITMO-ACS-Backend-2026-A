@@ -1,0 +1,905 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Table Booking API
+  description: |
+    REST API для сервиса бронирования столиков в ресторанах (Университет ИТМО, курс бэкенд-разработки Node.JS).
+    Вариант 1: бронирование столиков, поиск и каталог ресторанов, меню, отзывы и управление резервациями.
+  version: 1.0.0
+  contact:
+    name: Галилей Кирилл Дмитриевич (гр. К3340, поток БР1.1)
+
+servers:
+  - url: /api/v1
+    description: Текущий сервер разработки
+  - url: http://localhost:3000/api/v1
+    description: Локальный сервер (порт 3000)
+
+tags:
+  - name: Auth
+    description: Регистрация, аутентификация и управление профилем
+  - name: Restaurants
+    description: Каталог ресторанов, поиск и фильтрация
+  - name: Tables
+    description: Управление столиками и проверка доступности
+  - name: Menu
+    description: Позиции меню ресторанов
+  - name: Reservations
+    description: Бронирование столиков и история резерваций
+  - name: Reviews
+    description: Отзывы и оценки ресторанов
+
+paths:
+  # ==================== AUTH ====================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDto'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Пользователь с таким email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему и получение JWT токена
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginDto'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Получение профиля текущего пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Данные профиля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== RESTAURANTS ====================
+  /restaurants:
+    get:
+      tags: [Restaurants]
+      summary: Каталог ресторанов с фильтрацией и поиском
+      parameters:
+        - name: cuisine
+          in: query
+          description: Фильтр по кухне (итальянская, японская и т.д.)
+          schema:
+            type: string
+        - name: city
+          in: query
+          description: Фильтр по городу
+          schema:
+            type: string
+        - name: price_range
+          in: query
+          description: Ценовой сегмент (1 - бюджетно, 4 - люкс)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+        - name: search
+          in: query
+          description: Полнотекстовый поиск по названию и описанию
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Список заведений с пагинацией
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Restaurant'
+
+    post:
+      tags: [Restaurants]
+      summary: Создание нового ресторана (для менеджеров)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRestaurantDto'
+      responses:
+        '201':
+          description: Ресторан успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Restaurant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /restaurants/{id}:
+    get:
+      tags: [Restaurants]
+      summary: Детальная страница ресторана
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Полная информация о ресторане
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Restaurant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Restaurants]
+      summary: Обновление информации о ресторане
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRestaurantDto'
+      responses:
+        '200':
+          description: Ресторан успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Restaurant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Restaurants]
+      summary: Удаление ресторана
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Ресторан успешно удален
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ==================== TABLES ====================
+  /restaurants/{restaurantId}/tables:
+    get:
+      tags: [Tables]
+      summary: Список столиков ресторана
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Список столиков заведения
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RestaurantTable'
+
+    post:
+      tags: [Tables]
+      summary: Добавление нового столика (менеджер)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTableDto'
+      responses:
+        '201':
+          description: Столик успешно добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantTable'
+
+  /restaurants/{restaurantId}/available-tables:
+    get:
+      tags: [Tables]
+      summary: Поиск доступных для брони столиков на дату и время
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "19:00:00"
+        - name: end_time
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "21:00:00"
+        - name: guests
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Список свободных столиков нужной вместимости
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RestaurantTable'
+
+  # ==================== MENU ====================
+  /restaurants/{restaurantId}/menu:
+    get:
+      tags: [Menu]
+      summary: Меню ресторана
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: category
+          in: query
+          description: Фильтр по категории (appetizer, main, dessert и т.д.)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список позиций меню
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+
+    post:
+      tags: [Menu]
+      summary: Добавление позиции в меню (менеджер)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMenuItemDto'
+      responses:
+        '201':
+          description: Позиция успешно добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+
+  # ==================== RESERVATIONS ====================
+  /reservations:
+    post:
+      tags: [Reservations]
+      summary: Создание новой брони столика
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationDto'
+      responses:
+        '201':
+          description: Бронь успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Конфликт: столик уже забронирован на выбранное время
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reservations/my:
+    get:
+      tags: [Reservations]
+      summary: История бронирований текущего пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+
+  /reservations/{id}:
+    get:
+      tags: [Reservations]
+      summary: Детали конкретного бронирования
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о бронировании
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reservations/{id}/status:
+    patch:
+      tags: [Reservations]
+      summary: Изменение статуса бронирования (подтверждение / отмена)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, cancelled, completed]
+      responses:
+        '200':
+          description: Статус успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+
+  # ==================== REVIEWS ====================
+  /restaurants/{restaurantId}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Отзывы о ресторане
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Список отзывов гостей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+
+    post:
+      tags: [Reviews]
+      summary: Оставить отзыв о ресторане
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewDto'
+      responses:
+        '201':
+          description: Отзыв успешно опубликован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '409':
+          description: Пользователь уже оставлял отзыв к этому ресторану
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Некорректные входные данные
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Доступ запрещен (недостаточно прав)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Запрашиваемый ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [customer, manager, admin]
+        created_at:
+          type: string
+          format: date-time
+
+    RegisterDto:
+      type: object
+      required: [email, password, full_name]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 6
+          example: "SecretPass123"
+        full_name:
+          type: string
+          example: "Иван Иванов"
+        phone:
+          type: string
+          example: "+79991234567"
+        role:
+          type: string
+          enum: [customer, manager]
+          default: customer
+
+    LoginDto:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          example: "SecretPass123"
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT Access Token
+        user:
+          $ref: '#/components/schemas/User'
+
+    Restaurant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        cuisine_type:
+          type: string
+        price_range:
+          type: integer
+          minimum: 1
+          maximum: 4
+        address:
+          type: string
+        city:
+          type: string
+        phone:
+          type: string
+        opening_time:
+          type: string
+          example: "10:00:00"
+        closing_time:
+          type: string
+          example: "23:00:00"
+        photo_url:
+          type: string
+        rating:
+          type: number
+          format: float
+        manager_id:
+          type: string
+          format: uuid
+
+    CreateRestaurantDto:
+      type: object
+      required: [name, cuisine_type, price_range, address, city, phone, opening_time, closing_time]
+      properties:
+        name:
+          type: string
+          example: "Trattoria Mario"
+        description:
+          type: string
+          example: "Уютный итальянский ресторан домашней пасты"
+        cuisine_type:
+          type: string
+          example: "Итальянская"
+        price_range:
+          type: integer
+          minimum: 1
+          maximum: 4
+          example: 2
+        address:
+          type: string
+          example: "Невский пр., д. 45"
+        city:
+          type: string
+          example: "Санкт-Петербург"
+        phone:
+          type: string
+          example: "+78121112233"
+        opening_time:
+          type: string
+          example: "11:00:00"
+        closing_time:
+          type: string
+          example: "23:00:00"
+        photo_url:
+          type: string
+          example: "https://example.com/photos/mario.jpg"
+
+    RestaurantTable:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        restaurant_id:
+          type: string
+          format: uuid
+        table_number:
+          type: integer
+        capacity:
+          type: integer
+        location_zone:
+          type: string
+          enum: [main_hall, terrace, vip, window]
+        is_active:
+          type: boolean
+
+    CreateTableDto:
+      type: object
+      required: [table_number, capacity, location_zone]
+      properties:
+        table_number:
+          type: integer
+          example: 5
+        capacity:
+          type: integer
+          example: 4
+        location_zone:
+          type: string
+          enum: [main_hall, terrace, vip, window]
+          example: "window"
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        restaurant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+        category:
+          type: string
+          enum: [appetizer, soup, main, dessert, beverage]
+        is_available:
+          type: boolean
+
+    CreateMenuItemDto:
+      type: object
+      required: [name, price, category]
+      properties:
+        name:
+          type: string
+          example: "Паста Карбонара"
+        description:
+          type: string
+          example: "Классическая римская паста с гуанчале и пекорино"
+        price:
+          type: number
+          example: 650.00
+        category:
+          type: string
+          enum: [appetizer, soup, main, dessert, beverage]
+          example: "main"
+
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        restaurant_id:
+          type: string
+          format: uuid
+        table_id:
+          type: string
+          format: uuid
+        reservation_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "19:00:00"
+        end_time:
+          type: string
+          example: "21:00:00"
+        guests_count:
+          type: integer
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+        special_requests:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateReservationDto:
+      type: object
+      required: [restaurant_id, table_id, reservation_date, start_time, end_time, guests_count]
+      properties:
+        restaurant_id:
+          type: string
+          format: uuid
+        table_id:
+          type: string
+          format: uuid
+        reservation_date:
+          type: string
+          format: date
+          example: "2026-05-15"
+        start_time:
+          type: string
+          example: "19:00:00"
+        end_time:
+          type: string
+          example: "21:00:00"
+        guests_count:
+          type: integer
+          example: 2
+        special_requests:
+          type: string
+          example: "Столик у окна для романтического ужина"
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        restaurant_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateReviewDto:
+      type: object
+      required: [rating, comment]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: "Потрясающая атмосфера и вкусная еда!"
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: "Validation failed"
+        error:
+          type: string
+          example: "Bad Request"
+        timestamp:
+          type: string
+          format: date-time
