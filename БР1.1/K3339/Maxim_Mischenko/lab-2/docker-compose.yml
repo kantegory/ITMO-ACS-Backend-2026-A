@@ -1,71 +1,41 @@
 services:
-  catalog-db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: a
-      POSTGRES_DB: catalog_db
-    volumes:
-      - catalog_db:/var/lib/postgresql/data
-      - ./init-dbs/init_catalog.sql:/docker-entrypoint-initdb.d/init_catalog.sql:ro
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d catalog_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  booking-db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: a
-      POSTGRES_DB: booking_db
-    volumes:
-      - booking_db:/var/lib/postgresql/data
-      - ./init-dbs/init_booking.sql:/docker-entrypoint-initdb.d/init_booking.sql:ro
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d booking_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   auth-db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: a
-      POSTGRES_DB: auth_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME}
     volumes:
-      - auth_db:/var/lib/postgresql/data
-      - ./init-dbs/init_auth.sql:/docker-entrypoint-initdb.d/init_auth.sql:ro
-    ports:
-      - "5434:5432"
+      - auth_db_data:/var/lib/postgresql/data
+      - ./_init-dbs/init_auth.sql:/docker-entrypoint-initdb.d/init_auth.sql:ro
+    expose:
+      - "5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 10s
 
-  review-db:
+  db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: a
-      POSTGRES_DB: review_db
+      POSTGRES_USER:  ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      CATALOG_DB_NAME: ${CATALOG_DB_NAME}
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME}
+      REVIEW_DB_NAME: ${REVIEW_DB_NAME}
     volumes:
-      - review_db:/var/lib/postgresql/data
-      - ./init-dbs/init_review.sql:/docker-entrypoint-initdb.d/init_review.sql:ro
-    ports:
-      - "5435:5432"
+      - db_data:/var/lib/postgresql/data
+      - ./_init-dbs/init_db.sh:/docker-entrypoint-initdb.d/init_db.sh:ro
+      - ./_init-dbs/init_catalog.sql:/docker-entrypoint-initdb.d/init_catalog.sql:ro
+      - ./_init-dbs/init_booking.sql:/docker-entrypoint-initdb.d/init_booking.sql:ro
+      - ./_init-dbs/init_review.sql:/docker-entrypoint-initdb.d/init_review.sql:ro
+    expose:
+      - "5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d review_db"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${REVIEW_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -73,11 +43,12 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
+    expose:
+      - "5672"
     ports:
-      - "5672:5672"
       - "15672:15672"
     healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -85,10 +56,10 @@ services:
 
   auth-service:
     build: ./auth
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     environment:
-      DATABASE_URL: postgres://postgres:a@auth-db:5432/auth_db?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@auth-db:5432/${AUTH_DB_NAME}?sslmode=disable
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/ping"]
       interval: 20s
@@ -102,10 +73,10 @@ services:
 
   catalog-service:
     build: ./catalog
-    ports:
-      - "8002:8002"
+    expose:
+      - "8002"
     environment:
-      DATABASE_URL: "postgres://postgres:a@catalog-db:5432/catalog_db?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${CATALOG_DB_NAME}?sslmode=disable"
       BOOKING_SERVICE_URL: "http://booking-service:8003"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8002/ping"]
@@ -115,17 +86,17 @@ services:
       start_period: 1s
     restart: on-failure
     depends_on:
-      catalog-db:
+      db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
 
   booking-service:
     build: ./booking
-    ports:
-      - "8003:8003"
+    expose:
+      - "8003"
     environment:
-      DATABASE_URL: "postgres://postgres:a@booking-db:5432/booking_db?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${BOOKING_DB_NAME}?sslmode=disable"
       CATALOG_SERVICE_URL: "http://catalog-service:8002"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8003/ping"]
@@ -135,18 +106,18 @@ services:
       start_period: 1s
     restart: on-failure
     depends_on:
-      booking-db:
+      db:
         condition: service_healthy
       catalog-service:
         condition: service_healthy
 
   review-service:
     build: ./review
-    ports:
-      - "8004:8004"
+    expose:
+      - "8004"
     environment:
-      DATABASE_URL: postgres://postgres:a@review-db:5432/review_db?sslmode=disable
-      CATALOG_SERVICE_URL: "http://catalog-service:8002"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${REVIEW_DB_NAME}?sslmode=disable
+      CATALOG_SERVICE_URL: ${CATALOG_SERVICE_URL}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8004/ping"]
       interval: 20s
@@ -155,17 +126,17 @@ services:
       start_period: 1s
     restart: on-failure
     depends_on:
-      review-db:
+      db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
 
   gateway:
     build: ./gateway
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
-      JWT_SECRET: 52-secret-key-67
+      JWT_SECRET: ${JWT_SECRET}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ping"]
       interval: 20s
@@ -183,13 +154,28 @@ services:
     image: curlimages/curl:8.8.0
     entrypoint: ["sh", "/insert.sh"]
     volumes:
-      - ./init-dbs/init_review_insert.sh:/insert.sh:ro
+      - ./_init-dbs/init_review_insert.sh:/insert.sh:ro
     restart: no
     depends_on:
       - gateway
 
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: on-failure
+    depends_on:
+      gateway:
+        condition: service_healthy
+
 volumes:
-  catalog_db:
-  booking_db:
-  auth_db:
-  review_db:
+  auth_db_data:
+  db_data:
