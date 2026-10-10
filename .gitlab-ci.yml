@@ -1,6 +1,6 @@
 variables:
   PROJECT_DIR: "БР1.1/K3339/Maxim_Mischenko/lab-2"
-  IMAGE_REGISTRY: $CI_REGISTRY
+  IMAGE_REGISTRY: $CI_REGISTRY_IMAGE
 
 cache:
   paths:
@@ -15,8 +15,6 @@ stages:
   stage: build
   tags: [go]
   before_script:
-    - echo "Logging in Gitlab registry"
-    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
     - echo "Building image for service - $SERVICE"
     - cd $PROJECT_DIR/$SERVICE
     - go vet ./...
@@ -44,7 +42,7 @@ deploy-registry:
     matrix:
       - SERVICE: [auth, catalog, booking, review, gateway]
   script:
-    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$IMAGE_REGISTRY_USER" --password-stdin
     - docker push $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA
     - docker push $IMAGE_REGISTRY/$SERVICE:latest
   rules:
@@ -64,6 +62,6 @@ deploy-to-lix:
     - scp docker-compose.prod.yml $DEPLOY_USER@$DEPLOY_HOST:/app/docker-compose.yml
     
     - echo "Pulling images and restarting containers on $DEPLOY_HOST..."
-    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /app && echo '$CI_JOB_TOKEN' | docker login gitlab:5050 -u '$CI_REGISTRY_USER' --password-stdin && export IMAGE_TAG=$CI_COMMIT_SHA && docker compose pull && docker compose up -d"
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /app && echo '$CI_JOB_TOKEN' | docker login gitlab:5050 -u '$IMAGE_REGISTRY_USER' --password-stdin && export IMAGE_TAG=$CI_COMMIT_SHA && docker compose pull && docker compose up -d"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
