@@ -1,0 +1,166 @@
+services:
+  auth-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME}
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+      - ./_init-dbs/init_auth.sql:/docker-entrypoint-initdb.d/init_auth.sql:ro
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER:  ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      CATALOG_DB_NAME: ${CATALOG_DB_NAME}
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME}
+      REVIEW_DB_NAME: ${REVIEW_DB_NAME}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./_init-dbs/init_db.sh:/docker-entrypoint-initdb.d/init_db.sh:ro
+      - ./_init-dbs/init_catalog.sql:/docker-entrypoint-initdb.d/init_catalog.sql:ro
+      - ./_init-dbs/init_booking.sql:/docker-entrypoint-initdb.d/init_booking.sql:ro
+      - ./_init-dbs/init_review.sql:/docker-entrypoint-initdb.d/init_review.sql:ro
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${REVIEW_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    expose:
+      - "5672"
+    ports:
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  auth-service:
+    build: ./auth
+    expose:
+      - "8001"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@auth-db:5432/${AUTH_DB_NAME}?sslmode=disable
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/ping"]
+      interval: 20s
+      timeout: 1s
+      retries: 10
+      start_period: 1s
+    restart: on-failure
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+  catalog-service:
+    build: ./catalog
+    expose:
+      - "8002"
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${CATALOG_DB_NAME}?sslmode=disable"
+      BOOKING_SERVICE_URL: "http://booking-service:8003"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8002/ping"]
+      interval: 20s
+      timeout: 1s
+      retries: 10
+      start_period: 1s
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  booking-service:
+    build: ./booking
+    expose:
+      - "8003"
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${BOOKING_DB_NAME}?sslmode=disable"
+      CATALOG_SERVICE_URL: "http://catalog-service:8002"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8003/ping"]
+      interval: 20s
+      timeout: 1s
+      retries: 10
+      start_period: 1s
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+
+  review-service:
+    build: ./review
+    expose:
+      - "8004"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${REVIEW_DB_NAME}?sslmode=disable
+      CATALOG_SERVICE_URL: ${CATALOG_SERVICE_URL}
+      AUTH_SERVICE_URL: "http://auth-service:8001"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8004/ping"]
+      interval: 20s
+      timeout: 1s
+      retries: 10
+      start_period: 1s
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ping"]
+      interval: 20s
+      timeout: 1s
+      retries: 10
+      start_period: 1s
+    restart: on-failure
+    depends_on:
+      - auth-service
+      - booking-service
+      - catalog-service
+      - review-service
+
+  review-init:
+    image: curlimages/curl:8.8.0
+    entrypoint: ["sh", "/insert.sh"]
+    volumes:
+      - ./_init-dbs/init_review_insert.sh:/insert.sh:ro
+    restart: no
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+volumes:
+  auth_db_data:
+  db_data:

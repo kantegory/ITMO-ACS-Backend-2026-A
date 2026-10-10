@@ -1,0 +1,1823 @@
+openapi: 3.0.0
+info:
+  title: Restaurant Booking API
+  version: 1.0.0
+  description: API для сервиса бронирования столиков в ресторанах
+servers:
+  - url: https://api.restbook.ru/v1
+    description: Production server
+
+paths:
+  /auth/register:
+    post:
+      summary: Регистрация нового пользователя
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                full_name: { type: string, maxLength: 100 }
+                phone: { type: string, pattern: '^\+?[0-9]{10,15}$' }
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400':
+          description: Некорректные данные или email уже существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/login:
+    post:
+      summary: Аутентификация
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  user: { $ref: '#/components/schemas/UserResponse' }
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/refresh:
+    post:
+      summary: Обновление access-токена
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: Новая пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+        '401':
+          description: Невалидный или истёкший refresh-токен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/me:
+    get:
+      summary: Получить профиль текущего пользователя
+      tags: [Users]
+      security: [BearerAuth: []]
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    put:
+      summary: Обновить профиль текущего пользователя
+      tags: [Users]
+      security: [BearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name: { type: string, maxLength: 100 }
+                phone: { type: string, pattern: '^\+?[0-9]{10,15}$' }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/{id}/role:
+    patch:
+      summary: Изменить роль пользователя (только admin)
+      tags: [Users]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [guest, admin] }
+      responses:
+        '200':
+          description: Роль обновлена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400':
+          description: Некорректная роль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cuisines:
+    get:
+      summary: Список всех кухонь (справочник)
+      tags: [Cuisines]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Cuisine' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Создать кухню (только admin)
+      tags: [Cuisines]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 50 }
+      responses:
+        '201':
+          description: Кухня создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cuisine' }
+        '400':
+          description: Некорректное имя или дубликат
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cuisines/{id}:
+    delete:
+      summary: Удалить кухню (только admin)
+      tags: [Cuisines]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Кухня не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Нельзя удалить — есть привязанные рестораны
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants:
+    get:
+      summary: Поиск ресторанов с фильтрацией
+      tags: [Restaurants]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: cuisine_id
+          in: query
+          schema: { type: integer }
+        - name: min_price
+          in: query
+          schema: { type: number }
+        - name: max_price
+          in: query
+          schema: { type: number }
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [rating_asc, rating_desc, avg_price_asc, avg_price_desc, name_asc, name_desc]
+          description: Поле и направление сортировки
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Список активных ресторанов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RestaurantListItem' }
+        '400':
+          description: Неверные параметры фильтрации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Создать ресторан (только admin)
+      tags: [Restaurants]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantInput' }
+      responses:
+        '201':
+          description: Ресторан создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestaurantDetail' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants/{id}:
+    get:
+      summary: Детальная информация о ресторане
+      tags: [Restaurants]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestaurantDetail' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    put:
+      summary: Полное обновление ресторана (только admin)
+      tags: [Restaurants]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantInput' }
+      responses:
+        '200':
+          description: Ресторан обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestaurantDetail' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      summary: Удалить ресторан (только admin)
+      tags: [Restaurants]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants/{id}/status:
+    patch:
+      summary: Изменить статус ресторана (open/closed/under_renovation..)
+      tags: [Restaurants]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                restaurant_status: { type: string, enum: [open, closed, under_renovation, temporarily_closed, coming_soon] }
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { type: string }
+        '400':
+          description: Некорректный статус
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants/{restaurantId}/images:
+    post:
+      summary: Загрузить изображение ресторана (multipart/form-data)
+      tags: [RestaurantImages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                is_main:
+                  type: boolean
+      responses:
+        '201':
+          description: Изображение добавлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImageResponse' }
+        '400':
+          description: Неверный формат файла или превышен размер
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    get:
+      summary: Список изображений ресторана
+      tags: [RestaurantImages]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ImageResponse' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurant-images/{imageId}:
+    delete:
+      summary: Удалить изображение (только admin)
+      tags: [RestaurantImages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Изображение не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    patch:
+      summary: Сделать изображение главным (только admin)
+      tags: [RestaurantImages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Главное фото обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImageResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Изображение не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants/{restaurantId}/tables:
+    get:
+      summary: Список столиков ресторана
+      tags: [Tables]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: capacity
+          in: query
+          description: Минимальная вместимость
+          schema: { type: integer }
+        - name: date
+          in: query
+          description: Дата для проверки доступности (необязательно)
+          schema: { type: string, format: date }
+        - name: start_time
+          in: query
+          schema: { type: string, format: time, example: "19:00" }
+        - name: end_time
+          in: query
+          schema: { type: string, format: time, example: "21:00" }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TableResponse' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Добавить столик (только admin)
+      tags: [Tables]
+      security: [BearerAuth: []]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capacity]
+              properties:
+                capacity: { type: integer, minimum: 1 }
+                label: { type: string, maxLength: 100, example: "Стол №4 у окна" }
+      responses:
+        '201':
+          description: Столик добавлен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /tables/{id}:
+    put:
+      summary: Обновить столик (только admin)
+      tags: [Tables]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                capacity: { type: integer, minimum: 1 }
+                label: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Столик обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Столик не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      summary: Удалить столик (только admin)
+      tags: [Tables]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Столик не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Нельзя удалить — есть активные бронирования
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants/{restaurantId}/menu:
+    get:
+      summary: Меню ресторана
+      tags: [Menu]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Список позиций меню
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MenuItemResponse' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Добавить позицию меню (только admin)
+      tags: [Menu]
+      security: [BearerAuth: []]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name: { type: string, maxLength: 150 }
+                description: { type: string }
+                price: { type: number, minimum: 0 }
+                category: { type: string, maxLength: 50, example: "Основное" }
+      responses:
+        '201':
+          description: Позиция добавлена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItemResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /menu/{id}:
+    put:
+      summary: Обновить позицию меню (только admin)
+      tags: [Menu]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 150 }
+                description: { type: string }
+                price: { type: number, minimum: 0 }
+                category: { type: string, maxLength: 50 }
+      responses:
+        '200':
+          description: Позиция обновлена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItemResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Позиция меню не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      summary: Удалить позицию меню (только admin)
+      tags: [Menu]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Позиция меню не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /bookings:
+    get:
+      summary: Список бронирований текущего пользователя (admin видит все)
+      tags: [Bookings]
+      security: [BearerAuth: []]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, confirmed, cancelled, completed] }
+        - name: restaurant_id
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/BookingResponse' }
+        '400':
+          description: Неверный статус или параметры пагинации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Создать бронирование (авторизованный гость)
+      tags: [Bookings]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restaurant_id, table_id, booking_date, start_time, end_time, guests_count]
+              properties:
+                restaurant_id: { type: integer }
+                table_id: { type: integer }
+                booking_date: { type: string, format: date }
+                start_time: { type: string, example: "19:00" }
+                end_time: { type: string, example: "21:00" }
+                guests_count: { type: integer, minimum: 1 }
+                comment: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: Бронирование создано (статус pending)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '400':
+          description: Некорректные дата или время
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан или столик не найдены, либо ресторан не активен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Столик уже занят на указанное время
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Количество гостей превышает вместимость столика
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /bookings/{id}:
+    get:
+      summary: Детали бронирования
+      tags: [Bookings]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Нет доступа к этому бронированию
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    patch:
+      summary: Изменить статус бронирования
+      tags: [Bookings]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [confirmed, cancelled, completed] }
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '400':
+          description: Некорректный статус
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Нет прав на изменение статуса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Недопустимый переход статуса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      summary: Удалить бронирование (только admin)
+      tags: [Bookings]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /restaurants/{restaurantId}/reviews:
+    get:
+      summary: Список отзывов по ресторану
+      tags: [Reviews]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  avg_rating: { type: number, format: float }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReviewResponse' }
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Оставить отзыв (только гость с завершённым бронированием)
+      tags: [Reviews]
+      security: [BearerAuth: []]
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_id, rating]
+              properties:
+                booking_id: { type: integer }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 1000 }
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Бронирование не завершено или не принадлежит пользователю
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Ресторан или бронирование не найдены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Отзыв на это бронирование уже существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reviews/{id}:
+    delete:
+      summary: Удалить отзыв (только admin)
+      tags: [Reviews]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Отзыв не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/stats:
+    get:
+      summary: Статистика системы (только admin)
+      tags: [Admin]
+      security: [BearerAuth: []]
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Статистика
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_restaurants: { type: integer }
+                  total_bookings: { type: integer }
+                  bookings_by_status:
+                    type: object
+                    properties:
+                      pending: { type: integer }
+                      confirmed: { type: integer }
+                      cancelled: { type: integer }
+                      completed: { type: integer }
+                  avg_rating: { type: number, format: float }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Cuisine:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+
+    UserResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        full_name: { type: string }
+        phone: { type: string, nullable: true }
+        role: { type: string, enum: [guest, admin] }
+        created_at: { type: string, format: date-time }
+
+    RestaurantInput:
+      type: object
+      required: [name, city, address, cuisine_id]
+      properties:
+        cuisine_id: { type: integer }
+        name: { type: string, maxLength: 200 }
+        description: { type: string }
+        city: { type: string, maxLength: 100 }
+        address: { type: string }
+        avg_price_per_person: { type: number, minimum: 0 }
+        latitude: { type: number, format: float, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: float, minimum: -180, maximum: 180 }
+        restaurant_status:
+          type: string
+          enum: [open, closed, under_renovation, temporarily_closed, coming_soon]
+          description: "Текущий операционный статус ресторана"
+        working_hours:
+          type: array
+          items: { $ref: '#/components/schemas/WorkingHours' }
+          description: "Расписание работы по дням недели"
+
+    RestaurantListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        city: { type: string }
+        cuisine_name: { type: string }
+        avg_price_per_person: { type: number, nullable: true }
+        avg_rating: { type: number, nullable: true }
+        main_image_url: { type: string, nullable: true }
+
+    RestaurantDetail:
+      allOf:
+        - $ref: '#/components/schemas/RestaurantListItem'
+        - type: object
+          properties:
+            description: { type: string, nullable: true }
+            address: { type: string }
+            latitude: { type: number, nullable: true }
+            longitude: { type: number, nullable: true }
+            restaurant_status:
+              type: string
+              enum: [open, closed, under_renovation, temporarily_closed, coming_soon]
+              description: "Текущий операционный статус ресторана"
+            working_hours:
+              type: array
+              items: { $ref: '#/components/schemas/WorkingHours' }
+              description: "Расписание работы по дням недели"
+            images:
+              type: array
+              items: { $ref: '#/components/schemas/ImageResponse' }
+            menu:
+              type: array
+              items: { $ref: '#/components/schemas/MenuItemResponse' }
+            reviews:
+              type: array
+              items: { $ref: '#/components/schemas/ReviewResponse' }
+            created_at: { type: string, format: date-time }
+
+    ImageResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        image_url: { type: string }
+        is_main: { type: boolean }
+
+    TableResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        restaurant_id: { type: integer }
+        capacity: { type: integer }
+        label: { type: string, nullable: true }
+
+    MenuItemResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        price: { type: number }
+        category: { type: string, nullable: true }
+
+    BookingResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        restaurant:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            city: { type: string }
+            address: { type: string }
+        table:
+          $ref: '#/components/schemas/TableResponse'
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        booking_date: { type: string, format: date }
+        start_time: { type: string, example: "19:00" }
+        end_time: { type: string, example: "21:00" }
+        guests_count: { type: integer }
+        comment: { type: string, nullable: true }
+        status: { type: string, enum: [pending, confirmed, cancelled, completed] }
+        created_at: { type: string, format: date-time }
+
+    ReviewResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            full_name: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    WorkingHours:
+      type: object
+      properties:
+        day_of_week:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: "0 - Monday, 6 - Sunday"
+        open_time:
+          type: string
+          format: time
+          example: "09:00"
+        close_time:
+          type: string
+          format: time
+          example: "18:00"
+        is_closed:
+          type: boolean
+          description: "Если true, ресторан закрыт в этот день"
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true
