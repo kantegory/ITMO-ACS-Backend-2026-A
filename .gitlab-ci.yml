@@ -2,13 +2,8 @@ variables:
   PROJECT_DIR: "БР1.1/K3339/Maxim_Mischenko/lab-2"
   IMAGE_REGISTRY: $CI_REGISTRY_IMAGE
 
-cache:
-  paths:
-    - .go/pkg/mod/
-
 stages:
 - build
-- push
 - deploy
 
 .build:
@@ -33,18 +28,12 @@ build-master:
   extends: .build
   script:
     - docker build -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA -t $IMAGE_REGISTRY/$SERVICE:latest .
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-deploy-registry:
-  stage: push
-  parallel:
-    matrix:
-      - SERVICE: [auth, catalog, booking, review, gateway]
-  script:
-    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_JOB_TOKEN" | docker login $IMAGE_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
     - docker push $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA
     - docker push $IMAGE_REGISTRY/$SERVICE:latest
+  after_script:
+    - docker logout $IMAGE_REGISTRY
+    - rm -f ~/.docker/config.json
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
