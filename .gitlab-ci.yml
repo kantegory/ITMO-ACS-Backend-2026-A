@@ -1,0 +1,69 @@
+variables:
+  PROJECT_DIR: "БР1.1/K3339/Maxim_Mischenko/lab-2"
+  IMAGE_REGISTRY: $CI_REGISTRY
+
+cache:
+  paths:
+    - .go/pkg/mod/
+
+stages:
+- build
+- push
+- deploy
+
+.build:
+  stage: build
+  tags: [go]
+  before_script:
+    - echo "Logging in Gitlab registry"
+    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "Building image for service - $SERVICE"
+    - cd $PROJECT_DIR/$SERVICE
+    - go vet ./...
+  parallel:
+    matrix:
+      - SERVICE: [auth, catalog, booking, review, gateway]
+
+build-local:
+  extends: .build
+  script:
+    - docker build -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA .
+  rules:
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+
+build-master:
+  extends: .build
+  script:
+    - docker build -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA -t $IMAGE_REGISTRY/$SERVICE:latest .
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy-registry:
+  stage: push
+  parallel:
+    matrix:
+      - SERVICE: [auth, catalog, booking, review, gateway]
+  script:
+    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
+    - docker push $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA
+    - docker push $IMAGE_REGISTRY/$SERVICE:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy-to-lix:
+  stage: deploy
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+  script:
+    - echo "Preparing env file on $DEPLOY_HOST..."
+    - scp $ENV_FILE $DEPLOY_USER@$DEPLOY_HOST:/app/.env
+    - scp docker-compose.prod.yml $DEPLOY_USER@$DEPLOY_HOST:/app/docker-compose.yml
+    
+    - echo "Pulling images and restarting containers on $DEPLOY_HOST..."
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /app && echo '$CI_JOB_TOKEN' | docker login gitlab:5050 -u '$CI_REGISTRY_USER' --password-stdin && export IMAGE_TAG=$CI_COMMIT_SHA && docker compose pull && docker compose up -d"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
