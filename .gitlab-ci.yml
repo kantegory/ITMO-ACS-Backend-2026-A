@@ -1,15 +1,41 @@
 variables:
-  GOPATH: $CI_PROJECT_DIR/.go
+  PROJECT_DIR: "БР1.1/K3339/Maxim_Mischenko/lab-2"
 
 cache:
   paths:
     - .go/pkg/mod/
 
-stages: [build]
+stages:
+- build
+- deploy
 
 build:
   image: golang:1.26.3-alpine
   stage: build
   tags: [go]
   script:
-    - 
+    - echo "Building image for service - $SERVICE"
+    - cd $PROJECT_DIR/$SERVICE
+    - go vet ./...
+    - docker build -t $SERVICE:$CI_COMMIT_SHA .
+  parallel:
+    matrix:
+      - SERVICE: [auth, catalog, booking, review, gateway]
+
+deploy-to-lix:
+  stage: deploy
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo $SSH_PRIVATE_KEY | base64 -d | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+  script:
+    - echo "Preparing env vars on $DEPLOY_HOST"
+    - scp $ENV_FILE $DEPLOY_USER@$DEPLOY_HOST:/app/.env
+    - echo "Copying project files to $DEPLOY_HOST"
+    - rsync -avz --exclude '.git' --exclude '.go' ./ $DEPLOY_USER@$DEPLOY_HOST:/app/
+    - echo "Starting containers on $DEPLOY_HOST"
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "cd /app && docker compose up -d --build"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
