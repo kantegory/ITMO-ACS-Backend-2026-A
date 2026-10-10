@@ -37,6 +37,7 @@ func main() {
 	r.Route("/api/v1/catalog", func(r chi.Router) {
 		r.Get("/restaurants", h.ListRestaurants)
 		r.Get("/restaurants/{id}", h.GetRestaurant)
+		r.Get("/restaurants/{id}/menu", h.GetRestaurantMenu)
 		r.Get("/restaurants/{id}/tables", h.GetRestaurantTables)
 	})
 

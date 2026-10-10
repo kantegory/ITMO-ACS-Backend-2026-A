@@ -1,11 +1,12 @@
 package main
 
 import (
-	"review/internal/handler"
-	"review/internal/repository"
 	"log"
 	"net/http"
 	"os"
+	"review/internal/client"
+	"review/internal/handler"
+	"review/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -22,7 +23,8 @@ func main() {
 
 	catalogURL := os.Getenv("CATALOG_SERVICE_URL")
 	repo := repository.NewReviewRepository(db, catalogURL)
-	h := handler.NewReviewHandler(repo)
+	authCli := client.NewAuthClient(os.Getenv("AUTH_SERVICE_URL"))
+	h := handler.NewReviewHandler(repo, authCli)
 
 	r := chi.NewRouter()
 
@@ -31,7 +33,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Heartbeat("/ping"))
 
-	r.Route("/api/v1", func (r chi.Router)  {
+	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/restaurants/{id}/reviews", h.GetByRestaurant)
 		r.Post("/reviews", h.Create)
 	})

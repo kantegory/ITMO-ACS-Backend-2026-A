@@ -13,7 +13,7 @@ import (
 )
 
 type BookingHandler struct {
-	repo *repository.BookingRepository
+	repo    *repository.BookingRepository
 	catalog *client.CatalogClient
 }
 
@@ -57,6 +57,7 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(req)
 }
@@ -77,22 +78,38 @@ func (h *BookingHandler) Get(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(bookings)
 }
 
-// GET internal/restaurant/{id}/busy-tables?date
+// GET internal/restaurant/{id}/busy-tables?date&startTime&endTime
 func (h *BookingHandler) GetInternalBusyTables(w http.ResponseWriter, r *http.Request) {
 	resID, _ := strconv.Atoi(chi.URLParam(r, "id"))
- 	dateStr := r.URL.Query().Get("date")
+	dateStr := r.URL.Query().Get("date")
+	startTimeStr := r.URL.Query().Get("startTime");
+	endTimeStr := r.URL.Query().Get("endTime");
 
 	if dateStr == "" {
 		http.Error(w, "date parameter is required", http.StatusBadRequest)
 		return
 	}
-	_, err := time.Parse("2006-01-02", dateStr)
+	if startTimeStr == "" {
+		http.Error(w, "startTime parameter is required", http.StatusBadRequest)
+		return
+	}
+	if endTimeStr == "" {
+		http.Error(w, "endTime parameter is required", http.StatusBadRequest)
+		return
+	}
+	timestampLayout := "2006-01-02 15:05"
+	_, err := time.Parse(timestampLayout, dateStr + " " + startTimeStr)
 	if err != nil {
-		http.Error(w, "Invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
+		http.Error(w, "Invalid timestamp format for Start time, expected YYYY-MM-DD HH:MM", http.StatusBadRequest)
+		return
+	}
+	_, err = time.Parse(timestampLayout, dateStr + " " + endTimeStr)
+	if err != nil {
+		http.Error(w, "Invalid timestamp format for End time, expected YYYY-MM-DD HH:MM", http.StatusBadRequest)
 		return
 	}
 
-	tables, err := h.repo.GetBusyTableIDs(resID, dateStr)
+	tables, err := h.repo.GetBusyTableIDs(resID, dateStr, startTimeStr, endTimeStr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

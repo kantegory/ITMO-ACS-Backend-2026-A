@@ -6,7 +6,9 @@ import (
 	"auth/internal/service"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -28,16 +30,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validate.Struct(req); err != nil {
-		http.Error(w, "Validation failed: " + err.Error(), http.StatusBadRequest)
+		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	hash, _ := service.HashPassword(req.Password)
 	user := models.User{
-		Email: req.Email,
+		Email:        req.Email,
 		PasswordHash: hash,
-		FullName: req.FullName,
-		Phone: req.Phone,
+		FullName:     req.FullName,
+		Phone:        req.Phone,
 	}
 
 	if err := h.repo.CreateUser(&user); err != nil {
@@ -59,7 +61,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validate.Struct(req); err != nil {
-		http.Error(w, "Validation failed: " + err.Error(), http.StatusBadRequest)
+		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -70,5 +72,24 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, _ := service.GenerateToken(user.ID, user.Role)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.AuthResponse{AccessToken: token, User: *user})
+}
+
+// GET /internal/users/{id}
+func (h *AuthHandler) InternalGetUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "Invalid user id", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.repo.GetUserByID(id)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
 }

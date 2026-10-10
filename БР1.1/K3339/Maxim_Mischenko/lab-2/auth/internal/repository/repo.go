@@ -2,6 +2,7 @@ package repository
 
 import (
 	"auth/internal/models"
+
 	"github.com/jmoiron/sqlx"
 )
 
@@ -22,5 +23,11 @@ func (r *AuthRepository) CreateUser(u *models.User) error {
 func (r *AuthRepository) GetUserByEmail(email string) (*models.User, error) {
 	var u models.User
 	err := r.db.Get(&u, "SELECT * FROM users WHERE email = $1", email)
+	return &u, err
+}
+
+func (r *AuthRepository) GetUserByID(id int) (*models.User, error) {
+	var u models.User
+	err := r.db.Get(&u, "SELECT * FROM users WHERE id = $1", id)
 	return &u, err
 }

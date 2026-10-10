@@ -35,6 +35,10 @@ func main() {
 		r.Post("/login", h.Login)
 	})
 
+	r.Route("/internal", func(r chi.Router) {
+		r.Get("/users/{id}", h.InternalGetUser)
+	})
+
 	log.Println("Auth Service starting on :8001...")
 	if err := http.ListenAndServe(":8001", r); err != nil {
 		log.Fatalf("Could not start server: %v", err)

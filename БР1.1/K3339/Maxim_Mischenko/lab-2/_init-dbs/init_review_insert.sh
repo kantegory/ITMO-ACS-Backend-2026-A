@@ -11,7 +11,8 @@ done
 echo "Gateway is ready"
 echo "Seeding reviews..."
 
-token='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3OTEyMDk1ODgsInJvbGUiOiJndWVzdCIsInVzZXJfaWQiOjF9.S_lTd4kysR3DapgpALZlMhkddN3wD9QAW6hBWfEgzh0'
+token=$(curl -fsS -X POST http://gateway:8080/api/v1/auth/login -d '{"email": "admin@qd.com", "password": "demo1234"}' | sed -n 's/.*"access_token":[^"]*"\([^"]*\)".*/\1/p')
+echo $token
 curl -fsS -X POST http://gateway:8080/api/v1/reviews -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d '{"restaurant_id":1,"booking_id":101,"rating":5,"comment":"Отличная паста и очень уютная атмосфера"}'
 curl -fsS -X POST http://gateway:8080/api/v1/reviews -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d '{"restaurant_id":1,"booking_id":102,"rating":4,"comment":"Пицца вкусная, но пришлось немного подождать"}'
 curl -fsS -X POST http://gateway:8080/api/v1/reviews -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d '{"restaurant_id":2,"booking_id":103,"rating":5,"comment":"Лучшие роллы в городе"}'

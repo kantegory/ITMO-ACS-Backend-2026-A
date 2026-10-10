@@ -14,7 +14,7 @@ import (
 )
 
 type CatalogHandler struct {
-	repo *repository.CatalogRepository
+	repo          *repository.CatalogRepository
 	bookingClient *client.BookingClient
 }
 
@@ -27,7 +27,9 @@ func (h *CatalogHandler) ListRestaurants(w http.ResponseWriter, r *http.Request)
 	q := r.URL.Query()
 
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	if limit <= 0 { limit = 20 }
+	if limit <= 0 {
+		limit = 20
+	}
 
 	offset, _ := strconv.Atoi(q.Get("offset"))
 	cuisineID, _ := strconv.Atoi(q.Get("cuisine_id"))
@@ -35,14 +37,14 @@ func (h *CatalogHandler) ListRestaurants(w http.ResponseWriter, r *http.Request)
 	maxPrice, _ := strconv.ParseFloat(q.Get("max_price"), 64)
 
 	filters := models.RestaurantFilters{
-		Name: q.Get("name"),
-		City: q.Get("city"),
+		Name:      q.Get("name"),
+		City:      q.Get("city"),
 		CuisineID: cuisineID,
-		MinPrice: minPrice,
-		MaxPrice: maxPrice,
-		SortBy: q.Get("sort_by"),
-		Limit: limit,
-		Offset: offset,
+		MinPrice:  minPrice,
+		MaxPrice:  maxPrice,
+		SortBy:    q.Get("sort_by"),
+		Limit:     limit,
+		Offset:    offset,
 	}
 
 	response, err := h.repo.GetRestaurants(filters)
@@ -65,17 +67,35 @@ func (h *CatalogHandler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find details for the restaurant (menu + tables)
-	// 1. Get restaurant info
-	// 2. Get menu items
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
+}
+
+// GET /restaurants/{id}/menu
+func (h *CatalogHandler) GetRestaurantMenu(w http.ResponseWriter, r *http.Request) {
+	resID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+
+	items, err := h.repo.GetMenuByRestaurant(resID)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if items == nil {
+		items = []models.MenuItem{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
 }
 
 // GET /restaurants/{id}/tables
 func (h *CatalogHandler) GetRestaurantTables(w http.ResponseWriter, r *http.Request) {
 	resID, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	capacity, _ := strconv.Atoi(r.URL.Query().Get("capacity"))
- 	date := r.URL.Query().Get("date")
+	date := r.URL.Query().Get("date")
+	startTime := r.URL.Query().Get("startTime");
+	endTime := r.URL.Query().Get("endTime");
 	reqID := r.Header.Get("X-Request-Id")
 
 	alltables, err := h.repo.GetTables(resID, capacity)
@@ -85,8 +105,16 @@ func (h *CatalogHandler) GetRestaurantTables(w http.ResponseWriter, r *http.Requ
 	}
 
 	var busyIDs []int
-	if date != "" {
-		busyIDs, err = h.bookingClient.GetBusyTableIDs(resID, date, reqID)
+	filledCount := 0
+	if date != "" { filledCount++ }
+	if startTime != "" { filledCount++ }
+	if endTime != "" { filledCount++ }
+	if filledCount > 0 && filledCount < 3 {
+		http.Error(w, "You must fill all three date, startTime and endTime fields or none leave all of them blank", http.StatusBadRequest)
+		return
+	}
+	if filledCount > 0 {
+		busyIDs, err = h.bookingClient.GetBusyTableIDs(resID, date, startTime, endTime, reqID)
 		if err != nil {
 			log.Printf("Error calling booking service %v", err)
 			http.Error(w, fmt.Sprintf("Availability check failed: %v", err), http.StatusBadRequest)
@@ -127,8 +155,8 @@ func (h *CatalogHandler) InternalUpdateRestaurantRating(w http.ResponseWriter, r
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 
 	var input struct {
-		Avg float64 `json:"avg_rating"`
-		Count int `json:"reviews_count"`
+		Avg   float64 `json:"avg_rating"`
+		Count int     `json:"reviews_count"`
 	}
 	json.NewDecoder(r.Body).Decode(&input)
 

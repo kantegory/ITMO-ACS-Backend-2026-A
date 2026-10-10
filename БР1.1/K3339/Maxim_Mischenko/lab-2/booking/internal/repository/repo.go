@@ -4,6 +4,8 @@ import (
 	"booking/internal/models"
 
 	"github.com/jmoiron/sqlx"
+
+	"fmt"
 )
 
 type BookingRepository struct {
@@ -27,10 +29,12 @@ func (r *BookingRepository) IsTableBusy(tableID int, date, start, end string) (b
 	return count > 0, err
 }
 
-func (r *BookingRepository) GetBusyTableIDs(resID int, date string) ([]int, error) {
+func (r *BookingRepository) GetBusyTableIDs(resID int, date string, startTime string, endTime string) ([]int, error) {
 	var ids []int
-	query := "SELECT table_id FROM bookings WHERE restaurant_id = $1 AND booking_date = $2 AND status != 'cancelled'"
-	err := r.db.Select(&ids, query, resID, date)
+	query := "SELECT table_id FROM bookings WHERE restaurant_id = $1 AND booking_date = $2 AND $3 < start_time AND $4 > end_time AND status != 'cancelled'"
+	fmt.Println("query: " + query)
+	err := r.db.Select(&ids, query, resID, date, startTime, endTime)
+	fmt.Println("err: " + err.Error())
 	if err != nil {
 		return nil, err
 	}
