@@ -20,19 +20,19 @@ stages:
 build-local:
   extends: .build
   script:
-    - docker build -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA .
+    - docker build --provenance=false -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA .
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 build-master:
   extends: .build
   script:
-    - docker build -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA -t $IMAGE_REGISTRY/$SERVICE:latest .
-    - echo "$CI_JOB_TOKEN" | docker login $IMAGE_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_JOB_TOKEN" | docker login $CI_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin
+    - docker build --provenance=false -t $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA -t $IMAGE_REGISTRY/$SERVICE:latest .
     - docker push $IMAGE_REGISTRY/$SERVICE:$CI_COMMIT_SHA
     - docker push $IMAGE_REGISTRY/$SERVICE:latest
   after_script:
-    - docker logout $IMAGE_REGISTRY
+    - docker logout $CI_REGISTRY
     - rm -f ~/.docker/config.json
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
