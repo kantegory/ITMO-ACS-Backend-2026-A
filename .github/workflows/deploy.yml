@@ -1,0 +1,116 @@
+name: Deploy backend
+on:
+  push:
+    branches: [hw6-ci-cd]
+    paths:
+      - '.github/workflows/deploy.yml'
+      - 'БР1.1/Маркозубова Анастасия/labs/lab4/ansible/**'
+      - 'БР1.1/Маркозубова Анастасия/homeworks/hw6/app/**'
+      - '!**/*.docx'
+      - '!**/*.pdf'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: backend-production
+  cancel-in-progress: false
+env:
+  APP_DIR: БР1.1/Маркозубова Анастасия/homeworks/hw6/app
+  ANSIBLE_DIR: БР1.1/Маркозубова Анастасия/labs/lab4/ansible
+defaults:
+  run:
+    shell: bash
+jobs:
+  validate:
+    name: Validate configuration and build TypeScript
+    if: github.repository == 'mmmilkinnn/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible
+        run: python -m pip install -r "$ANSIBLE_DIR/requirements.txt"
+      - name: Validate playbook and shell scripts
+        run: |
+          cd "$ANSIBLE_DIR"
+          cp inventory.example.yml inventory.yml
+          ansible-playbook site.yml --syntax-check
+          cd "$GITHUB_WORKSPACE/$APP_DIR"
+          for script in scripts/*.sh; do bash -n "$script"; done
+          DB_PASSWORD=validation JWT_SECRET_KEY=validation RABBITMQ_USER=validation RABBITMQ_PASSWORD=validation docker compose config --quiet
+      - name: Compile all services
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+  deploy:
+    name: Deploy with Ansible
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BACKEND_ARCHIVE: /tmp/backend.tar.gz
+      BACKEND_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible
+        run: python -m pip install -r "$ANSIBLE_DIR/requirements.txt"
+      - name: Prepare SSH and inventory
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          inventory={'all':{'children':{'backend':{'hosts':{'cloudru':{'ansible_host':os.environ['HOST'],'ansible_user':os.environ['USER'],'ansible_ssh_private_key_file':str(Path.home()/'.ssh/id_ed25519')}}}}}}
+          (Path(os.environ['ANSIBLE_DIR'])/'inventory.yml').write_text(json.dumps(inventory),encoding='utf-8')
+          PY
+      - name: Package requested release
+        run: |
+          mkdir -p evidence
+          python - <<'PY'
+          import os,json,datetime
+          from pathlib import Path
+          release={'commit':os.environ['BACKEND_COMMIT'],'branch':os.environ['GITHUB_REF_NAME'],'deployed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}
+          (Path(os.environ['APP_DIR'])/'nginx/deployment.json').write_text(json.dumps(release,indent=2)+'\n',encoding='utf-8')
+          PY
+          tar --exclude=.env --exclude=node_modules --exclude=dist --exclude=ssh --exclude=./nginx/default.conf -czf "$BACKEND_ARCHIVE" -C "$APP_DIR" .
+      - name: Check SSH connection
+        run: |
+          cd "$ANSIBLE_DIR"
+          ansible backend -m ansible.builtin.ping | tee "$GITHUB_WORKSPACE/evidence/ping.log"
+      - name: Configure VM and deploy
+        run: |
+          cd "$ANSIBLE_DIR"
+          ansible-playbook site.yml | tee "$GITHUB_WORKSPACE/evidence/deploy.log"
+      - name: Verify idempotence
+        run: |
+          cd "$ANSIBLE_DIR"
+          ansible-playbook site.yml | tee "$GITHUB_WORKSPACE/evidence/idempotence.log"
+          grep -Eq 'cloudru[[:space:]]*:.*changed=0.*unreachable=0.*failed=0' "$GITHUB_WORKSPACE/evidence/idempotence.log"
+      - name: Save verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-verification
+          path: evidence/
+          if-no-files-found: ignore
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

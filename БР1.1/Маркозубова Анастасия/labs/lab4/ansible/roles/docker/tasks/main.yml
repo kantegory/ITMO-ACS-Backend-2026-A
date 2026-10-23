@@ -1,0 +1,47 @@
+---
+- name: Create Docker repository key directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Install Docker repository signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+    force: false
+
+- name: Configure official Docker repository
+  ansible.builtin.template:
+    src: docker.sources.j2
+    dest: /etc/apt/sources.list.d/docker.sources
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Update APT cache for first Docker installation
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: "'docker-ce' not in ansible_facts.packages"
+
+- name: Install Docker Engine and Compose
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+
+- name: Enable Docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Check Docker Compose
+  ansible.builtin.command: docker compose version
+  changed_when: false

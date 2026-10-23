@@ -1,0 +1,413 @@
+name: backend-lab4
+services:
+  nginx:
+    image: nginx:stable-bookworm
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/index.html:/usr/share/nginx/html/index.html:ro
+      - ./nginx/deployment.json:/usr/share/nginx/html/deployment.json:ro
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      profile-service:
+        condition: service_healthy
+      resume-service:
+        condition: service_healthy
+      vacancy-service:
+        condition: service_healthy
+      application-service:
+        condition: service_healthy
+      reference-service:
+        condition: service_healthy
+    networks:
+      - job-board-network
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  auth-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  profile-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: profile_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+    volumes:
+      - profile-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d profile_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  resume-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: resume_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+    volumes:
+      - resume-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d resume_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  vacancy-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vacancy_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+    volumes:
+      - vacancy-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vacancy_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  application-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: application_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+    volumes:
+      - application-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d application_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  reference-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reference_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+    volumes:
+      - reference-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d reference_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-board-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: ./auth-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: auth
+      PUBLIC_BASE_PATH: /auth
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8001
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_NAME: auth_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+      DB_RESET_ON_START: "false"
+      SEED_DEMO_DATA_ON_START: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Run scripts/init-env.sh}
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      AUTH_SERVICE_URL: http://auth-service:8001/api
+      PROFILE_SERVICE_URL: http://profile-service:8002/api
+      RESUME_SERVICE_URL: http://resume-service:8003/api
+      VACANCY_SERVICE_URL: http://vacancy-service:8004/api
+      APPLICATION_SERVICE_URL: http://application-service:8005/api
+      REFERENCE_SERVICE_URL: http://reference-service:8006/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8001/docs/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-db:
+        condition: service_healthy
+    networks:
+      - job-board-network
+
+  profile-service:
+    build:
+      context: .
+      dockerfile: ./profile-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: profile
+      PUBLIC_BASE_PATH: /profile
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8002
+      DB_HOST: profile-db
+      DB_PORT: 5432
+      DB_NAME: profile_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+      DB_RESET_ON_START: "false"
+      SEED_DEMO_DATA_ON_START: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Run scripts/init-env.sh}
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      AUTH_SERVICE_URL: http://auth-service:8001/api
+      PROFILE_SERVICE_URL: http://profile-service:8002/api
+      RESUME_SERVICE_URL: http://resume-service:8003/api
+      VACANCY_SERVICE_URL: http://vacancy-service:8004/api
+      APPLICATION_SERVICE_URL: http://application-service:8005/api
+      REFERENCE_SERVICE_URL: http://reference-service:8006/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8002/docs/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      profile-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - job-board-network
+
+  resume-service:
+    build:
+      context: .
+      dockerfile: ./resume-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: resume
+      PUBLIC_BASE_PATH: /resume
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8003
+      DB_HOST: resume-db
+      DB_PORT: 5432
+      DB_NAME: resume_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+      DB_RESET_ON_START: "false"
+      SEED_DEMO_DATA_ON_START: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Run scripts/init-env.sh}
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      AUTH_SERVICE_URL: http://auth-service:8001/api
+      PROFILE_SERVICE_URL: http://profile-service:8002/api
+      RESUME_SERVICE_URL: http://resume-service:8003/api
+      VACANCY_SERVICE_URL: http://vacancy-service:8004/api
+      APPLICATION_SERVICE_URL: http://application-service:8005/api
+      REFERENCE_SERVICE_URL: http://reference-service:8006/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8003/docs/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      resume-db:
+        condition: service_healthy
+      profile-service:
+        condition: service_started
+      reference-service:
+        condition: service_started
+    networks:
+      - job-board-network
+
+  vacancy-service:
+    build:
+      context: .
+      dockerfile: ./vacancy-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: vacancy
+      PUBLIC_BASE_PATH: /vacancy
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8004
+      DB_HOST: vacancy-db
+      DB_PORT: 5432
+      DB_NAME: vacancy_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+      DB_RESET_ON_START: "false"
+      SEED_DEMO_DATA_ON_START: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Run scripts/init-env.sh}
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      AUTH_SERVICE_URL: http://auth-service:8001/api
+      PROFILE_SERVICE_URL: http://profile-service:8002/api
+      RESUME_SERVICE_URL: http://resume-service:8003/api
+      VACANCY_SERVICE_URL: http://vacancy-service:8004/api
+      APPLICATION_SERVICE_URL: http://application-service:8005/api
+      REFERENCE_SERVICE_URL: http://reference-service:8006/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8004/docs/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      vacancy-db:
+        condition: service_healthy
+      profile-service:
+        condition: service_started
+      resume-service:
+        condition: service_started
+      reference-service:
+        condition: service_started
+    networks:
+      - job-board-network
+
+  application-service:
+    build:
+      context: .
+      dockerfile: ./application-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: application
+      PUBLIC_BASE_PATH: /application
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8005
+      DB_HOST: application-db
+      DB_PORT: 5432
+      DB_NAME: application_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+      DB_RESET_ON_START: "false"
+      SEED_DEMO_DATA_ON_START: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Run scripts/init-env.sh}
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      AUTH_SERVICE_URL: http://auth-service:8001/api
+      PROFILE_SERVICE_URL: http://profile-service:8002/api
+      RESUME_SERVICE_URL: http://resume-service:8003/api
+      VACANCY_SERVICE_URL: http://vacancy-service:8004/api
+      APPLICATION_SERVICE_URL: http://application-service:8005/api
+      REFERENCE_SERVICE_URL: http://reference-service:8006/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8005/docs/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      application-db:
+        condition: service_healthy
+      resume-service:
+        condition: service_started
+      vacancy-service:
+        condition: service_started
+    networks:
+      - job-board-network
+
+  reference-service:
+    build:
+      context: .
+      dockerfile: ./reference-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: reference
+      PUBLIC_BASE_PATH: /reference
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8006
+      DB_HOST: reference-db
+      DB_PORT: 5432
+      DB_NAME: reference_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Run scripts/init-env.sh}
+      DB_RESET_ON_START: "false"
+      SEED_DEMO_DATA_ON_START: "false"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Run scripts/init-env.sh}
+      JWT_ACCESS_TOKEN_LIFETIME: 86400
+      AUTH_SERVICE_URL: http://auth-service:8001/api
+      PROFILE_SERVICE_URL: http://profile-service:8002/api
+      RESUME_SERVICE_URL: http://resume-service:8003/api
+      VACANCY_SERVICE_URL: http://vacancy-service:8004/api
+      APPLICATION_SERVICE_URL: http://application-service:8005/api
+      REFERENCE_SERVICE_URL: http://reference-service:8006/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8006/docs/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      reference-db:
+        condition: service_healthy
+    networks:
+      - job-board-network
+
+volumes:
+  rabbitmq-data:
+  auth-db-data:
+  profile-db-data:
+  resume-db-data:
+  vacancy-db-data:
+  application-db-data:
+  reference-db-data:
+
+networks:
+  job-board-network:
+    driver: bridge

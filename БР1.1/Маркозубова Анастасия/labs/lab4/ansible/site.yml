@@ -1,0 +1,23 @@
+---
+- name: Configure Ubuntu and deploy backend
+  hosts: backend
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Validate operating system and release input
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+          - ansible_facts.distribution_major_version | int >= 22
+          - backend_archive | length > 0
+          - backend_commit is match('^[a-f0-9]{40}$')
+  roles:
+    - base
+    - docker
+    - backend_app
+    - nginx
+  post_tasks:
+    - name: Apply deployment before verification
+      ansible.builtin.meta: flush_handlers
+    - name: Verify application and preserved configuration
+      ansible.builtin.import_tasks: verify.yml

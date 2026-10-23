@@ -1,0 +1,56 @@
+---
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ backend_dir }}"
+    state: directory
+    owner: "{{ backend_user }}"
+    group: "{{ backend_user }}"
+    mode: '0755'
+
+- name: Record existing environment file checksum
+  ansible.builtin.stat:
+    path: "{{ backend_dir }}/.env"
+  register: backend_env_before
+  no_log: true
+
+- name: Transfer and extract application archive
+  ansible.builtin.unarchive:
+    src: "{{ backend_archive }}"
+    dest: "{{ backend_dir }}"
+    owner: "{{ backend_user }}"
+    group: "{{ backend_user }}"
+  notify: Deploy application
+
+- name: Create environment file only on first deployment
+  ansible.builtin.command:
+    cmd: bash scripts/init-env.sh
+    chdir: "{{ backend_dir }}"
+    creates: "{{ backend_dir }}/.env"
+  become_user: "{{ backend_user }}"
+  no_log: true
+  notify: Deploy application
+
+- name: Protect environment file
+  ansible.builtin.file:
+    path: "{{ backend_dir }}/.env"
+    owner: "{{ backend_user }}"
+    group: "{{ backend_user }}"
+    mode: '0600'
+
+- name: Validate Docker Compose configuration
+  ansible.builtin.command:
+    cmd: docker compose config --quiet
+    chdir: "{{ backend_dir }}"
+  changed_when: false
+
+- name: Read last completed deployment
+  ansible.builtin.slurp:
+    src: "{{ backend_dir }}/.ansible-deployed-sha"
+  register: backend_completed
+  failed_when: false
+
+- name: Schedule unfinished or new release
+  ansible.builtin.debug:
+    msg: Deploy release {{ backend_commit }}
+  changed_when: (backend_completed.content | default('') | b64decode | trim) != backend_commit
+  notify: Deploy application

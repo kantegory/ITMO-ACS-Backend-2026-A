@@ -1,0 +1,81 @@
+- name: Verify environment file was preserved
+  ansible.builtin.stat:
+    path: "{{ backend_dir }}/.env"
+  register: backend_env_after
+  no_log: true
+
+- name: Assert existing secrets have not changed
+  ansible.builtin.assert:
+    that:
+      - backend_env_before.stat.checksum == backend_env_after.stat.checksum
+  when: backend_env_before.stat.exists
+  no_log: true
+
+- name: Read container states
+  ansible.builtin.command:
+    cmd: docker compose ps --all --format json
+    chdir: "{{ backend_dir }}"
+  register: backend_containers
+  changed_when: false
+
+- name: Parse container states
+  ansible.builtin.set_fact:
+    backend_container_rows: "{{ backend_containers.stdout_lines | map('from_json') | list }}"
+
+- name: Check all containers are running and healthy
+  ansible.builtin.assert:
+    that:
+      - backend_container_rows | length == backend_min_containers
+      - backend_container_rows | selectattr('State', 'ne', 'running') | list | length == 0
+      - backend_container_rows | selectattr('Service', 'ne', 'nginx') | selectattr('Health', 'ne', 'healthy') | list | length == 0
+    success_msg: All 14 containers are running; service health checks passed
+
+- name: Check nginx configuration
+  ansible.builtin.command:
+    cmd: docker compose exec -T nginx nginx -t
+    chdir: "{{ backend_dir }}"
+  changed_when: false
+
+- name: Check each service through nginx
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/{{ item }}/docs/"
+    status_code: 200
+    use_proxy: false
+  loop: "{{ backend_services }}"
+  register: backend_http
+  retries: 6
+  delay: 3
+  until: backend_http.status == 200
+
+- name: Check database-backed reference API
+  ansible.builtin.uri:
+    url: http://127.0.0.1/reference/api/industries/
+    status_code: 200
+    return_content: true
+    use_proxy: false
+  register: backend_reference
+
+- name: Check deployed commit through public HTTP
+  ansible.builtin.uri:
+    url: "{{ backend_public_url }}/deployment.json"
+    status_code: 200
+    return_content: true
+    use_proxy: false
+  become: false
+  delegate_to: localhost
+  register: backend_public_release
+
+- name: Verify public commit matches the workflow
+  ansible.builtin.assert:
+    that:
+      - backend_public_release.json.commit == backend_commit
+    success_msg: Public deployment SHA matches the requested commit
+
+- name: Show server and application summary
+  ansible.builtin.debug:
+    msg:
+      os: "{{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+      python: "{{ ansible_facts.python_version }}"
+      containers: "{{ backend_container_rows | length }}"
+      industries: "{{ backend_reference.json | length }}"
+      commit: "{{ backend_commit }}"

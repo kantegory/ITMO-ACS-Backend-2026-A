@@ -1,0 +1,20 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    client_max_body_size 10m;
+    location / { try_files $uri $uri/ =404; }
+{% for service in backend_services %}
+    location = /{{ service }} { return 301 /{{ service }}/; }
+    location /{{ service }}/ {
+        proxy_pass http://{{ service }}-service:{{ 8000 + loop.index }}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect / /{{ service }}/;
+    }
+{% endfor %}
+}
