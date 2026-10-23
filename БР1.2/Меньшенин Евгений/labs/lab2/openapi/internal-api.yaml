@@ -1,0 +1,657 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking Internal Microservices API
+  version: 1.0.0
+  description: Internal REST API for communication between restaurant booking microservices.
+
+servers:
+  - url: http://identity-service:8080
+    description: identity-service
+  - url: http://restaurant-service:8080
+    description: restaurant-service
+  - url: http://availability-service:8080
+    description: availability-service
+  - url: http://booking-service:8080
+    description: booking-service
+  - url: http://feedback-service:8080
+    description: feedback-service
+
+security:
+  - serviceTokenAuth: []
+
+paths:
+  /internal/users/{userId}:
+    get:
+      tags: [Identity]
+      summary: Get short user information by ID
+      description: Used by booking-service and feedback-service to validate users and enrich responses.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/users/batch:
+    post:
+      tags: [Identity]
+      summary: Get multiple users by IDs
+      description: Used by feedback-service to show user names near reviews.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userIds]
+              properties:
+                userIds:
+                  type: array
+                  items:
+                    type: integer
+                  example: [1, 2, 3]
+      responses:
+        '200':
+          description: Users found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InternalUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/restaurants/{restaurantId}:
+    get:
+      tags: [Restaurant]
+      summary: Get short restaurant information by ID
+      description: Used by booking-service, feedback-service and availability-service.
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Restaurant exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalRestaurantResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RestaurantNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/restaurants/{restaurantId}/ownership:
+    get:
+      tags: [Restaurant]
+      summary: Check restaurant ownership
+      description: Used by availability-service before creating or changing restaurant tables.
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: ownerId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Ownership check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnershipResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RestaurantNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/restaurants/{restaurantId}/rating:
+    put:
+      tags: [Restaurant]
+      summary: Update restaurant aggregate rating
+      description: Called by feedback-service after review changes.
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRatingRequest'
+      responses:
+        '200':
+          description: Rating updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RestaurantNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/tables/{tableId}:
+    get:
+      tags: [Availability]
+      summary: Get table information by ID
+      description: Used by booking-service to validate selected table.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Table exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalTableResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/availability/check:
+    post:
+      tags: [Availability]
+      summary: Check table availability for a time slot
+      description: Used by booking-service before creating or updating a booking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityCheckRequest'
+      responses:
+        '200':
+          description: Availability check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityCheckResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+        '409':
+          $ref: '#/components/responses/SlotAlreadyBooked'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/availability/reserve:
+    post:
+      tags: [Availability]
+      summary: Reserve table slot for booking
+      description: Used by booking-service after successful validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReserveSlotRequest'
+      responses:
+        '201':
+          description: Slot reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReserveSlotResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TableNotFound'
+        '409':
+          $ref: '#/components/responses/SlotAlreadyBooked'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/availability/release:
+    post:
+      tags: [Availability]
+      summary: Release previously reserved table slot
+      description: Used by booking-service after booking cancellation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReleaseSlotRequest'
+      responses:
+        '200':
+          description: Slot released
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseSlotResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReservationNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  securitySchemes:
+    serviceTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: service-token
+
+  schemas:
+    InternalUserResponse:
+      type: object
+      required: [id, email, firstName, lastName, role, active]
+      properties:
+        id:
+          type: integer
+          example: 10
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        firstName:
+          type: string
+          example: Ivan
+        lastName:
+          type: string
+          example: Petrov
+        fullName:
+          type: string
+          example: Ivan Petrov
+        role:
+          type: string
+          enum: [client, owner, admin]
+          example: client
+        active:
+          type: boolean
+          example: true
+
+    InternalRestaurantResponse:
+      type: object
+      required: [id, name, ownerId, active]
+      properties:
+        id:
+          type: integer
+          example: 25
+        name:
+          type: string
+          example: White Rabbit
+        address:
+          type: string
+          example: Moscow, Smolenskaya Square, 3
+        ownerId:
+          type: integer
+          example: 7
+        rating:
+          type: number
+          format: float
+          example: 4.7
+        active:
+          type: boolean
+          example: true
+
+    OwnershipResponse:
+      type: object
+      required: [restaurantId, ownerId, isOwner]
+      properties:
+        restaurantId:
+          type: integer
+          example: 25
+        ownerId:
+          type: integer
+          example: 7
+        isOwner:
+          type: boolean
+          example: true
+
+    UpdateRatingRequest:
+      type: object
+      required: [rating, reviewsCount]
+      properties:
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          example: 4.6
+        reviewsCount:
+          type: integer
+          minimum: 0
+          example: 125
+        sourceEventId:
+          type: string
+          example: review.updated.1001
+
+    RatingResponse:
+      type: object
+      required: [restaurantId, rating, reviewsCount]
+      properties:
+        restaurantId:
+          type: integer
+          example: 25
+        rating:
+          type: number
+          format: float
+          example: 4.6
+        reviewsCount:
+          type: integer
+          example: 125
+
+    InternalTableResponse:
+      type: object
+      required: [id, restaurantId, capacity, isAvailable]
+      properties:
+        id:
+          type: integer
+          example: 15
+        restaurantId:
+          type: integer
+          example: 25
+        tableNumber:
+          type: integer
+          example: 4
+        capacity:
+          type: integer
+          example: 4
+        locationDescription:
+          type: string
+          example: Near the window
+        isAvailable:
+          type: boolean
+          example: true
+
+    AvailabilityCheckRequest:
+      type: object
+      required: [tableId, bookingDate, startTime, endTime, guests]
+      properties:
+        tableId:
+          type: integer
+          example: 15
+        bookingDate:
+          type: string
+          format: date
+          example: 2026-05-20
+        startTime:
+          type: string
+          example: '19:00'
+        endTime:
+          type: string
+          example: '21:00'
+        guests:
+          type: integer
+          minimum: 1
+          example: 4
+
+    AvailabilityCheckResponse:
+      type: object
+      required: [tableId, available]
+      properties:
+        tableId:
+          type: integer
+          example: 15
+        available:
+          type: boolean
+          example: true
+        reason:
+          type: string
+          nullable: true
+          example: null
+
+    ReserveSlotRequest:
+      type: object
+      required: [bookingId, tableId, bookingDate, startTime, endTime]
+      properties:
+        bookingId:
+          type: integer
+          example: 900
+        tableId:
+          type: integer
+          example: 15
+        bookingDate:
+          type: string
+          format: date
+          example: 2026-05-20
+        startTime:
+          type: string
+          example: '19:00'
+        endTime:
+          type: string
+          example: '21:00'
+        idempotencyKey:
+          type: string
+          example: booking-900-reserve
+
+    ReserveSlotResponse:
+      type: object
+      required: [reservationId, bookingId, status]
+      properties:
+        reservationId:
+          type: integer
+          example: 501
+        bookingId:
+          type: integer
+          example: 900
+        status:
+          type: string
+          enum: [reserved]
+          example: reserved
+
+    ReleaseSlotRequest:
+      type: object
+      required: [bookingId]
+      properties:
+        bookingId:
+          type: integer
+          example: 900
+        reason:
+          type: string
+          example: booking_cancelled
+        idempotencyKey:
+          type: string
+          example: booking-900-release
+
+    ReleaseSlotResponse:
+      type: object
+      required: [bookingId, status]
+      properties:
+        bookingId:
+          type: integer
+          example: 900
+        status:
+          type: string
+          enum: [released]
+          example: released
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Request validation failed
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: BAD_REQUEST
+            message: Invalid request parameters
+
+    Unauthorized:
+      description: Missing or invalid service token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: Service token is missing or invalid
+
+    Forbidden:
+      description: Service is not allowed to call this endpoint
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: FORBIDDEN
+            message: Service has no permission for this operation
+
+    UserNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: USER_NOT_FOUND
+            message: User was not found
+
+    RestaurantNotFound:
+      description: Restaurant not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RESTAURANT_NOT_FOUND
+            message: Restaurant was not found
+
+    TableNotFound:
+      description: Table not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: TABLE_NOT_FOUND
+            message: Table was not found
+
+    ReservationNotFound:
+      description: Reservation not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RESERVATION_NOT_FOUND
+            message: Reservation was not found
+
+    SlotAlreadyBooked:
+      description: Requested time slot is already booked
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SLOT_ALREADY_BOOKED
+            message: Table is already booked for requested time
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: VALIDATION_ERROR
+            message: Request validation failed
+            details:
+              field: rating
+              reason: must be between 0 and 5
+
+    ServiceUnavailable:
+      description: Dependency is temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SERVICE_UNAVAILABLE
+            message: Dependency service is unavailable

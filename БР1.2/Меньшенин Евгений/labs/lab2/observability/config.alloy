@@ -1,0 +1,65 @@
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker_logs" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex = "/(.*)"
+    target_label = "container"
+  }
+
+  rule {
+    target_label = "job"
+    replacement = "docker"
+  }
+}
+
+loki.source.docker "docker_logs" {
+  host = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.docker_logs.output
+  forward_to = [loki.write.local_loki.receiver]
+}
+
+prometheus.exporter.cadvisor "containers" {
+  docker_host               = "unix:///var/run/docker.sock"
+  containerd_host           = "/run/containerd/containerd.sock"
+  containerd_namespace      = "moby"
+  docker_only               = true
+  disable_root_cgroup_stats = true
+  storage_duration          = "5m"
+}
+
+prometheus.scrape "containers" {
+  targets         = prometheus.exporter.cadvisor.containers.targets
+  forward_to      = [prometheus.relabel.containers.receiver]
+  scrape_interval = "15s"
+}
+
+prometheus.relabel "containers" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+
+  rule {
+    target_label = "job"
+    replacement  = "containers"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = "container-metrics"
+  }
+}
+
+prometheus.remote_write "prometheus" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

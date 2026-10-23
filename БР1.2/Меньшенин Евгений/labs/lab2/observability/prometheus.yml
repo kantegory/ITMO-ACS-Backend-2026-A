@@ -1,0 +1,113 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+  - job_name: container-metrics-agent
+    static_configs:
+      - targets: ["container-metrics:12345"]
+  - job_name: app_health
+    metrics_path: /probe
+    params:
+      module: [app_health]
+    static_configs:
+      - targets: ["http://api-gateway:8080/health"]
+        labels:
+          service: api-gateway
+          group: applications
+      - targets: ["http://identity-service:8081/health"]
+        labels:
+          service: identity-service
+          group: applications
+      - targets: ["http://restaurant-service:8082/health"]
+        labels:
+          service: restaurant-service
+          group: applications
+      - targets: ["http://availability-service:8083/health"]
+        labels:
+          service: availability-service
+          group: applications
+      - targets: ["http://booking-service:8084/health"]
+        labels:
+          service: booking-service
+          group: applications
+      - targets: ["http://feedback-service:8085/health"]
+        labels:
+          service: feedback-service
+          group: applications
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+  - job_name: infra_tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ["auth-db:5432"]
+        labels:
+          service: auth-db
+          group: infrastructure_tcp
+      - targets: ["availability-db:5432"]
+        labels:
+          service: availability-db
+          group: infrastructure_tcp
+      - targets: ["booking-db:5432"]
+        labels:
+          service: booking-db
+          group: infrastructure_tcp
+      - targets: ["feedback-db:5432"]
+        labels:
+          service: feedback-db
+          group: infrastructure_tcp
+      - targets: ["restaurant-db:5432"]
+        labels:
+          service: restaurant-db
+          group: infrastructure_tcp
+      - targets: ["kafka:9092"]
+        labels:
+          service: kafka
+          group: infrastructure_tcp
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+  - job_name: monitoring_health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://loki:3100/ready"]
+        labels:
+          service: loki
+          group: monitoring_http
+      - targets: ["http://grafana:3000/api/health"]
+        labels:
+          service: grafana
+          group: monitoring_http
+      - targets: ["http://prometheus:9090/-/ready"]
+        labels:
+          service: prometheus
+          group: monitoring_http
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+  - job_name: blackbox
+    static_configs:
+      - targets: ["blackbox:9115"]

@@ -1,0 +1,492 @@
+{
+  "info": {
+    "_postman_id": "b85d9f4f-2b5d-4b5c-96d1-30756c2cf4d1",
+    "name": "Restaurant API - Main Flow (HW3)",
+    "description": "Комплексный сценарий тестирования основного пользовательского процесса: регистрация, вход, поиск ресторана и создание бронирования.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get(\"randomSuffix\")) {",
+          "    pm.collectionVariables.set(\"randomSuffix\", Date.now().toString());",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get(\"userEmail\")) {",
+          "    pm.collectionVariables.set(\"userEmail\", `hw3_user_${pm.collectionVariables.get(\"randomSuffix\")}@example.com`);",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get(\"bookingDate\")) {",
+          "    const tomorrow = new Date();",
+          "    tomorrow.setDate(tomorrow.getDate() + 1);",
+          "    const y = tomorrow.getFullYear();",
+          "    const m = String(tomorrow.getMonth() + 1).padStart(2, \"0\");",
+          "    const d = String(tomorrow.getDate()).padStart(2, \"0\");",
+          "    pm.collectionVariables.set(\"bookingDate\", `${y}-${m}-${d}`);",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get(\"bookingStartTime\")) {",
+          "    pm.collectionVariables.set(\"bookingStartTime\", \"18:00\");",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get(\"bookingEndTime\")) {",
+          "    pm.collectionVariables.set(\"bookingEndTime\", \"20:00\");",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get(\"cuisineFilter\")) {",
+          "    pm.collectionVariables.set(\"cuisineFilter\", \"Italian\");",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Register user",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"phoneNumber\": \"+79001112233\",\n  \"role\": \"owner\"\n}"
+        },
+        "url": "{{baseUrl}}/users/register",
+        "description": "Создание нового пользователя (owner), который затем создаст ресторан и стол."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Response has user id\", function () {",
+              "    pm.expect(json.id).to.be.a(\"number\");",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"userId\", json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+        },
+        "url": "{{baseUrl}}/auth/login",
+        "description": "Вход зарегистрированного пользователя и получение JWT токена."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Response has access token\", function () {",
+              "    pm.expect(json.accessToken).to.be.a(\"string\");",
+              "    pm.expect(json.accessToken.length).to.be.greaterThan(20);",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"accessToken\", json.accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Get current user",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/users/me",
+        "description": "Проверка, что токен валиден и возвращается профиль авторизованного пользователя."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Current user id matches registered user\", function () {",
+              "    pm.expect(json.id).to.eql(Number(pm.collectionVariables.get(\"userId\")));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Create restaurant",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"HW3 Test Restaurant {{randomSuffix}}\",\n  \"description\": \"Scenario restaurant for Postman tests\",\n  \"address\": \"Test st. 1\",\n  \"phoneNumber\": \"+79990001122\",\n  \"cuisineType\": \"{{cuisineFilter}}\",\n  \"openingTime\": \"10:00\",\n  \"closingTime\": \"22:00\",\n  \"imageUrl\": null\n}"
+        },
+        "url": "{{baseUrl}}/restaurants",
+        "description": "Создание ресторана для дальнейшего поиска по фильтру и бронирования."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Restaurant created\", function () {",
+              "    pm.expect(json.id).to.be.a(\"number\");",
+              "    pm.expect(json.ownerId).to.eql(Number(pm.collectionVariables.get(\"userId\")));",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"restaurantId\", json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Create table",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurantId\": {{restaurantId}},\n  \"tableNumber\": 101,\n  \"capacity\": 4,\n  \"locationDescription\": \"Near the window\"\n}"
+        },
+        "url": "{{baseUrl}}/tables",
+        "description": "Добавление стола в созданный ресторан."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Table created for expected restaurant\", function () {",
+              "    pm.expect(json.id).to.be.a(\"number\");",
+              "    pm.expect(json.restaurantId).to.eql(Number(pm.collectionVariables.get(\"restaurantId\")));",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"tableId\", json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Get restaurants with filter",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/restaurants?cuisine={{cuisineFilter}}&page=1&limit=20",
+        "description": "Получение списка ресторанов с фильтрацией по кухне."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "const createdRestaurantId = Number(pm.collectionVariables.get(\"restaurantId\"));",
+              "",
+              "pm.test(\"Response has restaurants array\", function () {",
+              "    pm.expect(json.restaurants).to.be.an(\"array\");",
+              "});",
+              "",
+              "pm.test(\"Created restaurant is present in filtered list\", function () {",
+              "    const found = json.restaurants.some(r => r.id === createdRestaurantId);",
+              "    pm.expect(found).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Get restaurant details",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/restaurants/{{restaurantId}}",
+        "description": "Просмотр деталей найденного ресторана."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Restaurant details match selected restaurant\", function () {",
+              "    pm.expect(json.id).to.eql(Number(pm.collectionVariables.get(\"restaurantId\")));",
+              "    pm.expect(json.name).to.be.a(\"string\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Get available tables",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/tables?restaurantId={{restaurantId}}&date={{bookingDate}}&guests=2",
+        "description": "Просмотр доступных столов в выбранном ресторане на нужную дату."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "const createdTableId = Number(pm.collectionVariables.get(\"tableId\"));",
+              "",
+              "pm.test(\"Response has tables array\", function () {",
+              "    pm.expect(json.tables).to.be.an(\"array\");",
+              "});",
+              "",
+              "pm.test(\"Created table is returned in available tables list\", function () {",
+              "    const found = json.tables.some(t => t.id === createdTableId);",
+              "    pm.expect(found).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Create booking",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tableId\": {{tableId}},\n  \"bookingDate\": \"{{bookingDate}}\",\n  \"startTime\": \"{{bookingStartTime}}\",\n  \"endTime\": \"{{bookingEndTime}}\",\n  \"guests\": 2,\n  \"specialRequests\": \"Postman HW3 scenario\"\n}"
+        },
+        "url": "{{baseUrl}}/bookings",
+        "description": "Создание бронирования в выбранном ресторане."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Booking created with pending status\", function () {",
+              "    pm.expect(json.id).to.be.a(\"number\");",
+              "    pm.expect(json.tableId).to.eql(Number(pm.collectionVariables.get(\"tableId\")));",
+              "    pm.expect(json.status).to.eql(\"pending\");",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"bookingId\", json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Get booking by id",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/bookings/{{bookingId}}",
+        "description": "Проверка, что созданное бронирование доступно по ID."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test(\"Booking id and table id are correct\", function () {",
+              "    pm.expect(json.id).to.eql(Number(pm.collectionVariables.get(\"bookingId\")));",
+              "    pm.expect(json.tableId).to.eql(Number(pm.collectionVariables.get(\"tableId\")));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Get my bookings",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/bookings",
+        "description": "Финальная проверка: новое бронирование есть в списке бронирований пользователя."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "const bookingId = Number(pm.collectionVariables.get(\"bookingId\"));",
+              "",
+              "pm.test(\"Response has bookings array\", function () {",
+              "    pm.expect(json.bookings).to.be.an(\"array\");",
+              "});",
+              "",
+              "pm.test(\"Created booking is present in user booking list\", function () {",
+              "    const found = json.bookings.some(b => b.id === bookingId);",
+              "    pm.expect(found).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api"
+    },
+    {
+      "key": "userPassword",
+      "value": "{{USER_PASSWORD}}"
+    }
+  ]
+}
