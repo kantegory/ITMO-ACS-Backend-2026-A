@@ -1,0 +1,3245 @@
+openapi: 3.0.3
+info:
+  title: Job Search — межсервисное API (internal)
+  version: 1.0.0
+  description: |-
+    Внутреннее API для взаимодействия микросервисов сайта поиска работы (ДЗ 4). Публичное API для клиентов остаётся прежним (openapi.yaml из ДЗ 2) и доступно только через API Gateway; эти эндпоинты снаружи не доступны, шлюз не маршрутизирует `/internal/**`.
+
+    **Аутентификация между сервисами.** Каждый вызов содержит заголовок `Authorization: Bearer <сервисный токен>`. Токен выдаёт Identity Service (`POST /internal/v1/auth/service-token`), он живёт 5 минут и выдаётся для конкретного сервиса-получателя (`aud`). Публичными остаются выдача токена, JWKS и health.
+
+    **Сквозной идентификатор.** Заголовок `X-Request-Id` передаётся по всей цепочке вызовов и попадает в `request_id` ошибок.
+
+    **Пакетные запросы.** Эндпоинты `lookup` принимают до 100 идентификаторов; отсутствующие возвращаются в `missing_ids`, ошибкой это не считается.
+
+    **Ошибки:** единый формат `ErrorResponse` (`code`, `message`, `details`, `request_id`). Ошибки доступности зависимостей: `SERVICE_UNAVAILABLE` (503, с `Retry-After`) и `UPSTREAM_TIMEOUT` (504).
+
+    **Тайм-ауты и повторы.** Тайм-аут вызова 2 секунды (пакетные запросы 3 секунды); идемпотентные запросы (GET и lookup) повторяются не более двух раз с паузой; после серии ошибок срабатывает circuit breaker.
+  contact:
+    name: Дементьев Антон
+tags:
+- name: Identity
+  description: 'Identity Service: пользователи, токены (порт 8001)'
+- name: Reference
+  description: 'Reference Service: справочники отраслей и навыков (порт 8002)'
+- name: Vacancy
+  description: 'Vacancy Service: компании, вакансии, избранное (порт 8003)'
+- name: Resume
+  description: 'Resume Service: резюме, опыт, образование (порт 8004)'
+- name: Application
+  description: 'Application Service: отклики (порт 8005)'
+- name: Recommendation
+  description: 'Recommendation Service: подбор вакансий и кандидатов (порт 8006)'
+- name: Notification
+  description: 'Notification Service: письма (порт 8007)'
+- name: Common
+  description: Эндпоинты, которые есть у каждого сервиса
+paths:
+  /internal/v1/auth/service-token:
+    servers:
+    - url: http://identity-service:8001
+      description: Сервис identity-service
+    post:
+      tags:
+      - Identity
+      summary: Выдача сервисного токена
+      description: |-
+        Аутентификация сервиса по схеме client credentials. Сервис получает короткоживущий JWT (5 минут), который подставляет в заголовок Authorization при вызове других сервисов. Токен привязан к получателю (aud), поэтому токен для vacancy-service не подойдёт для resume-service. Вызывающий сервис кеширует токен до истечения срока.
+
+        **Кто вызывает:** identity-service, reference-service, vacancy-service, resume-service, application-service, recommendation-service, notification-service, api-gateway, ops-tools.
+
+        **Где используется:** Все вызовы между сервисами (получение токена перед первым обращением и после истечения).
+      operationId: issueServiceToken
+      x-callers:
+      - identity-service
+      - reference-service
+      - vacancy-service
+      - resume-service
+      - application-service
+      - recommendation-service
+      - notification-service
+      - api-gateway
+      - ops-tools
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceTokenRequest'
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceToken'
+        '401':
+          description: 'INVALID_CLIENT: client_id или client_secret не совпадают с зарегистрированными'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_CLIENT:
+                  summary: INVALID_CLIENT
+                  value:
+                    code: INVALID_CLIENT
+                    message: Неверные учётные данные сервиса
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'AUDIENCE_NOT_ALLOWED: Для пары client_id и audience токен не выдаётся'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                AUDIENCE_NOT_ALLOWED:
+                  summary: AUDIENCE_NOT_ALLOWED
+                  value:
+                    code: AUDIENCE_NOT_ALLOWED
+                    message: Клиенту не разрешено обращаться к этому сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: client_id
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '429':
+          description: 'TOO_MANY_REQUESTS: Превышен лимит запросов; повторите позже (заголовок Retry-After)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                TOO_MANY_REQUESTS:
+                  summary: TOO_MANY_REQUESTS
+                  value:
+                    code: TOO_MANY_REQUESTS
+                    message: Слишком много запросов
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/.well-known/jwks.json:
+    servers:
+    - url: http://identity-service:8001
+      description: Сервис identity-service
+    get:
+      tags:
+      - Identity
+      summary: Публичные ключи для проверки JWT
+      description: |-
+        Отдаёт публичные ключи, которыми подписаны access-токены пользователей и сервисные токены. Шлюз и сервисы кешируют набор и обновляют его при появлении неизвестного kid. Благодаря этому сервисы проверяют подпись самостоятельно и не обращаются в Identity на каждый запрос.
+
+        **Кто вызывает:** api-gateway, identity-service, reference-service, vacancy-service, resume-service, application-service, recommendation-service, notification-service.
+
+        **Где используется:** Проверка JWT в шлюзе и во всех сервисах (все защищённые операции публичного API).
+      operationId: getJwks
+      x-callers:
+      - api-gateway
+      - identity-service
+      - reference-service
+      - vacancy-service
+      - resume-service
+      - application-service
+      - recommendation-service
+      - notification-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jwks'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/users/lookup:
+    servers:
+    - url: http://identity-service:8001
+      description: Сервис identity-service
+    post:
+      tags:
+      - Identity
+      summary: Пакетное получение пользователей
+      description: |-
+        Возвращает имена (и при include_contacts = true контакты) пользователей по списку id. Нужен, чтобы собрать карточку кандидата в откликах и рекомендациях, потому что профили хранятся только в Identity. Контакты получает лишь application-service: работодатель видит их в карточке отклика, но не в рекомендациях.
+
+        **Кто вызывает:** application-service, recommendation-service.
+
+        **Где используется:** №39 отклики на вакансию, №41 мои отклики, №42 просмотр отклика, №49 рекомендованные кандидаты.
+      operationId: lookupUsers
+      x-callers:
+      - application-service
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLookupRequest'
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLookupResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан не для identity-service либо include_contacts = true запрошен
+            не application-service'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: ids
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/industries/lookup:
+    servers:
+    - url: http://reference-service:8002
+      description: Сервис reference-service
+    post:
+      tags:
+      - Reference
+      summary: Пакетное получение отраслей
+      description: |-
+        Проверяет, что отрасли существуют и опубликованы, и возвращает их названия. Вызывается при создании и изменении компаний, вакансий и резюме, а также при сборке карточек. Ответ можно кешировать на 10 минут: справочник меняется редко.
+
+        **Кто вызывает:** vacancy-service, resume-service.
+
+        **Где используется:** №16, №18 резюме; №28, №30 компании; №34, №36 вакансии; названия отраслей во всех карточках.
+      operationId: lookupIndustries
+      x-callers:
+      - vacancy-service
+      - resume-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdsRequest'
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndustryLookupResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: ids
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/skills/lookup:
+    servers:
+    - url: http://reference-service:8002
+      description: Сервис reference-service
+    post:
+      tags:
+      - Reference
+      summary: Пакетное получение навыков
+      description: |-
+        Проверяет, что навыки существуют в справочнике, и возвращает их названия. Вызывается при задании навыков резюме и вакансии; ответ кешируется на 10 минут.
+
+        **Кто вызывает:** vacancy-service, resume-service.
+
+        **Где используется:** №26 навыки резюме, №38 навыки вакансии; названия навыков в карточках.
+      operationId: lookupSkills
+      x-callers:
+      - vacancy-service
+      - resume-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdsRequest'
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillLookupResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: ids
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/vacancies/{vacancyId}:
+    servers:
+    - url: http://vacancy-service:8003
+      description: Сервис vacancy-service
+    get:
+      tags:
+      - Vacancy
+      summary: Вакансия для внутреннего использования
+      description: |-
+        Возвращает вакансию вместе с компанией, владельцем компании, отраслью и навыками. В отличие от публичного API возвращает и закрытые вакансии, чтобы вызывающий сервис сам решил, что делать (например, отклонить отклик с VACANCY_NOT_ACTIVE). Свежие данные без кеша.
+
+        **Кто вызывает:** application-service, recommendation-service.
+
+        **Где используется:** №39 (проверка владельца вакансии), №40 отклик на вакансию, №49 рекомендованные кандидаты.
+      operationId: getVacancyInternal
+      x-callers:
+      - application-service
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: vacancyId
+        in: path
+        description: Идентификатор вакансии
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 4fc79438-2514-51a8-9796-426af8d8f73d
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalVacancy'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '404':
+          description: 'VACANCY_NOT_FOUND: Вакансия с указанным id не существует'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VACANCY_NOT_FOUND:
+                  summary: VACANCY_NOT_FOUND
+                  value:
+                    code: VACANCY_NOT_FOUND
+                    message: Вакансия не найдена
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+        '504':
+          description: 'UPSTREAM_TIMEOUT: Вызов зависимого сервиса не уложился в тайм-аут'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                UPSTREAM_TIMEOUT:
+                  summary: UPSTREAM_TIMEOUT
+                  value:
+                    code: UPSTREAM_TIMEOUT
+                    message: Превышено время ожидания зависимого сервиса
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+  /internal/v1/vacancies/lookup:
+    servers:
+    - url: http://vacancy-service:8003
+      description: Сервис vacancy-service
+    post:
+      tags:
+      - Vacancy
+      summary: Пакетное получение вакансий
+      description: |-
+        Возвращает карточки вакансий по списку id одним запросом (без N+1). Отсутствующие id перечисляются в missing_ids, ошибкой это не считается: так вызывающий сервис видит отклики и рекомендации, указывающие на удалённые вакансии.
+
+        **Кто вызывает:** application-service, recommendation-service.
+
+        **Где используется:** №39, №41, №42 карточки откликов; №48 рекомендованные вакансии; сверка целостности откликов.
+      operationId: lookupVacancies
+      x-callers:
+      - application-service
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdsRequest'
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyLookupResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: ids
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+        '504':
+          description: 'UPSTREAM_TIMEOUT: Вызов зависимого сервиса не уложился в тайм-аут'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                UPSTREAM_TIMEOUT:
+                  summary: UPSTREAM_TIMEOUT
+                  value:
+                    code: UPSTREAM_TIMEOUT
+                    message: Превышено время ожидания зависимого сервиса
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+  /internal/v1/vacancies/export:
+    servers:
+    - url: http://vacancy-service:8003
+      description: Сервис vacancy-service
+    get:
+      tags:
+      - Vacancy
+      summary: Выгрузка вакансий для индекса рекомендаций
+      description: |-
+        Постраничная выгрузка данных, нужных для подсчёта соответствия. Используется для первичной загрузки индекса при запуске Recommendation Service и для перестроения индекса. Дальше индекс поддерживается событиями vacancy.upserted и vacancy.deleted.
+
+        **Кто вызывает:** recommendation-service.
+
+        **Где используется:** Первичная загрузка и перестроение индекса рекомендаций (№48, №49).
+      operationId: exportVacancies
+      x-callers:
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: updated_after
+        in: query
+        description: Вернуть записи, изменённые после этого момента (для инкрементальной загрузки)
+        required: false
+        schema:
+          type: string
+          format: date-time
+        example: '2026-09-18T10:15:30Z'
+      - name: cursor
+        in: query
+        description: Курсор из next_cursor предыдущей страницы
+        required: false
+        schema:
+          type: string
+        example: eyJ1IjoiMjAyNi0wOS0xOVQwODowMDowMFoifQ
+      - name: limit
+        in: query
+        description: Размер страницы выгрузки (максимум 500)
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 200
+        example: 200
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyExportPage'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: updated_after
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/resumes/{resumeId}:
+    servers:
+    - url: http://resume-service:8004
+      description: Сервис resume-service
+    get:
+      tags:
+      - Resume
+      summary: Резюме для внутреннего использования
+      description: |-
+        Возвращает резюме с владельцем, отраслью, навыками и стажем. При view = detail добавляются места работы и образование. Возвращает и неопубликованные резюме: решение об отказе (RESUME_NOT_PUBLISHED, FORBIDDEN) принимает вызывающий сервис. Свежие данные без кеша.
+
+        **Кто вызывает:** application-service, recommendation-service.
+
+        **Где используется:** №40 отклик на вакансию (владелец и публикация резюме), №48 рекомендованные вакансии.
+      operationId: getResumeInternal
+      x-callers:
+      - application-service
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: resumeId
+        in: path
+        description: Идентификатор резюме
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+      - name: view
+        in: query
+        description: 'Уровень детализации: short или detail'
+        required: false
+        schema:
+          type: string
+          enum:
+          - short
+          - detail
+          default: short
+        example: short
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalResume'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '404':
+          description: 'RESUME_NOT_FOUND: Резюме с указанным id не существует'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                RESUME_NOT_FOUND:
+                  summary: RESUME_NOT_FOUND
+                  value:
+                    code: RESUME_NOT_FOUND
+                    message: Резюме не найдено
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: view
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+        '504':
+          description: 'UPSTREAM_TIMEOUT: Вызов зависимого сервиса не уложился в тайм-аут'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                UPSTREAM_TIMEOUT:
+                  summary: UPSTREAM_TIMEOUT
+                  value:
+                    code: UPSTREAM_TIMEOUT
+                    message: Превышено время ожидания зависимого сервиса
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+  /internal/v1/resumes/lookup:
+    servers:
+    - url: http://resume-service:8004
+      description: Сервис resume-service
+    post:
+      tags:
+      - Resume
+      summary: Пакетное получение резюме
+      description: |-
+        Возвращает карточки резюме по списку id одним запросом: краткие (view = short) для списков и полные (view = detail) для карточки отклика.
+
+        **Кто вызывает:** application-service, recommendation-service.
+
+        **Где используется:** №39, №41 списки откликов (short); №42 карточка отклика (detail); №49 рекомендованные кандидаты (short).
+      operationId: lookupResumes
+      x-callers:
+      - application-service
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeLookupRequest'
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeLookupResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: ids
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+        '504':
+          description: 'UPSTREAM_TIMEOUT: Вызов зависимого сервиса не уложился в тайм-аут'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                UPSTREAM_TIMEOUT:
+                  summary: UPSTREAM_TIMEOUT
+                  value:
+                    code: UPSTREAM_TIMEOUT
+                    message: Превышено время ожидания зависимого сервиса
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+  /internal/v1/resumes/export:
+    servers:
+    - url: http://resume-service:8004
+      description: Сервис resume-service
+    get:
+      tags:
+      - Resume
+      summary: Выгрузка резюме для индекса рекомендаций
+      description: |-
+        Постраничная выгрузка опубликованных резюме (id, владелец, отрасль, зарплата, периоды работы, навыки). Назначение то же, что у выгрузки вакансий: первичная загрузка и перестроение индекса.
+
+        **Кто вызывает:** recommendation-service.
+
+        **Где используется:** Первичная загрузка и перестроение индекса рекомендаций (№48, №49).
+      operationId: exportResumes
+      x-callers:
+      - recommendation-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: updated_after
+        in: query
+        description: Вернуть записи, изменённые после этого момента (для инкрементальной загрузки)
+        required: false
+        schema:
+          type: string
+          format: date-time
+        example: '2026-09-18T10:15:30Z'
+      - name: cursor
+        in: query
+        description: Курсор из next_cursor предыдущей страницы
+        required: false
+        schema:
+          type: string
+        example: eyJ1IjoiMjAyNi0wOS0xOVQwODowMDowMFoifQ
+      - name: limit
+        in: query
+        description: Размер страницы выгрузки (максимум 500)
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 200
+        example: 200
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeExportPage'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: updated_after
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/applications/exists:
+    servers:
+    - url: http://application-service:8005
+      description: Сервис application-service
+    get:
+      tags:
+      - Application
+      summary: Есть ли отклики на вакансию или резюме
+      description: |-
+        Заменяет правило ON DELETE RESTRICT, которое в монолите обеспечивала БД: Vacancy Service и Resume Service спрашивают, есть ли отклики, прежде чем удалить вакансию или резюме. Для вакансии проверка выполняется по схеме «сначала закрыть, потом проверить»: вакансия предварительно переводится в is_active = false, чтобы новые отклики не появлялись.
+
+        **Кто вызывает:** vacancy-service, resume-service.
+
+        **Где используется:** №37 удаление вакансии, №19 удаление резюме.
+      operationId: applicationsExist
+      x-callers:
+      - vacancy-service
+      - resume-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: vacancy_id
+        in: query
+        description: Идентификатор вакансии. Нужно передать ровно один из параметров vacancy_id и resume_id
+        required: false
+        schema:
+          type: string
+          format: uuid
+        example: 4fc79438-2514-51a8-9796-426af8d8f73d
+      - name: resume_id
+        in: query
+        description: Идентификатор резюме. Нужно передать ровно один из параметров vacancy_id и resume_id
+        required: false
+        schema:
+          type: string
+          format: uuid
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExistsResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Не передан ни один из параметров vacancy_id, resume_id либо переданы оба'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: vacancy_id
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/applications/access-check:
+    servers:
+    - url: http://application-service:8005
+      description: Сервис application-service
+    get:
+      tags:
+      - Application
+      summary: Доступ работодателя к резюме через отклик
+      description: |-
+        Отвечает, есть ли отклик с этим резюме на вакансию компании этого работодателя. Resume Service использует ответ, чтобы решить, показывать ли работодателю резюме (в монолите это был JOIN applications, vacancies, companies). Для этого Application Service хранит у отклика владельца вакансии (employer_user_id).
+
+        **Кто вызывает:** resume-service.
+
+        **Где используется:** №17 просмотр резюме работодателем.
+      operationId: checkResumeAccess
+      x-callers:
+      - resume-service
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: resume_id
+        in: query
+        description: Идентификатор резюме
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+      - name: employer_user_id
+        in: query
+        description: Пользователь-работодатель, который открывает резюме
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 7cfe1d2c-9559-516e-a053-28eb980eff75
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessCheckResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: resume_id
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/index/rebuild:
+    servers:
+    - url: http://recommendation-service:8006
+      description: Сервис recommendation-service
+    post:
+      tags:
+      - Recommendation
+      summary: Перестроение индекса рекомендаций
+      description: |-
+        Запускает фоновую задачу, которая заново загружает индекс из выгрузок Vacancy Service и Resume Service. Нужна при первом запуске сервиса, после потери данных или расхождения с источниками. Одновременно выполняется одна задача на область.
+
+        **Кто вызывает:** ops-tools.
+
+        **Где используется:** Миграция: начальная загрузка индекса; эксплуатация.
+      operationId: rebuildIndex
+      x-callers:
+      - ops-tools
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexRebuildRequest'
+      security:
+      - serviceToken: []
+      responses:
+        '202':
+          description: 'Принято: задача запущена'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexRebuildJob'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '409':
+          description: 'INDEX_REBUILD_IN_PROGRESS: Для этой области уже запущена задача в состоянии QUEUED или RUNNING'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INDEX_REBUILD_IN_PROGRESS:
+                  summary: INDEX_REBUILD_IN_PROGRESS
+                  value:
+                    code: INDEX_REBUILD_IN_PROGRESS
+                    message: Перестроение индекса уже выполняется
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: scope
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/index/rebuild/{jobId}:
+    servers:
+    - url: http://recommendation-service:8006
+      description: Сервис recommendation-service
+    get:
+      tags:
+      - Recommendation
+      summary: Состояние задачи перестроения
+      description: |-
+        Возвращает состояние задачи перестроения индекса: сколько записей загружено и закончена ли загрузка.
+
+        **Кто вызывает:** ops-tools.
+
+        **Где используется:** Миграция: контроль начальной загрузки индекса.
+      operationId: getRebuildJob
+      x-callers:
+      - ops-tools
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: jobId
+        in: path
+        description: Идентификатор задачи
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: c8eb8aee-b7ea-5270-8810-4f17e9c0c928
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexRebuildJob'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '404':
+          description: 'JOB_NOT_FOUND: Задача перестроения индекса с указанным id не существует'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                JOB_NOT_FOUND:
+                  summary: JOB_NOT_FOUND
+                  value:
+                    code: JOB_NOT_FOUND
+                    message: Задача не найдена
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/dev/mailbox:
+    servers:
+    - url: http://notification-service:8007
+      description: Сервис notification-service
+    get:
+      tags:
+      - Notification
+      summary: Тестовый почтовый ящик
+      description: |-
+        ТОЛЬКО ДЛЯ ТЕСТОВЫХ СТЕНДОВ. Возвращает письма, «отправленные» на адрес, вместе с 6-значным кодом. Работает при MAIL_DEBUG=true; в продуктивной среде отвечает 404 NOT_FOUND. Шлюз пробрасывает его как /api/v1/dev/mailbox только на тестовом стенде: это позволяет сценарию Postman из ДЗ 3 проходить подтверждение email автоматически.
+
+        **Кто вызывает:** api-gateway.
+
+        **Где используется:** Автотесты (сценарий Postman из ДЗ 3) на тестовом стенде.
+      operationId: getMailbox
+      x-callers:
+      - api-gateway
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      - name: email
+        in: query
+        description: Адрес, письма которому нужно получить
+        required: true
+        schema:
+          type: string
+          format: email
+        example: anton@example.com
+      security:
+      - serviceToken: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MailboxResponse'
+        '401':
+          description: 'SERVICE_UNAUTHORIZED: Заголовок Authorization отсутствует, токен просрочен или подпись не
+            проходит проверку'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAUTHORIZED:
+                  summary: SERVICE_UNAUTHORIZED
+                  value:
+                    code: SERVICE_UNAUTHORIZED
+                    message: Сервисный токен недействителен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '403':
+          description: 'SERVICE_FORBIDDEN: Токен выдан для другого сервиса (aud) либо клиенту не разрешена операция
+            или параметр'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_FORBIDDEN:
+                  summary: SERVICE_FORBIDDEN
+                  value:
+                    code: SERVICE_FORBIDDEN
+                    message: Операция недоступна вызывающему сервису
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '404':
+          description: 'NOT_FOUND: Эндпоинт отсутствует или отключён (например, dev/mailbox при MAIL_DEBUG=false)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                NOT_FOUND:
+                  summary: NOT_FOUND
+                  value:
+                    code: NOT_FOUND
+                    message: Адрес не найден
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '422':
+          description: 'VALIDATION_ERROR: Параметры или тело запроса не прошли проверку; подробности в details'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                VALIDATION_ERROR:
+                  summary: VALIDATION_ERROR
+                  value:
+                    code: VALIDATION_ERROR
+                    message: Ошибка валидации данных
+                    details:
+                    - field: email
+                      message: Недопустимое значение поля
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Сервис или его зависимость (БД, брокер, другой сервис) недоступны либо
+            открыт circuit breaker; см. Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+  /internal/v1/health:
+    servers:
+    - url: http://identity-service:8001
+      description: Сервис identity-service
+    - url: http://reference-service:8002
+      description: Сервис reference-service
+    - url: http://vacancy-service:8003
+      description: Сервис vacancy-service
+    - url: http://resume-service:8004
+      description: Сервис resume-service
+    - url: http://application-service:8005
+      description: Сервис application-service
+    - url: http://recommendation-service:8006
+      description: Сервис recommendation-service
+    - url: http://notification-service:8007
+      description: Сервис notification-service
+    get:
+      tags:
+      - Common
+      summary: Состояние сервиса
+      description: |-
+        Есть у каждого из семи сервисов (адреса в servers). Возвращает готовность сервиса и его зависимостей. Шлюз опрашивает все сервисы и собирает из ответов публичный GET /api/v1/health; этот же эндпоинт используют проверки готовности (readiness) оркестратора.
+
+        **Кто вызывает:** api-gateway.
+
+        **Где используется:** №50 проверка состояния сервиса.
+      operationId: getServiceHealth
+      x-callers:
+      - api-gateway
+      parameters:
+      - $ref: '#/components/parameters/RequestId'
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceHealth'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: 'SERVICE_UNAVAILABLE: Собственная БД сервиса недоступна'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                SERVICE_UNAVAILABLE:
+                  summary: SERVICE_UNAVAILABLE
+                  value:
+                    code: SERVICE_UNAVAILABLE
+                    message: Сервис временно недоступен
+                    request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+          headers:
+            Retry-After:
+              description: Через сколько секунд повторить запрос
+              schema:
+                type: integer
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Сервисный JWT из POST /internal/v1/auth/service-token: sub = имя вызывающего сервиса, aud =
+        имя вызываемого'
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Сквозной идентификатор запроса; если не передан, сервис создаёт его сам
+      schema:
+        type: string
+        format: uuid
+      example: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+  responses:
+    InternalError:
+      description: 'INTERNAL_ERROR: непредвиденная ошибка на стороне сервиса'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: INTERNAL_ERROR
+            message: Внутренняя ошибка сервера
+            request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+  schemas:
+    Role:
+      type: string
+      description: Роль пользователя
+      enum:
+      - JOBSEEKER
+      - EMPLOYER
+      example: JOBSEEKER
+    ClientName:
+      type: string
+      description: Имя сервисного клиента (кто вызывает)
+      enum:
+      - api-gateway
+      - identity-service
+      - reference-service
+      - vacancy-service
+      - resume-service
+      - application-service
+      - recommendation-service
+      - notification-service
+      - ops-tools
+      example: application-service
+    AudienceName:
+      type: string
+      description: Имя сервиса-получателя (для кого выдан токен)
+      enum:
+      - identity-service
+      - reference-service
+      - vacancy-service
+      - resume-service
+      - application-service
+      - recommendation-service
+      - notification-service
+      example: vacancy-service
+    ResumeView:
+      type: string
+      description: 'Уровень детализации резюме: short — без опыта и образования, detail — полное'
+      enum:
+      - short
+      - detail
+      example: short
+    IndexScope:
+      type: string
+      description: Что перестраивать в индексе рекомендаций
+      enum:
+      - VACANCIES
+      - RESUMES
+      - ALL
+      example: ALL
+    JobStatus:
+      type: string
+      description: Состояние задачи перестроения индекса
+      enum:
+      - QUEUED
+      - RUNNING
+      - DONE
+      - FAILED
+      example: RUNNING
+    HealthStatus:
+      type: string
+      description: 'Состояние сервиса: ok — всё работает, degraded — работает с ограничениями'
+      enum:
+      - ok
+      - degraded
+      example: ok
+    ErrorDetail:
+      type: object
+      description: Ошибка конкретного поля
+      required:
+      - field
+      - message
+      properties:
+        field:
+          type: string
+          description: Имя поля (или параметра запроса)
+          example: ids
+        message:
+          type: string
+          description: Описание проблемы
+          example: Допускается от 1 до 100 идентификаторов
+      example:
+        field: ids
+        message: Допускается от 1 до 100 идентификаторов
+    ErrorResponse:
+      type: object
+      description: Единый формат ошибки (тот же, что в публичном API)
+      required:
+      - code
+      - message
+      - request_id
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Понятное описание ошибки
+          example: Ошибка валидации данных
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          description: Ошибки по полям (только для VALIDATION_ERROR)
+        request_id:
+          type: string
+          description: Идентификатор запроса; сквозной для всей цепочки вызовов
+          example: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+      example:
+        code: VALIDATION_ERROR
+        message: Ошибка валидации данных
+        details:
+        - field: ids
+          message: Допускается от 1 до 100 идентификаторов
+        request_id: 9b2f1c7e-51a4-4c7a-8a0e-3c1d2b4f6a10
+    IdsRequest:
+      type: object
+      description: Пакетный запрос по идентификаторам
+      required:
+      - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          maxItems: 100
+          description: Идентификаторы (от 1 до 100). Повторы игнорируются
+          example:
+          - 4fc79438-2514-51a8-9796-426af8d8f73d
+          - 43df9396-dbd5-598c-ba46-a84fb4e24f64
+      example:
+        ids:
+        - 4fc79438-2514-51a8-9796-426af8d8f73d
+        - 43df9396-dbd5-598c-ba46-a84fb4e24f64
+    Skill:
+      type: object
+      description: Навык
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор навыка
+          example: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+        name:
+          type: string
+          description: Название навыка
+          example: Python
+      example:
+        id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+        name: Python
+    IndustryRef:
+      type: object
+      description: Ссылка на отрасль
+      required:
+      - id
+      - title
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор отрасли
+          example: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        title:
+          type: string
+          description: Название отрасли
+          example: Информационные технологии
+      example:
+        id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        title: Информационные технологии
+    ServiceTokenRequest:
+      type: object
+      description: Запрос сервисного токена (client credentials)
+      required:
+      - client_id
+      - client_secret
+      - audience
+      properties:
+        client_id:
+          allOf:
+          - $ref: '#/components/schemas/ClientName'
+          description: Имя вызывающего сервиса
+        client_secret:
+          type: string
+          minLength: 16
+          maxLength: 128
+          description: Секрет клиента (из конфигурации сервиса, не из кода)
+          example: s3cr3t-of-application-service
+        audience:
+          allOf:
+          - $ref: '#/components/schemas/AudienceName'
+          description: Сервис, для которого нужен токен
+      example:
+        client_id: application-service
+        client_secret: s3cr3t-of-application-service
+        audience: vacancy-service
+    ServiceToken:
+      type: object
+      description: Сервисный токен
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      - audience
+      properties:
+        access_token:
+          type: string
+          description: 'JWT: sub = имя клиента, aud = имя сервиса-получателя'
+          example: eyJhbGciOiJSUzI1NiIsImtpZCI6ImsxIn0...
+        token_type:
+          type: string
+          description: Тип токена
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Срок жизни, секунды (5 минут)
+          example: 300
+        audience:
+          allOf:
+          - $ref: '#/components/schemas/AudienceName'
+          description: Сервис, для которого выдан токен
+      example:
+        access_token: eyJhbGciOiJSUzI1NiIsImtpZCI6ImsxIn0...
+        token_type: Bearer
+        expires_in: 300
+        audience: vacancy-service
+    JwkKey:
+      type: object
+      description: Публичный ключ подписи JWT (JWK)
+      required:
+      - kty
+      - use
+      - alg
+      - kid
+      - n
+      - e
+      properties:
+        kty:
+          type: string
+          description: Тип ключа
+          example: RSA
+        use:
+          type: string
+          description: Назначение ключа
+          example: sig
+        alg:
+          type: string
+          description: Алгоритм подписи
+          example: RS256
+        kid:
+          type: string
+          description: Идентификатор ключа
+          example: 2026-09-key-1
+        n:
+          type: string
+          description: Модуль RSA (base64url)
+          example: sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl...
+        e:
+          type: string
+          description: Публичная экспонента (base64url)
+          example: AQAB
+      example:
+        kty: RSA
+        use: sig
+        alg: RS256
+        kid: 2026-09-key-1
+        n: sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl...
+        e: AQAB
+    Jwks:
+      type: object
+      description: Набор публичных ключей Identity (JWKS)
+      required:
+      - keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/JwkKey'
+          description: Действующие ключи; при ротации в набор входят старый и новый
+      example:
+        keys:
+        - kty: RSA
+          use: sig
+          alg: RS256
+          kid: 2026-09-key-1
+          n: sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl...
+          e: AQAB
+    UserLookupRequest:
+      type: object
+      description: Пакетный запрос пользователей
+      required:
+      - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          maxItems: 100
+          description: Идентификаторы пользователей (от 1 до 100)
+          example:
+          - 531c4d1e-d877-50be-bf27-768458436c9e
+          - 7cfe1d2c-9559-516e-a053-28eb980eff75
+        include_contacts:
+          type: boolean
+          description: Вернуть контакты (email, телефон, город). Разрешено только application-service
+          default: false
+          example: false
+      example:
+        ids:
+        - 531c4d1e-d877-50be-bf27-768458436c9e
+        - 7cfe1d2c-9559-516e-a053-28eb980eff75
+        include_contacts: false
+    InternalUser:
+      type: object
+      description: Пользователь для внутреннего использования (без пароля и токенов)
+      required:
+      - id
+      - role
+      - is_active
+      - last_name
+      - first_name
+      - middle_name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор пользователя
+          example: 531c4d1e-d877-50be-bf27-768458436c9e
+        role:
+          allOf:
+          - $ref: '#/components/schemas/Role'
+          description: Роль
+        is_active:
+          type: boolean
+          description: Аккаунт активен
+          example: true
+        last_name:
+          type: string
+          description: Фамилия
+          example: Дементьев
+        first_name:
+          type: string
+          description: Имя
+          example: Антон
+        middle_name:
+          type: string
+          nullable: true
+          description: Отчество
+          example: Павлович
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: Email. Есть только при include_contacts = true
+          example: anton@example.com
+        phone:
+          type: string
+          nullable: true
+          description: Телефон. Есть только при include_contacts = true
+          example: +7 900 000-00-00
+        city:
+          type: string
+          nullable: true
+          description: Город. Есть только при include_contacts = true
+          example: Санкт-Петербург
+      example:
+        id: 531c4d1e-d877-50be-bf27-768458436c9e
+        role: JOBSEEKER
+        is_active: true
+        last_name: Дементьев
+        first_name: Антон
+        middle_name: Павлович
+        email: anton@example.com
+        phone: +7 900 000-00-00
+        city: Санкт-Петербург
+    UserLookupResponse:
+      type: object
+      description: Найденные пользователи
+      required:
+      - items
+      - missing_ids
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InternalUser'
+          description: Найденные пользователи
+        missing_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Идентификаторы, которых нет в Identity
+          example: []
+      example:
+        items:
+        - id: 531c4d1e-d877-50be-bf27-768458436c9e
+          role: JOBSEEKER
+          is_active: true
+          last_name: Дементьев
+          first_name: Антон
+          middle_name: Павлович
+          email: anton@example.com
+          phone: +7 900 000-00-00
+          city: Санкт-Петербург
+        missing_ids: []
+    ReferenceIndustry:
+      type: object
+      description: Отрасль из справочника
+      required:
+      - id
+      - title
+      - is_published
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор отрасли
+          example: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        title:
+          type: string
+          description: Название отрасли
+          example: Информационные технологии
+        is_published:
+          type: boolean
+          description: Отрасль доступна для выбора. Для новых привязок допустимы только опубликованные
+          example: true
+      example:
+        id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        title: Информационные технологии
+        is_published: true
+    IndustryLookupResponse:
+      type: object
+      description: Найденные отрасли
+      required:
+      - items
+      - missing_ids
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceIndustry'
+          description: Найденные отрасли
+        missing_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Идентификаторы, которых нет в справочнике
+          example: []
+      example:
+        items:
+        - id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+          title: Информационные технологии
+          is_published: true
+        missing_ids: []
+    SkillLookupResponse:
+      type: object
+      description: Найденные навыки
+      required:
+      - items
+      - missing_ids
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+          description: Найденные навыки
+        missing_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Идентификаторы, которых нет в справочнике
+          example: []
+      example:
+        items:
+        - id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+          name: Python
+        missing_ids: []
+    InternalCompany:
+      type: object
+      description: Компания-автор вакансии
+      required:
+      - id
+      - name
+      - website_url
+      - owner_user_id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор компании
+          example: 677bf595-770f-5b5e-acff-cc36ffb6020c
+        name:
+          type: string
+          description: Название компании
+          example: Технологии Будущего
+        website_url:
+          type: string
+          nullable: true
+          description: Сайт компании
+          example: https://future.example.com
+        owner_user_id:
+          type: string
+          format: uuid
+          description: Пользователь-работодатель, которому принадлежит компания
+          example: 7cfe1d2c-9559-516e-a053-28eb980eff75
+      example:
+        id: 677bf595-770f-5b5e-acff-cc36ffb6020c
+        name: Технологии Будущего
+        website_url: https://future.example.com
+        owner_user_id: 7cfe1d2c-9559-516e-a053-28eb980eff75
+    VacancySkillRef:
+      type: object
+      description: Навык вакансии
+      required:
+      - skill
+      - is_required
+      properties:
+        skill:
+          allOf:
+          - $ref: '#/components/schemas/Skill'
+          description: Навык
+        is_required:
+          type: boolean
+          description: Обязательный навык
+          example: true
+      example:
+        skill:
+          id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+          name: Python
+        is_required: true
+    InternalVacancy:
+      type: object
+      description: Вакансия для внутреннего использования. Закрытые вакансии тоже возвращаются (is_active = false)
+      required:
+      - id
+      - title
+      - company
+      - industry
+      - salary_from
+      - salary_to
+      - min_experience_years
+      - is_active
+      - skills
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор вакансии
+          example: 4fc79438-2514-51a8-9796-426af8d8f73d
+        title:
+          type: string
+          description: Название вакансии
+          example: Python-разработчик (Backend)
+        company:
+          allOf:
+          - $ref: '#/components/schemas/InternalCompany'
+          description: Компания
+        industry:
+          allOf:
+          - $ref: '#/components/schemas/IndustryRef'
+          description: Отрасль
+        salary_from:
+          type: integer
+          nullable: true
+          description: Зарплата от
+          example: 150000
+        salary_to:
+          type: integer
+          nullable: true
+          description: Зарплата до
+          example: 250000
+        min_experience_years:
+          type: integer
+          description: Минимальный опыт, лет
+          example: 1
+        is_active:
+          type: boolean
+          description: Вакансия открыта для откликов
+          example: true
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/VacancySkillRef'
+          description: Навыки вакансии
+        created_at:
+          type: string
+          format: date-time
+          description: Дата создания
+          example: '2026-09-18T10:15:30Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата последнего изменения
+          example: '2026-09-19T08:00:00Z'
+      example:
+        id: 4fc79438-2514-51a8-9796-426af8d8f73d
+        title: Python-разработчик (Backend)
+        company:
+          id: 677bf595-770f-5b5e-acff-cc36ffb6020c
+          name: Технологии Будущего
+          website_url: https://future.example.com
+          owner_user_id: 7cfe1d2c-9559-516e-a053-28eb980eff75
+        industry:
+          id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+          title: Информационные технологии
+        salary_from: 150000
+        salary_to: 250000
+        min_experience_years: 1
+        is_active: true
+        skills:
+        - skill:
+            id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+            name: Python
+          is_required: true
+        created_at: '2026-09-18T10:15:30Z'
+        updated_at: '2026-09-19T08:00:00Z'
+    VacancyLookupResponse:
+      type: object
+      description: Найденные вакансии
+      required:
+      - items
+      - missing_ids
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InternalVacancy'
+          description: Найденные вакансии
+        missing_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Идентификаторы, которых нет в Vacancy Service
+          example: []
+      example:
+        items:
+        - id: 4fc79438-2514-51a8-9796-426af8d8f73d
+          title: Python-разработчик (Backend)
+          company:
+            id: 677bf595-770f-5b5e-acff-cc36ffb6020c
+            name: Технологии Будущего
+            website_url: https://future.example.com
+            owner_user_id: 7cfe1d2c-9559-516e-a053-28eb980eff75
+          industry:
+            id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+            title: Информационные технологии
+          salary_from: 150000
+          salary_to: 250000
+          min_experience_years: 1
+          is_active: true
+          skills:
+          - skill:
+              id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+              name: Python
+            is_required: true
+          created_at: '2026-09-18T10:15:30Z'
+          updated_at: '2026-09-19T08:00:00Z'
+        missing_ids: []
+    IndexSkillRef:
+      type: object
+      description: Навык вакансии в индексе
+      required:
+      - skill_id
+      - is_required
+      properties:
+        skill_id:
+          type: string
+          format: uuid
+          description: Идентификатор навыка
+          example: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+        is_required:
+          type: boolean
+          description: Обязательный навык
+          example: true
+      example:
+        skill_id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+        is_required: true
+    VacancyIndexRecord:
+      type: object
+      description: 'Запись для индекса рекомендаций: только данные, нужные для подсчёта соответствия'
+      required:
+      - vacancy_id
+      - industry_id
+      - salary_from
+      - salary_to
+      - min_experience_years
+      - is_active
+      - skills
+      - created_at
+      - updated_at
+      properties:
+        vacancy_id:
+          type: string
+          format: uuid
+          description: Идентификатор вакансии
+          example: 4fc79438-2514-51a8-9796-426af8d8f73d
+        industry_id:
+          type: string
+          format: uuid
+          description: Идентификатор отрасли
+          example: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        salary_from:
+          type: integer
+          nullable: true
+          description: Зарплата от
+          example: 150000
+        salary_to:
+          type: integer
+          nullable: true
+          description: Зарплата до
+          example: 250000
+        min_experience_years:
+          type: integer
+          description: Минимальный опыт, лет
+          example: 1
+        is_active:
+          type: boolean
+          description: Вакансия открыта
+          example: true
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexSkillRef'
+          description: Навыки вакансии
+        created_at:
+          type: string
+          format: date-time
+          description: Дата создания
+          example: '2026-09-18T10:15:30Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата изменения (курсор выгрузки)
+          example: '2026-09-19T08:00:00Z'
+      example:
+        vacancy_id: 4fc79438-2514-51a8-9796-426af8d8f73d
+        industry_id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        salary_from: 150000
+        salary_to: 250000
+        min_experience_years: 1
+        is_active: true
+        skills:
+        - skill_id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+          is_required: true
+        created_at: '2026-09-18T10:15:30Z'
+        updated_at: '2026-09-19T08:00:00Z'
+    VacancyExportPage:
+      type: object
+      description: Страница выгрузки вакансий
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/VacancyIndexRecord'
+          description: Записи страницы
+        next_cursor:
+          type: string
+          nullable: true
+          description: Курсор следующей страницы; null — данных больше нет
+          example: eyJ1IjoiMjAyNi0wOS0xOVQwODowMDowMFoifQ
+      example:
+        items:
+        - vacancy_id: 4fc79438-2514-51a8-9796-426af8d8f73d
+          industry_id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+          salary_from: 150000
+          salary_to: 250000
+          min_experience_years: 1
+          is_active: true
+          skills:
+          - skill_id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+            is_required: true
+          created_at: '2026-09-18T10:15:30Z'
+          updated_at: '2026-09-19T08:00:00Z'
+        next_cursor: eyJ1IjoiMjAyNi0wOS0xOVQwODowMDowMFoifQ
+    ResumeExperience:
+      type: object
+      description: Место работы
+      required:
+      - id
+      - company_name
+      - position
+      - description
+      - start_date
+      - end_date
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор записи
+          example: 8ae57bda-c2f0-5e4a-9842-87188b14d2a8
+        company_name:
+          type: string
+          description: Компания
+          example: ООО «Метаментор»
+        position:
+          type: string
+          description: Должность
+          example: Project Manager
+        description:
+          type: string
+          nullable: true
+          description: Описание
+          example: Управление AI-проектами
+        start_date:
+          type: string
+          format: date
+          description: Дата начала
+          example: '2024-09-01'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: Дата окончания; null — работает сейчас
+      example:
+        id: 8ae57bda-c2f0-5e4a-9842-87188b14d2a8
+        company_name: ООО «Метаментор»
+        position: Project Manager
+        description: Управление AI-проектами
+        start_date: '2024-09-01'
+        end_date: null
+    ResumeEducation:
+      type: object
+      description: Образование
+      required:
+      - id
+      - institution
+      - degree
+      - field_of_study
+      - start_year
+      - end_year
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор записи
+          example: fe623965-1e3a-5623-9f4f-73b0fda23f5c
+        institution:
+          type: string
+          description: Учебное заведение
+          example: Университет ИТМО
+        degree:
+          type: string
+          nullable: true
+          description: Степень
+          example: Бакалавр
+        field_of_study:
+          type: string
+          nullable: true
+          description: Направление
+          example: Прикладная информатика
+        start_year:
+          type: integer
+          description: Год начала
+          example: 2023
+        end_year:
+          type: integer
+          nullable: true
+          description: Год окончания
+          example: 2027
+      example:
+        id: fe623965-1e3a-5623-9f4f-73b0fda23f5c
+        institution: Университет ИТМО
+        degree: Бакалавр
+        field_of_study: Прикладная информатика
+        start_year: 2023
+        end_year: 2027
+    InternalResume:
+      type: object
+      description: Резюме для внутреннего использования
+      required:
+      - id
+      - user_id
+      - title
+      - summary
+      - industry
+      - salary_exp_from
+      - salary_exp_to
+      - is_published
+      - total_experience_months
+      - skills
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор резюме
+          example: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+        user_id:
+          type: string
+          format: uuid
+          description: Владелец резюме
+          example: 531c4d1e-d877-50be-bf27-768458436c9e
+        title:
+          type: string
+          description: Название резюме
+          example: Backend-разработчик (Python)
+        summary:
+          type: string
+          nullable: true
+          description: О себе
+          example: Разрабатываю REST API
+        industry:
+          allOf:
+          - $ref: '#/components/schemas/IndustryRef'
+          description: Отрасль
+        salary_exp_from:
+          type: integer
+          nullable: true
+          description: Ожидаемая зарплата от
+          example: 150000
+        salary_exp_to:
+          type: integer
+          nullable: true
+          description: Ожидаемая зарплата до
+          example: 220000
+        is_published:
+          type: boolean
+          description: Резюме опубликовано
+          example: true
+        total_experience_months:
+          type: integer
+          description: Суммарный стаж, месяцев (считается по местам работы)
+          example: 24
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+          description: Навыки резюме
+        experiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResumeExperience'
+          description: Места работы. Только при view = detail
+        educations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResumeEducation'
+          description: Образование. Только при view = detail
+        created_at:
+          type: string
+          format: date-time
+          description: Дата создания
+          example: '2026-09-18T10:15:30Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата изменения
+          example: '2026-09-19T08:00:00Z'
+      example:
+        id: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+        user_id: 531c4d1e-d877-50be-bf27-768458436c9e
+        title: Backend-разработчик (Python)
+        summary: Разрабатываю REST API
+        industry:
+          id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+          title: Информационные технологии
+        salary_exp_from: 150000
+        salary_exp_to: 220000
+        is_published: true
+        total_experience_months: 24
+        skills:
+        - id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+          name: Python
+        experiences:
+        - id: 8ae57bda-c2f0-5e4a-9842-87188b14d2a8
+          company_name: ООО «Метаментор»
+          position: Project Manager
+          description: Управление AI-проектами
+          start_date: '2024-09-01'
+          end_date: null
+        educations:
+        - id: fe623965-1e3a-5623-9f4f-73b0fda23f5c
+          institution: Университет ИТМО
+          degree: Бакалавр
+          field_of_study: Прикладная информатика
+          start_year: 2023
+          end_year: 2027
+        created_at: '2026-09-18T10:15:30Z'
+        updated_at: '2026-09-19T08:00:00Z'
+    ResumeLookupRequest:
+      type: object
+      description: Пакетный запрос резюме
+      required:
+      - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          maxItems: 100
+          description: Идентификаторы резюме (от 1 до 100)
+          example:
+          - 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+        view:
+          allOf:
+          - $ref: '#/components/schemas/ResumeView'
+          description: Уровень детализации
+          default: short
+      example:
+        ids:
+        - 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+        view: short
+    ResumeLookupResponse:
+      type: object
+      description: Найденные резюме
+      required:
+      - items
+      - missing_ids
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InternalResume'
+          description: Найденные резюме
+        missing_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Идентификаторы, которых нет в Resume Service
+          example: []
+      example:
+        items:
+        - id: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+          user_id: 531c4d1e-d877-50be-bf27-768458436c9e
+          title: Backend-разработчик (Python)
+          summary: Разрабатываю REST API
+          industry:
+            id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+            title: Информационные технологии
+          salary_exp_from: 150000
+          salary_exp_to: 220000
+          is_published: true
+          total_experience_months: 24
+          skills:
+          - id: e2ee04fb-d7c7-5d93-8439-208548ade0fa
+            name: Python
+          experiences:
+          - id: 8ae57bda-c2f0-5e4a-9842-87188b14d2a8
+            company_name: ООО «Метаментор»
+            position: Project Manager
+            description: Управление AI-проектами
+            start_date: '2024-09-01'
+            end_date: null
+          educations:
+          - id: fe623965-1e3a-5623-9f4f-73b0fda23f5c
+            institution: Университет ИТМО
+            degree: Бакалавр
+            field_of_study: Прикладная информатика
+            start_year: 2023
+            end_year: 2027
+          created_at: '2026-09-18T10:15:30Z'
+          updated_at: '2026-09-19T08:00:00Z'
+        missing_ids: []
+    ExperiencePeriod:
+      type: object
+      description: Период работы для подсчёта стажа
+      required:
+      - start_date
+      - end_date
+      properties:
+        start_date:
+          type: string
+          format: date
+          description: Дата начала
+          example: '2024-09-01'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: Дата окончания; null — работает сейчас
+      example:
+        start_date: '2024-09-01'
+        end_date: null
+    ResumeIndexRecord:
+      type: object
+      description: Запись для индекса рекомендаций (только опубликованные резюме)
+      required:
+      - resume_id
+      - user_id
+      - industry_id
+      - salary_exp_from
+      - salary_exp_to
+      - is_published
+      - experience_periods
+      - skill_ids
+      - updated_at
+      properties:
+        resume_id:
+          type: string
+          format: uuid
+          description: Идентификатор резюме
+          example: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+        user_id:
+          type: string
+          format: uuid
+          description: Владелец резюме
+          example: 531c4d1e-d877-50be-bf27-768458436c9e
+        industry_id:
+          type: string
+          format: uuid
+          description: Идентификатор отрасли
+          example: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        salary_exp_from:
+          type: integer
+          nullable: true
+          description: Ожидаемая зарплата от
+          example: 150000
+        salary_exp_to:
+          type: integer
+          nullable: true
+          description: Ожидаемая зарплата до
+          example: 220000
+        is_published:
+          type: boolean
+          description: Всегда true в выгрузке
+          example: true
+        experience_periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExperiencePeriod'
+          description: Периоды работы; стаж считается на момент подбора
+        skill_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Навыки резюме
+          example:
+          - e2ee04fb-d7c7-5d93-8439-208548ade0fa
+          - 982780ef-4d5a-5e5e-8e6b-8a3eb4d480be
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата изменения (курсор выгрузки)
+          example: '2026-09-19T08:00:00Z'
+      example:
+        resume_id: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+        user_id: 531c4d1e-d877-50be-bf27-768458436c9e
+        industry_id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+        salary_exp_from: 150000
+        salary_exp_to: 220000
+        is_published: true
+        experience_periods:
+        - start_date: '2024-09-01'
+          end_date: null
+        skill_ids:
+        - e2ee04fb-d7c7-5d93-8439-208548ade0fa
+        - 982780ef-4d5a-5e5e-8e6b-8a3eb4d480be
+        updated_at: '2026-09-19T08:00:00Z'
+    ResumeExportPage:
+      type: object
+      description: Страница выгрузки резюме
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResumeIndexRecord'
+          description: Записи страницы
+        next_cursor:
+          type: string
+          nullable: true
+          description: Курсор следующей страницы; null — данных больше нет
+      example:
+        items:
+        - resume_id: 06b39995-c3d8-5fcb-831f-7d1fd3421f6e
+          user_id: 531c4d1e-d877-50be-bf27-768458436c9e
+          industry_id: ef39a9bf-1aa7-521e-870a-46190bc1241a
+          salary_exp_from: 150000
+          salary_exp_to: 220000
+          is_published: true
+          experience_periods:
+          - start_date: '2024-09-01'
+            end_date: null
+          skill_ids:
+          - e2ee04fb-d7c7-5d93-8439-208548ade0fa
+          - 982780ef-4d5a-5e5e-8e6b-8a3eb4d480be
+          updated_at: '2026-09-19T08:00:00Z'
+        next_cursor: null
+    ExistsResponse:
+      type: object
+      description: Результат проверки наличия откликов
+      required:
+      - exists
+      - count
+      properties:
+        exists:
+          type: boolean
+          description: Есть ли хотя бы один отклик
+          example: true
+        count:
+          type: integer
+          description: Сколько откликов найдено
+          example: 3
+      example:
+        exists: true
+        count: 3
+    AccessCheckResponse:
+      type: object
+      description: Результат проверки доступа работодателя к резюме
+      required:
+      - allowed
+      properties:
+        allowed:
+          type: boolean
+          description: Есть отклик этого резюме на вакансию компании работодателя
+          example: true
+      example:
+        allowed: true
+    IndexRebuildRequest:
+      type: object
+      description: Запрос на полное перестроение индекса
+      properties:
+        scope:
+          allOf:
+          - $ref: '#/components/schemas/IndexScope'
+          description: Что перестраивать
+          default: ALL
+      example:
+        scope: ALL
+    IndexRebuildJob:
+      type: object
+      description: Задача перестроения индекса
+      required:
+      - job_id
+      - scope
+      - status
+      - processed_items
+      - started_at
+      - finished_at
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Идентификатор задачи
+          example: c8eb8aee-b7ea-5270-8810-4f17e9c0c928
+        scope:
+          allOf:
+          - $ref: '#/components/schemas/IndexScope'
+          description: Что перестраивается
+        status:
+          allOf:
+          - $ref: '#/components/schemas/JobStatus'
+          description: Состояние задачи
+        processed_items:
+          type: integer
+          description: Сколько записей уже загружено
+          example: 1200
+        started_at:
+          type: string
+          format: date-time
+          description: Время запуска
+          example: '2026-09-18T10:15:30Z'
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Время завершения
+      example:
+        job_id: c8eb8aee-b7ea-5270-8810-4f17e9c0c928
+        scope: ALL
+        status: RUNNING
+        processed_items: 1200
+        started_at: '2026-09-18T10:15:30Z'
+        finished_at: null
+    MailboxItem:
+      type: object
+      description: Письмо в тестовом почтовом ящике
+      required:
+      - to
+      - subject
+      - template
+      - code
+      - sent_at
+      properties:
+        to:
+          type: string
+          format: email
+          description: Адресат
+          example: anton@example.com
+        subject:
+          type: string
+          description: Тема
+          example: Подтверждение email
+        template:
+          type: string
+          enum:
+          - EMAIL_VERIFICATION
+          - PASSWORD_CHANGE
+          description: Шаблон письма
+          example: EMAIL_VERIFICATION
+        code:
+          type: string
+          nullable: true
+          description: 6-значный код из письма
+          example: '482913'
+        sent_at:
+          type: string
+          format: date-time
+          description: Время отправки
+          example: '2026-09-18T10:15:30Z'
+      example:
+        to: anton@example.com
+        subject: Подтверждение email
+        template: EMAIL_VERIFICATION
+        code: '482913'
+        sent_at: '2026-09-18T10:15:30Z'
+    MailboxResponse:
+      type: object
+      description: Письма на адрес (новые первыми)
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MailboxItem'
+          description: Письма
+      example:
+        items:
+        - to: anton@example.com
+          subject: Подтверждение email
+          template: EMAIL_VERIFICATION
+          code: '482913'
+          sent_at: '2026-09-18T10:15:30Z'
+    ServiceHealth:
+      type: object
+      description: Состояние сервиса
+      required:
+      - service
+      - status
+      - version
+      - database
+      - broker
+      properties:
+        service:
+          type: string
+          description: Имя сервиса
+          example: vacancy-service
+        status:
+          allOf:
+          - $ref: '#/components/schemas/HealthStatus'
+          description: Общее состояние
+        version:
+          type: string
+          description: Версия сервиса
+          example: 1.0.0
+        database:
+          type: string
+          enum:
+          - ok
+          - down
+          description: Доступность собственной БД
+          example: ok
+        broker:
+          type: string
+          enum:
+          - ok
+          - down
+          nullable: true
+          description: Доступность брокера сообщений; null, если сервис его не использует
+          example: ok
+      example:
+        service: vacancy-service
+        status: ok
+        version: 1.0.0
+        database: ok
+        broker: ok

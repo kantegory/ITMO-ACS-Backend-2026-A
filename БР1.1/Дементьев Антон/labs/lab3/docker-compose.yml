@@ -1,0 +1,211 @@
+x-common-env: &common-env
+  MAIL_DEBUG: "true"
+  SERVICE_CLIENTS: "api-gateway:secret-api-gateway-0123456789,identity-service:secret-identity-service-0123456789,reference-service:secret-reference-service-0123456789,vacancy-service:secret-vacancy-service-0123456789,resume-service:secret-resume-service-0123456789,application-service:secret-application-service-0123456789,recommendation-service:secret-recommendation-service-0123456789,notification-service:secret-notification-service-0123456789,ops-tools:secret-ops-tools-0123456789"
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  RABBITMQ_URL: "amqp://jobsearch:jobsearch@rabbitmq:5672"
+
+x-service: &service
+  restart: unless-stopped
+  networks: [frontend-net, backend-net]
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: jobsearch-postgres
+    restart: unless-stopped
+    networks: [backend-net]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "15432:5432"
+    volumes:
+      - ./dbs/postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: jobsearch-rabbitmq
+    restart: unless-stopped
+    networks: [backend-net]
+    environment:
+      RABBITMQ_DEFAULT_USER: jobsearch
+      RABBITMQ_DEFAULT_PASS: jobsearch
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./dbs/rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    image: jobsearch-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    networks: [frontend-net]
+    ports:
+      - "8080:8080"
+    depends_on:
+      identity-service:
+        condition: service_started
+      reference-service:
+        condition: service_started
+      vacancy-service:
+        condition: service_started
+      resume-service:
+        condition: service_started
+      application-service:
+        condition: service_started
+      recommendation-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+    environment:
+      <<: *common-env
+      SERVICE_NAME: api-gateway
+      SERVICE_SECRET: secret-api-gateway-0123456789
+      PORT: "8080"
+      RATE_LIMIT_MAX: "10"
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+
+  identity-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/identity/Dockerfile
+    image: jobsearch-identity
+    container_name: identity-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: identity-service
+      SERVICE_SECRET: secret-identity-service-0123456789
+      PORT: "8001"
+      DB_NAME: identity_db
+      DB_USER: identity
+      DB_PASSWORD: identity
+      JWT_KEY_FILE: /keys/jwt-private.pem
+    volumes:
+      - identity-keys:/keys
+
+  reference-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/reference/Dockerfile
+    image: jobsearch-reference
+    container_name: reference-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: reference-service
+      SERVICE_SECRET: secret-reference-service-0123456789
+      PORT: "8002"
+      DB_NAME: reference_db
+      DB_USER: reference
+      DB_PASSWORD: reference
+
+  vacancy-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/vacancy/Dockerfile
+    image: jobsearch-vacancy
+    container_name: vacancy-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: vacancy-service
+      SERVICE_SECRET: secret-vacancy-service-0123456789
+      PORT: "8003"
+      DB_NAME: vacancy_db
+      DB_USER: vacancy
+      DB_PASSWORD: vacancy
+
+  resume-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/resume/Dockerfile
+    image: jobsearch-resume
+    container_name: resume-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: resume-service
+      SERVICE_SECRET: secret-resume-service-0123456789
+      PORT: "8004"
+      DB_NAME: resume_db
+      DB_USER: resume
+      DB_PASSWORD: resume
+
+  application-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/application/Dockerfile
+    image: jobsearch-application
+    container_name: application-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: application-service
+      SERVICE_SECRET: secret-application-service-0123456789
+      PORT: "8005"
+      DB_NAME: application_db
+      DB_USER: application
+      DB_PASSWORD: application
+
+  recommendation-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/recommendation/Dockerfile
+    image: jobsearch-recommendation
+    container_name: recommendation-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: recommendation-service
+      SERVICE_SECRET: secret-recommendation-service-0123456789
+      PORT: "8006"
+      DB_NAME: recommendation_db
+      DB_USER: recommendation
+      DB_PASSWORD: recommendation
+
+  notification-service:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    image: jobsearch-notification
+    container_name: notification-service
+    environment:
+      <<: *common-env
+      SERVICE_NAME: notification-service
+      SERVICE_SECRET: secret-notification-service-0123456789
+      PORT: "8007"
+      DB_NAME: notification_db
+      DB_USER: notification
+      DB_PASSWORD: notification
+
+volumes:
+  identity-keys:

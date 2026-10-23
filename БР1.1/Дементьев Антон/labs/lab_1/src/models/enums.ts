@@ -1,0 +1,16 @@
+export enum Role {
+    JOBSEEKER = 'JOBSEEKER',
+    EMPLOYER = 'EMPLOYER',
+}
+
+export enum ApplicationStatus {
+    PENDING = 'PENDING',
+    VIEWED = 'VIEWED',
+    INVITED = 'INVITED',
+    REJECTED = 'REJECTED',
+}
+
+export enum TokenType {
+    EMAIL_VERIFICATION = 'EMAIL_VERIFICATION',
+    PASSWORD_CHANGE = 'PASSWORD_CHANGE',
+}
