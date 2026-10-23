@@ -1,0 +1,578 @@
+{
+  "info": {
+    "_postman_id": "7a4b6a4f-2452-4b2a-9b70-restaurant-booking-hw3",
+    "name": "HW3 Restaurant Booking Complex Scenario",
+    "description": "Комплексный сценарий Postman для API бронирования столиков: регистрация, вход, просмотр ресторанов, фильтрация, карточка ресторана, бронирование, отзыв и отмена бронирования.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Health Check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('API is available', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response contains API message', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.message).to.include('Restaurant Booking API');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "02 Register User",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const email = `postman_${Date.now()}@example.com`;",
+              "pm.environment.set('userEmail', email);",
+              "pm.environment.set('phone', '+79990000000');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('User is registered', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Registration response contains token and user', function () {",
+              "  pm.expect(json).to.have.property('token');",
+              "  pm.expect(json.user.email).to.eql(pm.environment.get('userEmail'));",
+              "});",
+              "",
+              "pm.environment.set('token', json.token);",
+              "pm.environment.set('userId', json.user.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"{{fullName}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"{{phone}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "register"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "03 Login User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Login succeeds', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Login returns token', function () {",
+              "  pm.expect(json.token).to.be.a('string');",
+              "});",
+              "",
+              "pm.environment.set('token', json.token);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "04 Get Current User Profile",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Profile is returned', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Profile email matches registered user', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.email).to.eql(pm.environment.get('userEmail'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "users",
+            "me"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "05 List Restaurants",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Restaurants list is returned', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty;",
+              "});",
+              "",
+              "const restaurants = pm.response.json();",
+              "const selected = restaurants[Math.floor(Math.random() * restaurants.length)];",
+              "pm.environment.set('restaurantId', selected.id);",
+              "pm.environment.set('restaurantCity', selected.city);",
+              "pm.environment.set('restaurantCuisine', selected.cuisines[0]);",
+              "pm.environment.set('priceCategory', selected.price_category);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/restaurants",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "restaurants"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "06 Filter Restaurants",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Filtered restaurants are returned', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty;",
+              "});",
+              "",
+              "pm.test('Filter by city and price category works', function () {",
+              "  const restaurants = pm.response.json();",
+              "  restaurants.forEach((restaurant) => {",
+              "    pm.expect(restaurant.city).to.eql(pm.environment.get('restaurantCity'));",
+              "    pm.expect(restaurant.price_category).to.eql(pm.environment.get('priceCategory'));",
+              "  });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/restaurants?city={{restaurantCity}}&price_category={{priceCategory}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "restaurants"
+          ],
+          "query": [
+            {
+              "key": "city",
+              "value": "{{restaurantCity}}"
+            },
+            {
+              "key": "price_category",
+              "value": "{{priceCategory}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "07 Get Selected Restaurant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Restaurant card is returned', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Restaurant id matches selected item', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(String(json.id)).to.eql(String(pm.environment.get('restaurantId')));",
+              "  pm.expect(json).to.have.property('tables');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/restaurants/{{restaurantId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "restaurants",
+            "{{restaurantId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "08 Get Restaurant Tables",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Tables list is returned', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty;",
+              "});",
+              "",
+              "const tables = pm.response.json().filter((table) => table.is_active);",
+              "pm.expect(tables.length).to.be.above(0);",
+              "const table = tables[0];",
+              "pm.environment.set('tableId', table.id);",
+              "pm.environment.set('guestCount', Math.min(2, table.capacity));",
+              "const reservationDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();",
+              "pm.environment.set('reservationDateTime', reservationDate);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/restaurants/{{restaurantId}}/tables",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "restaurants",
+            "{{restaurantId}}",
+            "tables"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "09 Create Reservation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Reservation is created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Reservation has confirmed status', function () {",
+              "  pm.expect(json.reservation.status).to.eql('confirmed');",
+              "});",
+              "",
+              "pm.environment.set('reservationId', json.reservation.reservation_id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurant_id\": {{restaurantId}},\n  \"table_id\": {{tableId}},\n  \"reservation_datetime\": \"{{reservationDateTime}}\",\n  \"guest_count\": {{guestCount}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/reservations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reservations"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "10 Get My Reservations",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Reservations history is returned', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json()).to.be.an('array').that.is.not.empty;",
+              "});",
+              "",
+              "pm.test('Created reservation is in history', function () {",
+              "  const reservations = pm.response.json();",
+              "  const found = reservations.some((reservation) => String(reservation.reservation_id) === String(pm.environment.get('reservationId')));",
+              "  pm.expect(found).to.eql(true);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reservations/my",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reservations",
+            "my"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "11 Create Review",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Review is created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Review rating is valid', function () {",
+              "  pm.expect(json.review.rating).to.eql(5);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Проверочный отзыв из Postman\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/restaurants/{{restaurantId}}/reviews",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "restaurants",
+            "{{restaurantId}}",
+            "reviews"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "12 Cancel Reservation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Reservation is cancelled', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Cancellation message is returned', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.message).to.include('отменено');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reservations/{{reservationId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reservations",
+            "{{reservationId}}"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Response time is acceptable', function () {",
+          "  pm.expect(pm.response.responseTime).to.be.below(1000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "baseurl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    }
+  ]
+}

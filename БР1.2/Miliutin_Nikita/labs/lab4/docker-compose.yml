@@ -1,0 +1,142 @@
+name: br-lab4
+
+x-app: &app
+  image: br-lab4-app:1.0.0
+  restart: unless-stopped
+  init: true
+  mem_limit: 128m
+  cpus: 0.40
+  pids_limit: 64
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "2"
+  networks: [backend]
+  healthcheck:
+    test: [CMD, node, -e, "fetch('http://127.0.0.1:' + process.env.PORT + (process.env.PORT === '3003' ? '/' : '/health')).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+    interval: 30s
+    timeout: 5s
+    start_period: 20s
+    retries: 3
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    hostname: rabbitmq
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 0.50
+    pids_limit: 192
+    environment:
+      RABBITMQ_DEFAULT_USER: br_lab4
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Create the server-side .env first}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+S 2:2 +A 4"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [backend]
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 6
+
+  auth:
+    <<: *app
+    command: [node, dist/services/auth/index.js]
+    environment:
+      PORT: "4001"
+
+  restaurants:
+    <<: *app
+    command: [node, dist/services/restaurants/index.js]
+    environment:
+      PORT: "4002"
+
+  tables:
+    <<: *app
+    command: [node, dist/services/tables/index.js]
+    environment:
+      PORT: "4003"
+
+  notifications:
+    <<: *app
+    command: [node, dist/services/notifications/index.js]
+    environment:
+      PORT: "4005"
+      RABBITMQ_URL: amqp://br_lab4:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+
+  reservations:
+    <<: *app
+    command: [node, dist/services/reservations/index.js]
+    environment:
+      PORT: "4004"
+      RESTAURANT_SERVICE_URL: http://restaurants:4002
+      TABLE_SERVICE_URL: http://tables:4003
+      RABBITMQ_URL: amqp://br_lab4:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      restaurants:
+        condition: service_healthy
+      tables:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+        restart: true
+      notifications:
+        condition: service_healthy
+
+  gateway:
+    <<: *app
+    command: [node, dist/gateway/index.js]
+    networks: [backend, proxy]
+    ports:
+      - "127.0.0.1:13003:3003"
+    environment:
+      PORT: "3003"
+      AUTH_SERVICE_URL: http://auth:4001
+      RESTAURANT_SERVICE_URL: http://restaurants:4002
+      TABLE_SERVICE_URL: http://tables:4003
+      RESERVATION_SERVICE_URL: http://reservations:4004
+      NOTIFICATION_SERVICE_URL: http://notifications:4005
+    depends_on:
+      auth:
+        condition: service_healthy
+      restaurants:
+        condition: service_healthy
+      tables:
+        condition: service_healthy
+      reservations:
+        condition: service_healthy
+      notifications:
+        condition: service_healthy
+
+networks:
+  proxy:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.41.0/24
+  backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.40.0/24
+
+volumes:
+  rabbitmq-data:
