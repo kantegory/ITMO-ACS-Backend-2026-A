@@ -103,3 +103,22 @@ docker compose exec auth bun run prisma/seed.ts
 | `JWT_SECRET` | секрет JWT (≥32 символов): передаётся в SSH-сессию и используется `docker compose` для контейнеров |
 | `INTERNAL_SECRET` | общий секрет микросервисов (`x-internal-secret`) |
 | `JWT_EXPIRES_IN` | *опционально* — TTL access-токена в секундах; если секрет не задан, переменную на сервере сбрасываем → дефолт из `docker-compose.yml` |
+
+## Мониторинг (ЛР6)
+
+```powershell
+docker compose up -d --build
+docker compose -f monitoring/docker-compose.yml up -d
+```
+
+Grafana: http://127.0.0.1:3030 , логин `admin`, пароль `admin`. Дашборд «мониторинг» в папке Lab6.
+
+| Компонент | Роль |
+|-----------|------|
+| node_exporter | CPU, RAM, диск, сеть ВМ |
+| blackbox_exporter | `GET /health` сервисов и TCP postgres/rabbitmq |
+| Prometheus | сбор метрик, хранение 24 часа |
+| Promtail + Loki | логи всех контейнеров Docker |
+| Grafana | дашборд, порт **3030** |
+
+`GET /health` есть у gateway и у auth, catalog, jobseeker, employer, application.

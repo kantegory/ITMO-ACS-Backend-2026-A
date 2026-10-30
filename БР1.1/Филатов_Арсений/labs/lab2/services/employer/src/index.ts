@@ -1,5 +1,5 @@
-import { Elysia } from "elysia";
 import { startEmployerApplicationEventsConsumer } from "@lab2/messaging";
+import { Elysia } from "elysia";
 import { openapiPlugin } from "./openapi";
 import { companiesRoutes } from "./routes/companies";
 import { vacanciesRoutes } from "./routes/vacancies";
@@ -14,6 +14,7 @@ startEmployerApplicationEventsConsumer(async (payload) => {
 });
 
 const app = new Elysia()
+  .get("/health", () => ({ ok: true }))
   .use(openapiPlugin)
   .use(internalRoutes)
   .group("/api/v1", (api) => api.use(companiesRoutes).use(vacanciesRoutes))

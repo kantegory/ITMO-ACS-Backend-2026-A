@@ -6,6 +6,7 @@ import { internalRoutes } from "./routes/internal";
 const port = Number(process.env.PORT ?? 3003);
 
 const app = new Elysia()
+  .get("/health", () => ({ ok: true }))
   .use(openapiPlugin)
   .use(internalRoutes)
   .group("/api/v1", (api) => api.use(jobSeekerRoutes))

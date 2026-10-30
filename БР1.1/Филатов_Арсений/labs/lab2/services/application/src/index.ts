@@ -5,6 +5,7 @@ import { applicationsRoutes } from "./routes/applications";
 const port = Number(process.env.PORT ?? 3005);
 
 const app = new Elysia()
+  .get("/health", () => ({ ok: true }))
   .use(openapiPlugin)
   .group("/api/v1", (api) => api.use(applicationsRoutes))
   .listen(port);
