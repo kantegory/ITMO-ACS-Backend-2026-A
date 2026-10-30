@@ -1,0 +1,127 @@
+---
+- name: Настроить Ubuntu ВМ
+  hosts: lab
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Установить Nginx и необходимые пакеты
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - curl
+          - ca-certificates
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+        lock_timeout: 180
+
+    - name: Создать группу учебного пользователя
+      ansible.builtin.group:
+        name: "{{ lab_user }}"
+        state: present
+
+    - name: Создать учебного пользователя с входом по ключу
+      ansible.builtin.user:
+        name: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        shell: /bin/bash
+        create_home: true
+        password_lock: true
+        state: present
+
+    - name: Создать папку SSH учебного пользователя
+      ansible.builtin.file:
+        path: "/home/{{ lab_user }}/.ssh"
+        state: directory
+        owner: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        mode: '0700'
+
+    - name: Установить публичный ключ учебного пользователя
+      ansible.builtin.copy:
+        src: "{{ lab_public_key_path }}"
+        dest: "/home/{{ lab_user }}/.ssh/authorized_keys"
+        owner: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        mode: '0600'
+
+    - name: Создать каталог проверочного сайта
+      ansible.builtin.file:
+        path: "{{ lab_web_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Создать страницу из шаблона
+      ansible.builtin.template:
+        src: index.html.j2
+        dest: "{{ lab_web_root }}/index.html"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Создать конфигурацию Nginx из шаблона
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/ansible-lab.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Перечитать конфигурацию Nginx
+
+    - name: Включить учебный сайт
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/ansible-lab.conf
+        dest: /etc/nginx/sites-enabled/ansible-lab.conf
+        state: link
+      notify: Перечитать конфигурацию Nginx
+
+    - name: Отключить стандартный сайт Ubuntu
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Перечитать конфигурацию Nginx
+
+    - name: Проверить конфигурацию командой nginx -t
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/nginx
+          - -t
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Запустить Nginx и включить автозапуск
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Применить отложенные изменения Nginx перед проверкой
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить HTTP ответ внутри ВМ
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ lab_http_port }}/"
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: lab_http_result
+      until: lab_http_result.status | default(0) == 200
+      retries: 6
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Проверить ожидаемую версию страницы
+      ansible.builtin.assert:
+        that:
+          - "('Version: ' ~ lab_site_version) in lab_http_result.content"
+        success_msg: "Проверочная страница содержит нужную версию."
+      when: not ansible_check_mode
+
+  handlers:
+    - name: Перечитать конфигурацию Nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
