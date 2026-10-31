@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createProxyMiddleware, Options } from "http-proxy-middleware";
+import * as Sentry from "@sentry/node-core/light";
 
 const port = parseInt(process.env.PORT || "8080", 10);
 const identityUrl = process.env.IDENTITY_SERVICE_URL || "http://localhost:3001";
@@ -9,11 +10,18 @@ const propertyUrl = process.env.PROPERTY_SERVICE_URL || "http://localhost:3002";
 const rentalUrl = process.env.RENTAL_SERVICE_URL || "http://localhost:3003";
 const messagingUrl = process.env.MESSAGING_SERVICE_URL || "http://localhost:3004";
 
+// Шлюз собирается отдельно от @rental/shared, поэтому SDK подключён напрямую.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, serverName: "api-gateway" });
+}
+
 const proxyDefaults: Partial<Options> = {
   changeOrigin: true,
   xfwd: true,
   // Внутренние пути сервисов скрыты от внешнего мира.
   pathFilter: (path) => !path.startsWith("/api/v1/internal/"),
+  // Недоступный сервис: клиент получит 504 от шлюза.
+  on: { error: (err) => Sentry.captureException(err) },
 };
 
 const route = (target: string, paths: string[] | ((path: string) => boolean)) =>

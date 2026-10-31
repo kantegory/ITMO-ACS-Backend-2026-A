@@ -1,0 +1,32 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: health
+    folder: Мониторинг
+    interval: 30s
+    rules:
+      - uid: service-down
+        title: Сервис недоступен
+        condition: C
+        for: 30s
+        noDataState: NoData
+        execErrState: Error
+        annotations:
+          summary: "Не проходит healthcheck: {{ $labels.service }}"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              refId: A
+              expr: probe_success{job=~"health|health_tcp"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: lt, params: [1]}

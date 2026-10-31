@@ -1,0 +1,67 @@
+- name: Каталог мониторинга
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Конфигурация Prometheus, Loki, Promtail и Grafana
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/"
+    dest: "{{ monitoring_dir }}/"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: u=rwX,go=rX
+  notify: Перезапустить мониторинг
+
+- name: Получатель алертов
+  ansible.builtin.template:
+    src: contact-points.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/alerting/contact-points.yml"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+  notify: Перезапустить мониторинг
+
+- name: Файл .env с паролями
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ monitoring_dir }}/.env"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+
+- name: docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+
+# node-exporter работает в сети хоста, и UFW закрывает к нему доступ из контейнеров.
+- name: Доступ Prometheus к node-exporter
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ monitoring_subnet }}"
+    to_ip: "{{ monitoring_gateway }}"
+    to_port: "9100"
+    proto: tcp
+
+- name: Запуск контейнеров
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    state: present
+    pull: missing
+    remove_orphans: true
+  become: false
+
+- name: Grafana отвечает
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ grafana_port }}/api/health"
+    return_content: true
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 60
+  delay: 5

@@ -4,9 +4,11 @@ import cors from "cors";
 import { AppDataSource } from "./data-source";
 import { config } from "./config";
 import router from "./routes";
-import { errorHandler } from "@rental/shared";
+import { errorHandler, initSentry, reportFatal } from "@rental/shared";
 import { seed } from "./seed";
 import { connectRabbit } from "./messaging";
+
+initSentry("property");
 
 const bootstrap = async () => {
   await AppDataSource.initialize();
@@ -27,7 +29,8 @@ const bootstrap = async () => {
   });
 };
 
-bootstrap().catch((e) => {
+bootstrap().catch(async (e) => {
   console.error("Failed to start property-service:", e);
+  await reportFatal(e);
   process.exit(1);
 });

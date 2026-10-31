@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import * as Sentry from "@sentry/node-core/light";
 import { HttpError } from "./errors";
 
 export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -9,6 +10,7 @@ export const errorHandler = (err: any, _req: Request, res: Response, _next: Next
     return res.status(400).json({ error: "bad_request", message: "Некорректный JSON в теле запроса" });
   }
   console.error(err);
+  Sentry.captureException(err);
   res.status(500).json({ error: "internal_error", message: "Внутренняя ошибка сервера" });
 };
 
