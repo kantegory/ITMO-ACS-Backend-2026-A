@@ -1,0 +1,193 @@
+# ДЗ6: CI/CD для сервиса аренды недвижимости (ЛР4-5).
+#
+#   test   — gofmt, go vet, go test, go build для каждого микросервиса (matrix)
+#   build  — docker compose config + сборка образов; на push/ручном запуске образы
+#            публикуются в GHCR (ghcr.io/<owner>/rental-<сервис>:<sha>)
+#   deploy — только push в ветку `deploy` (или ручной запуск): rsync конфигов на
+#            сервер по SSH → docker login ghcr.io → deploy.sh в режиме pull
+#            (сервер только скачивает образы, Go на слабой ВМ не собирается) →
+#            smoke-тест через nginx
+#
+# Secrets репозитория:  SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, (опц.) SSH_PORT, SSH_KNOWN_HOSTS
+# Variables:            PUBLIC_URL (http://<ip или домен>), (опц.) DEPLOY_PATH, NGINX_SERVER_NAME
+name: "ДЗ6: CI/CD rental"
+
+on:
+  push:
+    branches: [deploy]
+    paths:
+      - "БР1.1/Субботин Александр/labs/lab4-5/**"
+      - ".github/workflows/rental-cicd.yml"
+  pull_request:
+    paths:
+      - "БР1.1/Субботин Александр/labs/lab4-5/**"
+      - ".github/workflows/rental-cicd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rental-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_DIR: "БР1.1/Субботин Александр/labs/lab4-5"
+
+jobs:
+  test:
+    name: test (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [user-service, property-service, booking-service, chat-service, api-gateway]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ env.APP_DIR }}/${{ matrix.service }}/go.mod
+          cache-dependency-path: ${{ env.APP_DIR }}/${{ matrix.service }}/go.sum
+
+      - name: gofmt
+        working-directory: ${{ env.APP_DIR }}/${{ matrix.service }}
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "Не отформатировано: $unformatted"; exit 1; fi
+
+      - name: go vet
+        working-directory: ${{ env.APP_DIR }}/${{ matrix.service }}
+        run: go vet ./...
+
+      - name: go test
+        working-directory: ${{ env.APP_DIR }}/${{ matrix.service }}
+        run: go test -race -count=1 ./...
+
+      - name: go build
+        working-directory: ${{ env.APP_DIR }}/${{ matrix.service }}
+        run: go build -o /dev/null ./src/service
+
+  build:
+    name: docker build
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_prefix: ${{ steps.names.outputs.image_prefix }}
+      image_tag: ${{ steps.names.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: имена образов
+        id: names
+        run: |
+          # имена в GHCR должны быть в нижнем регистре
+          prefix="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/rental"
+          tag="${GITHUB_SHA::12}"
+          echo "IMAGE_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "image_prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: compose config
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose config --services
+
+      - name: build images
+        working-directory: ${{ env.APP_DIR }}
+        run: docker compose build --pull
+
+      - name: push в GHCR
+        if: github.event_name != 'pull_request'
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker compose push user-service property-service booking-service chat-service api-gateway
+
+  deploy:
+    name: deploy → server
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/deploy')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_URL }}
+    # деплои не прерывают друг друга, а встают в очередь
+    concurrency:
+      group: rental-production
+      cancel-in-progress: false
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/rental' }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+      IMAGE_PREFIX: ${{ needs.build.outputs.image_prefix }}
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: SSH-ключ
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          cat >> ~/.ssh/config <<CFG
+          Host target
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/id_deploy
+            ServerAliveInterval 30
+          CFG
+
+      - name: rsync проекта на сервер
+        run: |
+          rsync -az --delete \
+            --exclude '.env' --exclude '*/service' --exclude 'docker-compose.local.yaml' --exclude 'docs/' \
+            "$APP_DIR/" "target:$DEPLOY_PATH/"
+
+      - name: nginx (если задан NGINX_SERVER_NAME)
+        if: vars.NGINX_SERVER_NAME != ''
+        run: ssh target "cd '$DEPLOY_PATH' && ./deploy/scripts/setup-nginx.sh '${{ vars.NGINX_SERVER_NAME }}'"
+
+      - name: docker login ghcr.io на сервере
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | ssh target "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
+
+      - name: docker compose up
+        run: |
+          ssh target "cd '$DEPLOY_PATH' && DEPLOY_MODE=pull IMAGE_PREFIX='$IMAGE_PREFIX' \
+            IMAGE_TAG='$IMAGE_TAG' SENTRY_RELEASE='$IMAGE_TAG' ./deploy/scripts/deploy.sh"
+
+      - name: docker logout
+        if: always()
+        run: ssh target "docker logout ghcr.io" || true
+
+      - name: smoke-тест через nginx
+        if: env.PUBLIC_URL != ''
+        run: |
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$PUBLIC_URL/health"
+          curl -fsS "$PUBLIC_URL/api/v1/properties?limit=1" > /dev/null
+          curl -fsS -o /dev/null "$PUBLIC_URL/grafana/api/health"
+          echo "Деплой ${GITHUB_SHA::12} доступен: $PUBLIC_URL"
