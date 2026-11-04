@@ -241,10 +241,24 @@ EVENT /api/1/envelope/ server: property-service env: localtest
 порту (`deploy/nginx/sentry.conf`: Sentry не поддерживает работу в под-пути). Однако даже
 `errors-only` по `install/_min-requirements.sh` требует 2 CPU и 7000 МБ RAM, а у используемой
 ВМ 1 vCPU и 1.9 ГБ, из которых свободно около 400 МБ. Поэтому интеграция выполнена с облачным
-sentry.io: в нём создан проект Go, его DSN записан в `SENTRY_DSN` в `.env` на сервере, после
-чего выполнен `deploy.sh`. Код сервисов от варианта не зависит.
+sentry.io: в нём создан проект `go-gin` (платформа Go / Gin), его DSN записан в `SENTRY_DSN` в
+`.env` на сервере, после чего контейнеры пересозданы деплоем из CI (ДЗ6). Код сервисов от
+варианта не зависит.
 
-#todo[скриншоты sentry.io: список Issues с событиями из сервисов, карточка события с тегами service / grpc.method / release.]
+*Проверка на сервере.* В 14:22:11 база данных приложения была остановлена на 5 секунд, и за
+это время к API через nginx отправлены запросы к `/properties`, `/bookings`, `/favorites`,
+`/users/me/properties` (gRPC-сервисы) и `/chats`, `/users/me` (HTTP-сервисы) — все вернули 500.
+Sentry сгруппировал события в Issues и прислал уведомления о новых проблемах на почту:
+
+#shot("../screenshots/lab5-sentry-issues.png", [Issues проекта go-gin в sentry.io: три Issue `*status.Error … Internal` от gRPC-сервисов (4 события) и `HTTP 500` от HTTP-сервисов (2 события); GO-GIN-1 (`TypeError … views.js`) — пример ошибки, созданный самим Sentry при онбординге («View Sample Error»), к приложению не относится; пустая середина таблицы вырезана])
+
+#shot("../screenshots/lab5-sentry-new-issues.png", [Уведомление Sentry о новых Issues: HTTP 500 от chat-service (middleware gin) и ошибки gRPC `Internal` от property- и booking-service], width: 80%)
+
+#shot("../screenshots/lab5-sentry-grpc-event.png", [Событие из property-service: стектрейс через `UnaryServerInterceptor`, теги `service`, `grpc.method`, `grpc.code`, `release` (sha коммита из CI) и `environment=production`], width: 62%)
+
+У события из gRPC-сервиса видны метод (`/propertypublic.PropertyService/ListProperties`), код
+ошибки и версия релиза `ded74532c3fe` — тот же sha, который CI использовал как тег образа, —
+поэтому по ошибке сразу понятно, в какой версии и в каком методе она возникла.
 
 = Вывод
 
