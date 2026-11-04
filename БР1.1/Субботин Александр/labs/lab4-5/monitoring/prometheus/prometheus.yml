@@ -1,0 +1,72 @@
+# ЛР5: сбор метрик.
+#   node        — ресурсы ВМ (node-exporter)
+#   health-*    — healthcheck'и через blackbox-exporter; у каждой цели есть
+#                 метки service (имя сервиса) и probe (http / grpc / tcp)
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    project: rental
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          instance: vm
+
+  # HTTP GET /health каждого сервиса (200 + {"status":"ok"})
+  - job_name: health-http
+    metrics_path: /probe
+    params:
+      module: [http_health]
+    static_configs:
+      - targets: ["http://api-gateway:8080/health"]
+        labels: { service: api-gateway, probe: http }
+      - targets: ["http://user-service:8081/health"]
+        labels: { service: user-service, probe: http }
+      - targets: ["http://property-service:8082/health"]
+        labels: { service: property-service, probe: http }
+      - targets: ["http://booking-service:8083/health"]
+        labels: { service: booking-service, probe: http }
+      - targets: ["http://chat-service:8084/health"]
+        labels: { service: chat-service, probe: http }
+    relabel_configs: &blackbox-relabel
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # grpc.health.v1.Health/Check — gRPC API property- и booking-service
+  - job_name: health-grpc
+    metrics_path: /probe
+    params:
+      module: [grpc_health]
+    static_configs:
+      - targets: ["property-service:9082"]
+        labels: { service: property-service-grpc, probe: grpc }
+      - targets: ["booking-service:9083"]
+        labels: { service: booking-service-grpc, probe: grpc }
+    relabel_configs: *blackbox-relabel
+
+  # инфраструктура: доступность портов БД и брокера
+  - job_name: health-tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ["postgres:5432"]
+        labels: { service: postgres, probe: tcp }
+      - targets: ["rabbitmq:5672"]
+        labels: { service: rabbitmq, probe: tcp }
+    relabel_configs: *blackbox-relabel
+
+  - job_name: blackbox
+    static_configs:
+      - targets: ["blackbox-exporter:9115"]

@@ -1,0 +1,343 @@
+basePath: /api/v1
+definitions:
+  model.Booking:
+    properties:
+      created_at:
+        type: string
+      end_date:
+        type: string
+      guests_count:
+        type: integer
+      id:
+        type: string
+      price_total:
+        type: number
+      property_id:
+        type: string
+      start_date:
+        type: string
+      status:
+        type: string
+      tenant_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.CreateBookingRequest:
+    properties:
+      end_date:
+        type: string
+      guests_count:
+        type: integer
+      property_id:
+        type: string
+      start_date:
+        type: string
+    required:
+    - end_date
+    - guests_count
+    - property_id
+    - start_date
+    type: object
+  model.CreateReviewRequest:
+    properties:
+      booking_id:
+        type: string
+      rating:
+        maximum: 5
+        minimum: 1
+        type: integer
+      text:
+        type: string
+    required:
+    - booking_id
+    - rating
+    type: object
+  model.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      details: {}
+      message:
+        type: string
+    type: object
+  model.PaginatedResponse:
+    properties:
+      items: {}
+      pagination:
+        $ref: '#/definitions/model.Pagination'
+    type: object
+  model.Pagination:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  model.Review:
+    properties:
+      author_id:
+        type: string
+      booking_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      property_id:
+        type: string
+      rating:
+        type: integer
+      text:
+        type: string
+    type: object
+  model.UpdateBookingStatusRequest:
+    properties:
+      status:
+        enum:
+        - approved
+        - rejected
+        - cancelled
+        - completed
+        type: string
+    required:
+    - status
+    type: object
+host: localhost:8083
+info:
+  contact: {}
+  description: Сервис бронирований и отзывов
+  title: Booking Service API
+  version: "1.0"
+paths:
+  /bookings:
+    get:
+      parameters:
+      - description: Фильтр по статусу
+        in: query
+        name: status
+        type: string
+      - default: 20
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PaginatedResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Мои бронирования (арендатор)
+      tags:
+      - bookings
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные бронирования
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateBookingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Booking'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Объявление не найдено
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "409":
+          description: Даты пересекаются
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "422":
+          description: Некорректные даты
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создать бронирование
+      tags:
+      - bookings
+  /bookings/{bookingId}:
+    get:
+      parameters:
+      - description: ID бронирования
+        in: path
+        name: bookingId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Booking'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Получить бронирование по ID
+      tags:
+      - bookings
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID бронирования
+        in: path
+        name: bookingId
+        required: true
+        type: string
+      - description: Новый статус
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.UpdateBookingStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Booking'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновить статус бронирования
+      tags:
+      - bookings
+  /reviews:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные отзыва
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Review'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "409":
+          description: Отзыв уже существует
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создать отзыв
+      tags:
+      - reviews
+  /users/me/owner/bookings:
+    get:
+      parameters:
+      - description: Фильтр по статусу
+        in: query
+        name: status
+        type: string
+      - default: 20
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PaginatedResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Бронирования моих объявлений (владелец)
+      tags:
+      - bookings
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите токен в формате: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
