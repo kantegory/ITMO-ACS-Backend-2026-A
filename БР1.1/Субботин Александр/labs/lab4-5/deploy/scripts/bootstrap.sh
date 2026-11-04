@@ -81,9 +81,9 @@ touch "$AUTH_KEYS" && chown "$DEPLOY_USER:$DEPLOY_USER" "$AUTH_KEYS" && chmod 60
 if [[ -n "${SSH_PUBKEY:-}" ]] && ! grep -qxF "$SSH_PUBKEY" "$AUTH_KEYS"; then
   echo "$SSH_PUBKEY" >> "$AUTH_KEYS"
 fi
-# deploy может только проверить и перезагрузить nginx (нужно setup-nginx.sh из CI)
+# deploy может только обновить конфиг nginx и перезагрузить его (setup-nginx.sh из CI)
 cat > "/etc/sudoers.d/90-$DEPLOY_USER" <<SUDO
-$DEPLOY_USER ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/install -m 644 * /etc/nginx/sites-available/rental, /usr/bin/ln -sf /etc/nginx/sites-available/rental /etc/nginx/sites-enabled/rental, /usr/bin/rm -f /etc/nginx/sites-enabled/default
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/install -m 644 * /etc/nginx/*, /usr/bin/ln -sf /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*, /usr/bin/rm -f /etc/nginx/sites-enabled/*, /usr/bin/test -f /etc/letsencrypt/live/*
 SUDO
 chmod 440 "/etc/sudoers.d/90-$DEPLOY_USER"
 visudo -cf "/etc/sudoers.d/90-$DEPLOY_USER" >/dev/null

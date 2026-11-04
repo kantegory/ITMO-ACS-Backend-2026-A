@@ -46,9 +46,12 @@ lab4-5/
 │   └── internal/observability/     # Sentry (+ gRPC interceptor и health для property/booking)
 ├── deploy/
 │   ├── scripts/bootstrap.sh        # подготовка сервера: docker, nginx, ufw, swap, пользователь deploy
-│   ├── scripts/setup-nginx.sh      # установка конфига nginx (+ опционально HTTPS через certbot)
+│   ├── scripts/setup-nginx.sh      # установка конфига nginx (+ HTTPS через certbot)
 │   ├── scripts/deploy.sh           # сборка и запуск, ожидание healthcheck'ов
-│   ├── nginx/rental.conf           # reverse proxy: / → gateway, /grafana/ → Grafana
+│   ├── nginx/rental.conf           # reverse proxy (HTTP): / → gateway, /grafana/ → Grafana
+│   ├── nginx/rental-tls.conf       # то же с HTTPS + редирект http → https
+│   ├── nginx/default.conf          # сервер по умолчанию: чужие Host → 444
+│   ├── nginx/snippets/             # общие upstream'ы, rate limit, location'ы
 │   ├── nginx/sentry.conf           # reverse proxy для self-hosted Sentry (:8000)
 │   └── sentry/install-self-hosted.sh
 ├── monitoring/
@@ -76,11 +79,16 @@ chown -R deploy:deploy /opt/rental
 cp .env.example .env && nano .env     # пароли, JWT_SECRET, GRAFANA_ROOT_URL=http://<IP>/grafana/
 
 # 4. nginx и запуск
-./deploy/scripts/setup-nginx.sh <IP или домен>
+./deploy/scripts/setup-nginx.sh <домен> <IP>        # только HTTP
+CERTBOT=1 ./deploy/scripts/setup-nginx.sh <домен> <IP>   # + HTTPS (Let's Encrypt)
 su deploy -c ./deploy/scripts/deploy.sh
 ```
 
-Проверка: `http://<IP>/health`, `http://<IP>/swagger/index.html`, `http://<IP>/grafana/`.
+Проверка: `https://<домен>/health`, `https://<домен>/swagger/index.html`, `https://<домен>/grafana/`.
+
+`setup-nginx.sh` собирает конфиг из `deploy/nginx/`: общие части — `snippets/`, сайт —
+`rental.conf` (HTTP) или `rental-tls.conf` (HTTPS, если для домена есть сертификат),
+`default.conf` — сервер по умолчанию, сбрасывающий запросы с чужими именами (444).
 
 `deploy.sh` умеет три режима (`DEPLOY_MODE` в `.env` или в окружении):
 
@@ -90,7 +98,7 @@ su deploy -c ./deploy/scripts/deploy.sh
 | `local` | загружены заранее: `./deploy/scripts/push-images.sh root@<IP>` (кросс-сборка под `linux/amd64` на своей машине + `docker save \| ssh docker load`) | слабая/общая ВМ, ручной деплой |
 | `pull` | GHCR, их собирает CI (ДЗ6) | автодеплой |
 
-Текущий стенд — `http://13.143.182.131` (Debian 12, 1 vCPU, 1.9 ГБ RAM, рядом работает VPN),
+Текущий стенд — **https://rental.zzisst.space** (`13.143.182.131`, Debian 12, 1 vCPU, 1.9 ГБ RAM, рядом работает VPN),
 поэтому у контейнеров приложения стоят `mem_limit` и `oom_score_adj`, а Go на сервере не собирается.
 
 ## Мониторинг (ЛР5)
