@@ -92,7 +92,7 @@ build:
 ```
 
 Так ошибка в Dockerfile или compose-файле обнаруживается до того, как попадёт на сервер, а
-сервер получает готовые образы `ghcr.io/zzisst/rental-<сервис>:<sha>`. Сборка в CI выбрана
+сервер получает готовые образы `ghcr.io/zzisst/backend-rental-<сервис>:<sha>`. Сборка в CI выбрана
 потому, что ВМ общая с VPN и слабая (1 vCPU, 1.9 ГБ RAM): компиляция пяти Go-сервисов на ней
 занимала бы минуты и вытесняла бы VPN в swap. Авторизация в реестре — встроенным
 `GITHUB_TOKEN` (`packages: write`), отдельные токены не нужны.
@@ -192,7 +192,7 @@ Workflow проверен линтером `actionlint` 1.7.12 (синтакси
 
 == Результат запуска
 
-Push трёх коммитов в ветку `deploy` запустил workflow; все 7 job'ов завершились успешно за 6 мин 56 с
+Первый push в ветку `deploy` запустил workflow; все 7 job'ов завершились успешно за 6 мин 56 с
 (test ≈ 1–1.5 мин параллельно, build 2 мин 33 с, deploy 1 мин 54 с).
 
 #shot("../screenshots/hw6-run-graph.png", [Запуск workflow: matrix test ×5 → docker build → deploy → server])
@@ -233,6 +233,51 @@ GitHub маскирует в логах значения секретов, по�
 (значение `SSH_HOST`, входит в `PUBLIC_URL`) заменены на `***`, а ссылка environment не
 выставляется (предупреждение в Annotations). Это не ошибка; если нужно видеть их в логах,
 `SSH_HOST` и `SSH_USER` можно хранить как variables — они не являются секретами.
+
+== Проблема при повторном деплое и её решение
+
+Следующий запуск упал на шаге «push в GHCR» job'а build (deploy при этом не выполнялся, на
+сервере осталась предыдущая версия):
+
+```
+Pushing ghcr.io/zzisst/rental-api-gateway:84759f47abb1: 08bc4e534116 Layer already exists
+denied: permission_denied: write_package
+##[error]Process completed with exit code 1.
+```
+
+*Причина.* Первый запуск создал пакеты `rental-*` в GHCR, но они не были связаны с
+репозиторием. `GITHUB_TOKEN` с правом `packages: write` позволяет создать новый пакет, а
+перезаписать существующий — только если пакет связан с репозиторием, из которого запущен
+workflow (или репозиторию явно выдан доступ в настройках пакета).
+
+*Решение.* В финальный stage всех Dockerfile добавлена OCI-метка, по которой GHCR
+автоматически связывает пакет с репозиторием и выдаёт workflow права на запись:
+
+```dockerfile
+LABEL org.opencontainers.image.source="https://github.com/ZZISST/ITMO-ACS-Backend-2026-A" \
+      org.opencontainers.image.title="rental-user-service"
+```
+
+Так как старые пакеты уже были созданы без связи, образы стали публиковаться под новым именем
+`ghcr.io/zzisst/backend-rental-<сервис>`. Проверка: запуск после исправления прошёл успешно,
+после чего тот же запуск был перезапущен (`gh run rerun`) — повторная публикация образов с тем
+же тегом в уже существующие пакеты также прошла, и сервер работает на новых образах:
+
+```
+$ gh run view 41822783569 --attempt 2
+✓ test (booking-service) in 23s     ✓ test (chat-service) in 20s
+✓ test (property-service) in 24s    ✓ test (user-service) in 21s
+✓ test (api-gateway) in 20s
+✓ docker build in 2m44s
+✓ deploy → server in 2m2s
+
+$ docker compose ps --format "{{.Name}} {{.Image}} {{.Status}}"   # на сервере
+rental_api_gateway ghcr.io/zzisst/backend-rental-api-gateway:0039dcc21970 Up (healthy)
+rental_booking_service ghcr.io/zzisst/backend-rental-booking-service:0039dcc21970 Up (healthy)
+rental_chat_service ghcr.io/zzisst/backend-rental-chat-service:0039dcc21970 Up (healthy)
+rental_property_service ghcr.io/zzisst/backend-rental-property-service:0039dcc21970 Up (healthy)
+rental_user_service ghcr.io/zzisst/backend-rental-user-service:0039dcc21970 Up (healthy)
+```
 
 = Вывод
 
