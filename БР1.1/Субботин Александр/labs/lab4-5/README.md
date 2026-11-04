@@ -105,7 +105,7 @@ su deploy -c ./deploy/scripts/deploy.sh
 3. **Логи контейнеров** — логи всех контейнеров на ВМ (Promtail читает Docker API), фильтр по
    контейнеру и regex-поиск, объём логов по контейнерам, число строк с error/panic/fatal.
 
-![health](docs/screenshots/lab5-dashboard-health.png)
+![dashboard](docs/screenshots/lab5-server-health-vm.png)
 
 ### Доп. задание: алерт на почту (2 балла)
 

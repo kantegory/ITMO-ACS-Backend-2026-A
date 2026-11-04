@@ -190,7 +190,49 @@ git push origin HEAD:deploy
 
 Workflow проверен линтером `actionlint` 1.7.12 (синтаксис, выражения и контексты).
 
-#todo[скриншоты: успешный запуск workflow (граф test ×5 → build → deploy), лог шага «docker compose up» и «smoke-тест», вкладка Environments → production; демонстрация: коммит в ветку deploy → изменение видно на сервере.]
+== Результат запуска
+
+Push трёх коммитов в ветку `deploy` запустил workflow; все 7 job'ов завершились успешно за 6 мин 56 с
+(test ≈ 1–1.5 мин параллельно, build 2 мин 33 с, deploy 1 мин 54 с).
+
+#shot("../screenshots/hw6-run-graph.png", [Запуск workflow: matrix test ×5 → docker build → deploy → server])
+
+#shot("../screenshots/hw6-deploy-job.png", [Шаги job'а deploy; шаг nginx пропущен, так как NGINX_SERVER_NAME не задан])
+
+Фрагмент лога шага «docker compose up» (`deploy.sh` на сервере в режиме `pull`):
+
+```
+Login Succeeded
+==> mode=pull image=ghcr.io/zzisst/rental-*:ded74532c3fe release=ded74532c3fe
+==> запуск
+==> ожидание healthcheck'ов
+rental_api_gateway        Up 6 seconds (healthy)
+rental_booking_service    Up 12 seconds (healthy)
+rental_chat_service       Up 18 seconds (healthy)
+rental_property_service   Up 18 seconds (healthy)
+rental_user_service       Up 18 seconds (healthy)
+{"service":"api-gateway","status":"ok"}
+==> очистка старых образов
+==> *** OK
+Removing login credentials for ghcr.io
+{"service":"api-gateway","status":"ok"}Деплой ded74532c3fe доступен: http://***
+```
+
+После деплоя на сервере работают образы из GHCR:
+
+```
+$ docker compose ps --format "{{.Name}} {{.Image}} {{.Status}}" | grep rental_
+rental_api_gateway ghcr.io/zzisst/rental-api-gateway:ded74532c3fe Up 47 seconds (healthy)
+rental_booking_service ghcr.io/zzisst/rental-booking-service:ded74532c3fe Up 53 seconds (healthy)
+rental_chat_service ghcr.io/zzisst/rental-chat-service:ded74532c3fe Up About a minute (healthy)
+rental_property_service ghcr.io/zzisst/rental-property-service:ded74532c3fe Up About a minute (healthy)
+rental_user_service ghcr.io/zzisst/rental-user-service:ded74532c3fe Up About a minute (healthy)
+```
+
+GitHub маскирует в логах значения секретов, поэтому слово `deploy` (значение `SSH_USER`) и IP
+(значение `SSH_HOST`, входит в `PUBLIC_URL`) заменены на `***`, а ссылка environment не
+выставляется (предупреждение в Annotations). Это не ошибка; если нужно видеть их в логах,
+`SSH_HOST` и `SSH_USER` можно хранить как variables — они не являются секретами.
 
 = Вывод
 

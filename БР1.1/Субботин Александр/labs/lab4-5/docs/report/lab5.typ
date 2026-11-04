@@ -172,16 +172,27 @@ scrape_configs:
   (`disableResolveMessage: false`) — то есть письмо приходит на любое изменение состояния;
 - политика уведомлений: группировка по `alertname, service`, повтор раз в 4 часа.
 
-SMTP задаётся переменными `SMTP_*` в `.env`. Для отладки используется Mailpit (тестовый
-SMTP-сервер с веб-интерфейсом), на сервере — реальный SMTP (smtp.yandex.ru, пароль приложения).
+SMTP задаётся переменными `SMTP_*` в `.env`. При локальной отладке письма ловит Mailpit
+(тестовый SMTP-сервер с веб-интерфейсом), на сервере используется SMTP Mail.ru:
 
-Проверка: `docker stop rental_chat_service` в 12:51:28 → письмо DOWN в 12:52:30
-(30 с `for` + интервал вычисления + `group_wait`); `docker start` в 12:52:38 → письмо UP в 12:53:30.
+```
+SMTP_HOST=smtp.mail.ru:465          # порт 465 — неявный TLS
+SMTP_USER=zzisst@mail.ru
+SMTP_PASSWORD=<пароль для внешнего приложения>
+SMTP_FROM=zzisst@mail.ru            # Mail.ru требует, чтобы отправитель совпадал с логином
+SMTP_STARTTLS_POLICY=NoStartTLS
+ALERT_EMAIL=zzisst@mail.ru
+```
 
-#shot("../screenshots/lab5-mailpit-inbox.png", [Письма об изменении состояния chat-service], width: 70%)
-#shot("../screenshots/lab5-alert-email.png", [Содержимое письма: сервис, тип проверки, адрес, метки])
+Проверка на сервере: `docker stop rental_chat_service` в 14:22:39 → письмо «🔴 DOWN:
+chat-service» в 14:23 (30 с `for` + интервал вычисления + `group_wait`); `docker start` в
+14:25:10 → письмо «🟢 UP: chat-service» в 14:25.
 
-#todo[скриншот писем в реальном почтовом ящике (после настройки SMTP на сервере).]
+#grid(
+  columns: (1fr, 1fr), column-gutter: 8pt,
+  shot("../screenshots/lab5-email-down.png", [Письмо при падении: Firing, сервис, тип проверки, адрес healthcheck, метки]),
+  shot("../screenshots/lab5-email-up.png", [Письмо при восстановлении: Resolved]),
+)
 
 == Доп. задание 2: Sentry
 
