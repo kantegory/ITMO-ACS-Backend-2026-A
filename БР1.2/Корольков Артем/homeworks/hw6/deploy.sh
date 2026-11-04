@@ -15,6 +15,15 @@ root_dir=/opt/restaurant-lab4
 repo_dir="$root_dir/repository"
 labs_path='БР1.2/Корольков Артем/labs'
 
+export APP_ENV_FILE=/etc/restaurant-lab4/app.env
+
+if [[ ! -s "$APP_ENV_FILE" ]]; then
+    printf 'Не найден или пуст файл %s\n' "$APP_ENV_FILE" >&2
+    exit 1
+fi
+
+chmod 600 "$APP_ENV_FILE"
+
 git -C "$repo_dir" fetch --quiet origin lab4
 head_revision=$(git -C "$repo_dir" rev-parse origin/lab4)
 
@@ -30,18 +39,24 @@ git -C "$repo_dir" archive "$revision" -- \
     "$labs_path/lab3" "$labs_path/lab4" |
     tar -x -C "$release_dir"
 
-lab4_dir="$release_dir/$labs_path/lab4"
+lab3_dir="$release_dir/$labs_path/lab3"
+compose_file="$lab3_dir/docker-compose.yml"
+nginx_file="$release_dir/$labs_path/lab4/nginx.conf"
 
-bash "$lab4_dir/compose.sh" config --quiet
+docker compose -p restaurant-lab4 \
+    -f "$compose_file" config --quiet
 
-for service in auth-service restaurant-service reservation-service api-gateway; do
-    bash "$lab4_dir/compose.sh" build "$service"
-done
+docker compose --parallel 1 -p restaurant-lab4 \
+    -f "$compose_file" build
 
-bash "$lab4_dir/compose.sh" up -d --no-build --wait --wait-timeout 300
+docker compose -p restaurant-lab4 \
+    -f "$compose_file" up -d --no-build --wait --wait-timeout 300
 
-install -m 0644 "$lab4_dir/nginx.conf" /etc/nginx/sites-available/restaurant-lab4
-ln -sfn /etc/nginx/sites-available/restaurant-lab4 /etc/nginx/sites-enabled/restaurant-lab4
+install -m 0644 "$nginx_file" \
+    /etc/nginx/sites-available/restaurant-lab4
+
+ln -sfn /etc/nginx/sites-available/restaurant-lab4 \
+    /etc/nginx/sites-enabled/restaurant-lab4
 
 nginx -t
 systemctl reload nginx
@@ -67,6 +82,6 @@ printf '{"revision":"%s","branch":"lab4","deployed_at":"%s"}\n' \
 
 chmod 644 /var/lib/restaurant-lab4/deployment.json
 
-ln -sfn "$lab4_dir" "$root_dir/current"
+ln -sfn "$lab3_dir" "$root_dir/current"
 
 printf 'Deployed %s\n' "$revision"

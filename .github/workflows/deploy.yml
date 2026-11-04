@@ -21,41 +21,53 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
+
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      - name: Проверка конфигурации и сборка образов
+      - name: Проверка конфигурации и сборка
         shell: bash
-        env:
-          APP_ENV_FILE: /dev/null
-          JWT_SECRET: validation-only
-          SERVICE_KEY: validation-only
-          RABBITMQ_PASSWORD: validation-only
         run: |
           set -euo pipefail
+
           lab3_dir='БР1.2/Корольков Артем/labs/lab3'
-          lab4_dir='БР1.2/Корольков Артем/labs/lab4'
+          deploy_script='БР1.2/Корольков Артем/homeworks/hw6/deploy.sh'
+          compose_file="$lab3_dir/docker-compose.yml"
 
-          bash -n "$lab4_dir/compose.sh"
-          bash -n 'БР1.2/Корольков Артем/homeworks/hw6/deploy.sh'
-          bash "$lab4_dir/compose.sh" config --quiet
+          export APP_ENV_FILE="$RUNNER_TEMP/restaurant-validation.env"
+          umask 077
 
-          for service in auth-service restaurant-service reservation-service api-gateway; do
-            docker build \
-              -f "$lab3_dir/services/$service/Dockerfile" \
-              -t "restaurant-check:$service" \
-              "$lab3_dir"
-          done
+          cat > "$APP_ENV_FILE" <<'ENV'
+          JWT_SECRET=validation-only
+          SERVICE_KEY=validation-only
+          RABBITMQ_PASSWORD=validation-only
+          RABBITMQ_DEFAULT_USER=restaurant
+          RABBITMQ_DEFAULT_PASS=validation-only
+          RABBITMQ_URL=amqp://restaurant:validation-only@rabbitmq:5672
+          RABBITMQ_ENABLED=true
+          AUTH_SERVICE_URL=http://auth-service:3001
+          RESTAURANT_SERVICE_URL=http://restaurant-service:3002
+          RESERVATION_SERVICE_URL=http://reservation-service:3003
+          ENV
+
+          bash -n "$deploy_script"
+
+          docker compose -p restaurant-lab4 \
+            -f "$compose_file" config --quiet
+
+          docker compose --parallel 1 -p restaurant-lab4 \
+            -f "$compose_file" build
 
   deploy:
     needs: validate
     if: github.ref == 'refs/heads/lab4'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+
     steps:
       - name: Развёртывание и проверка версии
         shell: bash
@@ -68,12 +80,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          for secret_name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_KEY DEPLOY_KNOWN_HOSTS; do
-            if [[ -z "${!secret_name}" ]]; then
-              printf 'Secret %s is empty\n' "$secret_name" >&2
-              exit 1
-            fi
-          done
+          : "${DEPLOY_HOST:?Не задан DEPLOY_HOST}"
+          : "${DEPLOY_PORT:?Не задан DEPLOY_PORT}"
+          : "${DEPLOY_USER:?Не задан DEPLOY_USER}"
+          : "${DEPLOY_KEY:?Не задан DEPLOY_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Не задан DEPLOY_KNOWN_HOSTS}"
 
           install -d -m 0700 "$HOME/.ssh"
           umask 077

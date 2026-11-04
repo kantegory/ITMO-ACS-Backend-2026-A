@@ -1,7 +1,8 @@
 import amqp, { type Channel, type Connection } from 'amqplib';
 import { ALL_QUEUES } from './queues';
+import { requiredEnv } from './config';
 
-export const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
+export const RABBITMQ_URL = requiredEnv('RABBITMQ_URL');
 
 let connection: Connection | null = null;
 let channel: Channel | null = null;

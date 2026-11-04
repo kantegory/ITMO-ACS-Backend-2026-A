@@ -1,83 +1,148 @@
+name: restaurant-lab4
+
 services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    hostname: restaurant-lab4-rabbitmq
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   auth-service:
     build:
       context: .
       dockerfile: services/auth-service/Dockerfile
-    environment:
-      PORT: 3001
-      RABBITMQ_URL: amqp://rabbitmq:5672
-      RABBITMQ_ENABLED: "true"
-      JWT_SECRET: restaurant-api-dev-secret
-      SERVICE_KEY: inter-service-dev-key
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
     volumes:
-      - ./services/data:/app/services/data
+      - /var/lib/restaurant-lab4/data:/app/services/data
     depends_on:
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   restaurant-service:
     build:
       context: .
       dockerfile: services/restaurant-service/Dockerfile
-    environment:
-      PORT: 3002
-      RABBITMQ_URL: amqp://rabbitmq:5672
-      RABBITMQ_ENABLED: "true"
-      SERVICE_KEY: inter-service-dev-key
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
     volumes:
-      - ./services/data:/app/services/data
+      - /var/lib/restaurant-lab4/data:/app/services/data
     depends_on:
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   reservation-service:
     build:
       context: .
       dockerfile: services/reservation-service/Dockerfile
-    environment:
-      PORT: 3003
-      RABBITMQ_URL: amqp://rabbitmq:5672
-      RABBITMQ_ENABLED: "true"
-      AUTH_SERVICE_URL: http://auth-service:3001
-      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
-      SERVICE_KEY: inter-service-dev-key
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
     volumes:
-      - ./services/data:/app/services/data
+      - /var/lib/restaurant-lab4/data:/app/services/data
     depends_on:
       rabbitmq:
         condition: service_healthy
       auth-service:
-        condition: service_started
+        condition: service_healthy
       restaurant-service:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   api-gateway:
     build:
       context: .
       dockerfile: services/api-gateway/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
     ports:
-      - "3010:3010"
-    environment:
-      PORT: 3010
-      AUTH_SERVICE_URL: http://auth-service:3001
-      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
-      RESERVATION_SERVICE_URL: http://reservation-service:3003
+      - "127.0.0.1:3010:3010"
     depends_on:
-      - auth-service
-      - restaurant-service
-      - reservation-service
+      auth-service:
+        condition: service_healthy
+      restaurant-service:
+        condition: service_healthy
+      reservation-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
 networks:
   default:
-    name: restaurant-booking-net
+    name: restaurant-lab4
+
+volumes:
+  rabbit_data:
