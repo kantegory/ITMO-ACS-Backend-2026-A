@@ -13,7 +13,7 @@
 Стек: Go 1.25 (Gin, gRPC + grpc-gateway), Docker Engine 29 + Docker Compose, nginx 1.22, ufw.
 Код — `labs/lab4-5`, скрипты — `labs/lab4-5/deploy`.
 
-Сервер: VPS `13.143.182.131`, Debian 12 (ядро 6.1), 1 vCPU (AMD Ryzen 9 5950X), 1.9 ГБ RAM,
+Сервер: VPS `13.143.182.131` (домен `rental.zzisst.space`), Debian 12 (ядро 6.1), 1 vCPU (AMD Ryzen 9 5950X), 1.9 ГБ RAM,
 2 ГБ swap, диск 25 ГБ. На этой же ВМ уже работает VPN (панель PasarGuard на :8000, xray,
 OpenVPN, TimescaleDB на `127.0.0.1:5432`), что повлияло на ряд решений (раздел 2.3).
 
@@ -184,39 +184,41 @@ RabbitMQ — 46 МБ.
 
 == Настройка nginx как обратного прокси
 
-Конфиг `deploy/nginx/rental.conf` устанавливается скриптом `setup-nginx.sh <IP или домен>`,
-который подставляет `server_name`, проверяет конфиг (`nginx -t`) и перезагружает nginx.
-При наличии домена тот же скрипт с `CERTBOT_EMAIL` получает сертификат Let's Encrypt.
+Конфиг собран из нескольких файлов в `deploy/nginx/`, которые устанавливает скрипт
+`setup-nginx.sh <домен> [доп. имена]`. Он подставляет `server_name`, выбирает вариант (HTTP или
+HTTPS — если для домена уже выпущен сертификат), проверяет конфиг (`nginx -t`) и перезагружает nginx:
+
+- `snippets/rental-http.conf` — общее для http-контекста: `upstream`'ы и зона rate limit;
+- `snippets/rental-locations.conf` — общая часть server-блока: заголовки, проксирование, `location`'ы;
+- `rental.conf` / `rental-tls.conf` — сам сайт (HTTP либо HTTPS + редирект);
+- `default.conf` — сервер по умолчанию для запросов с чужими именами.
 
 ```nginx
+# snippets/rental-http.conf
 limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/s;
 upstream api_gateway { server 127.0.0.1:8080; keepalive 32; }
 upstream grafana     { server 127.0.0.1:3000; keepalive 8; }
 
-server {
-    listen 80 default_server;
-    server_name __SERVER_NAME__;
-    client_max_body_size 10m;
-    server_tokens off;
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options SAMEORIGIN always;
+# snippets/rental-locations.conf
+client_max_body_size 10m;
+server_tokens off;
+add_header X-Content-Type-Options nosniff always;
+add_header X-Frame-Options SAMEORIGIN always;
+proxy_http_version 1.1;
+proxy_set_header Host              $host;
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header Connection        "";
 
-    proxy_http_version 1.1;
-    proxy_set_header Host              $host;
-    proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Connection        "";
-
-    location /api/v1/auth/ {            # защита от перебора паролей
-        limit_req zone=auth burst=20 nodelay;
-        limit_req_status 429;
-        proxy_pass http://api_gateway;
-    }
-    location /         { proxy_pass http://api_gateway; }   # API + Swagger
-    location /grafana/ { proxy_pass http://grafana; }       # ЛР5
-    location /debug/   { return 404; }                      # тестовый маршрут Sentry
+location /api/v1/auth/ {            # защита от перебора паролей
+    limit_req zone=auth burst=20 nodelay;
+    limit_req_status 429;
+    proxy_pass http://api_gateway;
 }
+location /         { proxy_pass http://api_gateway; }   # API + Swagger
+location /grafana/ { proxy_pass http://grafana; }       # ЛР5
+location /debug/   { return 404; }                      # тестовый маршрут Sentry
 ```
 
 Особенности конфига:
@@ -232,6 +234,7 @@ server {
 
 ```
 LISTEN 0.0.0.0:80             nginx
+LISTEN 0.0.0.0:443            nginx
 LISTEN 127.0.0.1:8080         docker-proxy    # api-gateway
 LISTEN 127.0.0.1:3000         docker-proxy    # Grafana
 LISTEN 127.0.0.1:5433         docker-proxy    # PostgreSQL (SSH-туннель)
@@ -264,6 +267,88 @@ $ for i in $(seq 1 40); do curl -s -o /dev/null -w '%{http_code}\n' \
 
 #shot("../screenshots/lab4-swagger-server.png", [Swagger UI API-gateway по адресу http://13.143.182.131/swagger/index.html])
 
+== Домен и HTTPS
+
+Для сервиса добавлен поддомен `rental.zzisst.space` (A-запись на `13.143.182.131` в DNS-зоне
+домена у регистратора). Корень `zzisst.space` оставлен свободным, панель VPN по-прежнему
+доступна по своему поддомену на порту 8000.
+
+Сертификат выпущен Let's Encrypt тем же скриптом:
+
+```bash
+CERTBOT=1 ./deploy/scripts/setup-nginx.sh rental.zzisst.space 13.143.182.131
+```
+
+Скрипт сначала ставит HTTP-вариант сайта (чтобы прошла проверка владения доменом http-01),
+затем выполняет `certbot certonly --nginx -d rental.zzisst.space --deploy-hook "systemctl reload nginx"`
+и переключает сайт на `rental-tls.conf`. Конфиг nginx остаётся под контролем репозитория:
+certbot только получает сертификат и не редактирует файлы сайта.
+
+```nginx
+server {                       # http → https для домена
+    listen 80;
+    server_name rental.zzisst.space;
+    location / { return 301 https://$host$request_uri; }
+}
+server {
+    listen 443 ssl http2;
+    server_name rental.zzisst.space;
+    ssl_certificate     /etc/letsencrypt/live/rental.zzisst.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rental.zzisst.space/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    include /etc/nginx/snippets/rental-locations.conf;
+}
+server {                       # доступ по IP без TLS — для проверок
+    listen 80;
+    server_name 13.143.182.131;
+    include /etc/nginx/snippets/rental-locations.conf;
+}
+
+# default.conf — всё остальное (другие домены на этом IP, сканеры)
+server { listen 80 default_server;  server_name _; return 444; }
+server { listen 443 ssl default_server; server_name _; ssl_reject_handshake on; }
+```
+
+Сервер по умолчанию понадобился потому, что на тот же IP указывает и поддомен панели VPN:
+без него `http://panel.zzisst.space` открывал бы приложение аренды. Теперь такие запросы
+сбрасываются (444), а TLS-рукопожатие с чужим SNI отклоняется.
+
+Проверка:
+
+```
+$ curl -sI http://rental.zzisst.space/swagger/index.html | grep -E '^HTTP|^Location'
+HTTP/1.1 301 Moved Permanently
+Location: https://rental.zzisst.space/swagger/index.html
+
+$ for u in /health /swagger/index.html /api/v1/properties /grafana/api/health /debug/sentry; do
+    curl -s -o /dev/null -w "$u -> %{http_code}\n" https://rental.zzisst.space$u; done
+/health -> 200
+/swagger/index.html -> 200
+/api/v1/properties -> 200
+/grafana/api/health -> 200
+/debug/sentry -> 404
+
+$ echo | openssl s_client -connect rental.zzisst.space:443 -servername rental.zzisst.space \
+    | openssl x509 -noout -subject -issuer -dates
+subject=CN=rental.zzisst.space
+issuer=C=US, O=Let's Encrypt, CN=YE1
+notBefore=Nov  4 11:49:07 2026 GMT
+notAfter=Feb  2 11:49:06 2027 GMT
+
+$ curl -s -o /dev/null -w '%{http_code}' http://panel.zzisst.space/   # чужой Host
+000          # соединение сброшено (444)
+
+$ certbot renew --dry-run
+Simulating renewal of an existing certificate for rental.zzisst.space
+  /etc/letsencrypt/live/rental.zzisst.space/fullchain.pem (success)
+```
+
+Сертификат продлевается автоматически таймером `certbot.timer` (дважды в сутки), после
+продления nginx перезагружается deploy-hook'ом. Адрес Grafana в `.env`
+(`GRAFANA_ROOT_URL=https://rental.zzisst.space/grafana/`) и переменная `PUBLIC_URL` для
+smoke-теста в CI (ДЗ6) переведены на домен.
+
 == Проверка основного сценария через nginx
 
 ```
@@ -293,6 +378,7 @@ $ curl "http://13.143.182.131/api/v1/properties?city=Санкт-Петербур
 скриптами `bootstrap.sh` и `deploy.sh`, что используется в ДЗ6 для автодеплоя. Развёртывание
 выполнено на общей ВМ с работающим VPN без его остановки: образы собираются вне сервера, а
 лимиты памяти и приоритет OOM защищают соседние сервисы. Внешний доступ
-организован через nginx в режиме обратного прокси с ограничением частоты запросов к
-аутентификации и проксированием Grafana для ЛР5. Попутно исправлен дефект gateway, из-за
+организован через nginx в режиме обратного прокси по домену `rental.zzisst.space` с HTTPS
+(Let's Encrypt, автопродление), ограничением частоты запросов к аутентификации и
+проксированием Grafana для ЛР5. Попутно исправлен дефект gateway, из-за
 которого gRPC-маршруты переставали работать через 15 секунд после старта.

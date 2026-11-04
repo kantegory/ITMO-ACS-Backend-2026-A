@@ -17,7 +17,7 @@
 Стек: Grafana 13.0, Prometheus 3.13, node-exporter 1.12, blackbox-exporter 0.29, Loki 3.6,
 Promtail 3.6, Mailpit 1.31, sentry-go 0.50. Мониторится приложение из ЛР4 (`labs/lab4-5`),
 развёрнутое на ВМ `13.143.182.131` (Debian 12, 1 vCPU, 1.9 ГБ RAM); Grafana доступна по адресу
-`http://13.143.182.131/grafana/`.
+`https://rental.zzisst.space/grafana/`.
 
 = Ход работы
 

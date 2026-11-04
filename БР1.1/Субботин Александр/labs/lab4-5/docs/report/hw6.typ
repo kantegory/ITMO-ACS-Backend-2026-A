@@ -162,7 +162,7 @@ deploy:
     [secret], [`SSH_PRIVATE_KEY`], [приватный ключ, публичная часть — в `authorized_keys` пользователя deploy],
     [secret], [`SSH_KNOWN_HOSTS`], [(опц.) вывод `ssh-keyscan <IP>`],
     [secret], [`SSH_PORT`], [(опц.) порт SSH, по умолчанию 22],
-    [variable], [`PUBLIC_URL`], [`http://13.143.182.131` — для smoke-теста и ссылки environment],
+    [variable], [`PUBLIC_URL`], [`https://rental.zzisst.space` — для smoke-теста и ссылки environment],
     [variable], [`DEPLOY_PATH`], [(опц.) по умолчанию `/opt/rental`],
     [variable], [`NGINX_SERVER_NAME`], [(опц.) если задан — CI обновляет конфиг nginx],
   ),
@@ -180,7 +180,7 @@ gh secret set SSH_PRIVATE_KEY --repo $R < ~/.ssh/rental_ci
 gh secret set SSH_HOST --repo $R --body 13.143.182.131
 gh secret set SSH_USER --repo $R --body deploy
 grep '^13.143.182.131 ssh-ed25519' ~/.ssh/known_hosts | gh secret set SSH_KNOWN_HOSTS --repo $R
-gh variable set PUBLIC_URL --repo $R --body http://13.143.182.131
+gh variable set PUBLIC_URL --repo $R --body https://rental.zzisst.space
 
 # деплой
 git push origin HEAD:deploy
@@ -232,7 +232,9 @@ rental_user_service ghcr.io/zzisst/rental-user-service:ded74532c3fe Up About a m
 GitHub маскирует в логах значения секретов, поэтому слово `deploy` (значение `SSH_USER`) и IP
 (значение `SSH_HOST`, входит в `PUBLIC_URL`) заменены на `***`, а ссылка environment не
 выставляется (предупреждение в Annotations). Это не ошибка; если нужно видеть их в логах,
-`SSH_HOST` и `SSH_USER` можно хранить как variables — они не являются секретами.
+`SSH_HOST` и `SSH_USER` можно хранить как variables — они не являются секретами. После
+перевода стенда на домен (`PUBLIC_URL=https://rental.zzisst.space`, см. ЛР4) адрес в
+`PUBLIC_URL` уже не совпадает с секретом и не маскируется.
 
 == Проблема при повторном деплое и её решение
 
