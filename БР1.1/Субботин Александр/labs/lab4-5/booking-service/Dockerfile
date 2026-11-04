@@ -17,6 +17,12 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 
 FROM alpine:3.20
 
+# привязка пакета GHCR к репозиторию: без неё GITHUB_TOKEN может создать пакет,
+# но не может перезаписать его при следующем деплое (permission_denied: write_package)
+LABEL org.opencontainers.image.source="https://github.com/ZZISST/ITMO-ACS-Backend-2026-A" \
+      org.opencontainers.image.title="rental-booking-service" \
+      org.opencontainers.image.description="Сервис аренды недвижимости: booking-service"
+
 # ca-certificates — для HTTPS до Sentry, tzdata — корректное время в логах
 RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -H -u 10001 app
