@@ -1,26 +1,51 @@
-import amqp from "amqplib"
+import { ChannelModel } from "amqplib"
+import { getConnection } from "./rabbitmq"
 
 export async function startUserConsumer() {
 
-    const connection = await amqp.connect("amqp://rabbitmq:5672")
-    const channel = await connection.createChannel()
+    let connection: ChannelModel | undefined
 
-    await channel.assertQueue("user_events")
+    try {
+        connection = await getConnection()
 
-    console.log("Consumer started: user_events")
+        connection.once("close", () => {
+            setTimeout(startUserConsumer, 2000)
+        })
 
-    channel.consume("user_events", (msg) => {
+        const channel = await connection.createChannel()
 
-        if (!msg) return
+        channel.on("error", error => {
+            console.warn("RabbitMQ channel:", error.message)
+        })
 
-        const data = JSON.parse(msg.content.toString())
+        await channel.assertQueue("user_events", { durable: true })
 
-        console.log("EVENT RECEIVED:", data)
+        await channel.consume("user_events", message => {
+            if (!message) {
+                return
+            }
 
-        if (data.type === "USER_REGISTERED") {
-            console.log("New user detected:", data.payload.email)
+            try {
+                const event = JSON.parse(message.content.toString())
+
+                if (event.type === "USER_REGISTERED") {
+                    console.log("User registered:", event.payload.id)
+                }
+
+                channel.ack(message)
+            } catch {
+                channel.nack(message, false, false)
+            }
+        })
+
+        console.log("User event consumer connected")
+    } catch (error) {
+        console.warn("RabbitMQ not ready:", error.message)
+
+        if (connection) {
+            await connection.close().catch(() => {})
+        } else {
+            setTimeout(startUserConsumer, 2000)
         }
-
-        channel.ack(msg)
-    })
+    }
 }

@@ -1,93 +1,109 @@
 openapi: 3.0.3
-
 info:
-  title: Recipe Sharing API
-  description: API для сервиса обмена рецептами
+  title: 'Recipe Sharing API'
+  description: 'API для сервиса обмена рецептами'
   version: 1.0.0
-
 servers:
-  - url: http://localhost:8000
-
+  -
+    url: 'http://localhost:8000'
 tags:
-  - name: Auth
-  - name: Users
-  - name: Recipes
-  - name: Comments
-  - name: Likes
-  - name: Saved
-  - name: Follows
-
+  -
+    name: Auth
+  -
+    name: Users
+  -
+    name: Recipes
+  -
+    name: Comments
+  -
+    name: Likes
+  -
+    name: Saved
+  -
+    name: Follows
 paths:
-
   /auth/register:
     post:
       tags:
         - Auth
       summary: Регистрация
-
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
-
       responses:
-        "201":
-          description: Успешная регистрация
-
-        "400":
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
           $ref: '#/components/responses/BadRequest'
-
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      security: []
   /auth/login:
     post:
       tags:
         - Auth
       summary: Авторизация
-
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/LoginRequest'
-
       responses:
-        "200":
-          description: Успешная авторизация
-
-        "401":
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
           $ref: '#/components/responses/Unauthorized'
-
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      security: []
   /auth/me:
     get:
       tags:
         - Users
-      summary: Получить мой профиль
-
+      summary: 'Получить мой профиль'
       security:
-        - bearerAuth: [ ]
-
+        -
+          bearerAuth: []
       responses:
-        "200":
+        '200':
           description: OK
-
-        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
           $ref: '#/components/responses/Unauthorized'
-
   /recipes:
     get:
       tags:
         - Recipes
-      summary: Получить список рецептов
-
+      summary: 'Получить список рецептов'
       parameters:
-        - name: query
+        -
+          name: query
           in: query
           schema:
             type: string
-
-        - name: difficulty
+        -
+          name: difficulty
           in: query
           schema:
             type: string
@@ -95,394 +111,644 @@ paths:
               - easy
               - medium
               - hard
-
+        -
+          name: title
+          in: query
+          description: 'Альтернативное имя параметра query'
+          schema:
+            type: string
       responses:
-        "200":
+        '200':
           description: OK
-
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recipe'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      security: []
     post:
       tags:
         - Recipes
-      summary: Создать рецепт
-
+      summary: 'Создать рецепт'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RecipeCreate'
-
       responses:
-        "201":
-          description: Рецепт создан
-
-        "400":
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+        '400':
           $ref: '#/components/responses/BadRequest'
-
-  /recipes/{id}:
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  '/recipes/{id}':
     get:
       tags:
         - Recipes
-      summary: Получить рецепт
-
+      summary: 'Получить рецепт'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "200":
+        '200':
           description: OK
-
-        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
           $ref: '#/components/responses/NotFound'
-
+      security: []
     patch:
       tags:
         - Recipes
-      summary: Обновить рецепт
-
+      summary: 'Обновить рецепт'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RecipeCreate'
-
+              $ref: '#/components/schemas/RecipeUpdate'
       responses:
-        "200":
-          description: Рецепт обновлен
-
-        "400":
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+        '400':
           $ref: '#/components/responses/BadRequest'
-
-        "404":
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
           $ref: '#/components/responses/NotFound'
-
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags:
         - Recipes
-      summary: Удалить рецепт
-
+      summary: 'Удалить рецепт'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "204":
-          description: Рецепт удален
-
-        "404":
+        '204':
+          description: 'Рецепт удален'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
           $ref: '#/components/responses/NotFound'
-
-  /comments/{id}:
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  '/comments/{id}':
     get:
       tags:
         - Comments
-      summary: Получить комментарии рецепта
-
+      summary: 'Получить комментарии рецепта'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "200":
-          description: Комментарии получены
-
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security: []
     post:
       tags:
         - Comments
-      summary: Добавить комментарий
-
+      summary: 'Добавить комментарий'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/CommentCreate'
-
       responses:
-        "201":
-          description: Комментарий добавлен
-
-        "400":
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
           $ref: '#/components/responses/BadRequest'
-
-  /recipes/{id}/like:
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  '/recipes/{id}/like':
     post:
       tags:
         - Likes
-      summary: Поставить лайк
-
+      summary: 'Поставить лайк'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "201":
-          description: Лайк поставлен
-
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags:
         - Likes
-      summary: Убрать лайк
-
+      summary: 'Убрать лайк'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "204":
-          description: Лайк удален
-
-  /recipes/{id}/save:
+        '204':
+          description: 'Лайк удален'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  '/recipes/{id}/save':
     post:
       tags:
         - Saved
-      summary: Сохранить рецепт
-
+      summary: 'Сохранить рецепт'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "201":
-          description: Рецепт сохранен
-
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags:
         - Saved
-      summary: Удалить из сохраненных
-
+      summary: 'Удалить из сохраненных'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
       responses:
-        "204":
-          description: Удалено из сохраненных
-
-  /users/{id}/follow:
+        '204':
+          description: 'Удалено из сохраненных'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  '/users/{id}/follow':
     post:
       tags:
         - Follows
-      summary: Подписаться на пользователя
-
+      summary: 'Подписаться на пользователя'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FollowRequest'
-
       responses:
-        "201":
-          description: Подписка оформлена
-
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Follow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags:
         - Follows
-      summary: Отписаться от пользователя
-
+      summary: 'Отписаться от пользователя'
       parameters:
-        - name: id
+        -
+          name: id
           in: path
           required: true
           schema:
             type: integer
-
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FollowRequest'
-
       responses:
-        "204":
-          description: Подписка удалена
-
+        '204':
+          description: 'Подписка удалена'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: 'Получить мой профиль (альтернативный путь)'
+      security:
+        -
+          bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 components:
-
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
   schemas:
-
     RegisterRequest:
       type: object
-
       required:
         - username
         - email
         - password
-
       properties:
         username:
           type: string
           example: nikita
-
+          minLength: 3
+          maxLength: 64
         email:
           type: string
           example: nikita@mail.com
-
+          format: email
+          maxLength: 254
         password:
           type: string
           example: 123456
-
+          minLength: 6
+          maxLength: 72
+      additionalProperties: false
     LoginRequest:
       type: object
-
       required:
         - email
         - password
-
       properties:
         email:
           type: string
           example: nikita@mail.com
-
+          format: email
         password:
           type: string
           example: 123456
-
+      additionalProperties: false
     RecipeCreate:
       type: object
-
       required:
         - title
         - difficulty
-
       properties:
         title:
           type: string
           example: Carbonara
-
+          minLength: 1
+          maxLength: 255
         description:
           type: string
-          example: Very tasty pasta
-
+          example: 'Very tasty pasta'
+          maxLength: 10000
+          default: ""
         difficulty:
           type: string
-
           enum:
             - easy
             - medium
             - hard
-
         cooking_time:
           type: integer
           example: 30
-
+          minimum: 1
+          default: 1
         servings:
           type: integer
           example: 2
-
+          minimum: 1
+          default: 1
+      additionalProperties: false
     CommentCreate:
       type: object
-
+      additionalProperties: false
       required:
         - text
-        - user_id
-
       properties:
         text:
           type: string
-          example: Very tasty
-
-        user_id:
-          type: integer
-          example: 1
-
-    FollowRequest:
-      type: object
-
-      required:
-        - follower_id
-
-      properties:
-        follower_id:
-          type: integer
-          example: 1
-
+          minLength: 1
+          maxLength: 5000
+          example: 'Очень вкусно'
     ErrorResponse:
       type: object
-
       properties:
         error:
           type: string
           example: BadRequest
-
         message:
           type: string
-          example: Неверные данные
-
+          example: 'Неверные данные'
+    RecipeUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          example: Carbonara
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          example: 'Very tasty pasta'
+          maxLength: 10000
+          default: ""
+        difficulty:
+          type: string
+          enum:
+            - easy
+            - medium
+            - hard
+        cooking_time:
+          type: integer
+          example: 30
+          minimum: 1
+          default: 1
+        servings:
+          type: integer
+          example: 2
+          minimum: 1
+          default: 1
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          example: Carbonara
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          example: 'Very tasty pasta'
+          maxLength: 10000
+          default: ""
+        difficulty:
+          type: string
+          enum:
+            - easy
+            - medium
+            - hard
+        cooking_time:
+          type: integer
+          example: 30
+          minimum: 1
+          default: 1
+        servings:
+          type: integer
+          example: 2
+          minimum: 1
+          default: 1
+        authorId:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - title
+        - description
+        - difficulty
+        - cooking_time
+        - servings
+        - authorId
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+      required:
+        - id
+        - username
+        - email
+    Token:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        text:
+          type: string
+        recipe_id:
+          type: integer
+          minimum: 1
+        user_id:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - text
+        - recipe_id
+        - user_id
+    Reaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        recipe_id:
+          type: integer
+          minimum: 1
+        user_id:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - recipe_id
+        - user_id
+    Follow:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        follower_id:
+          type: integer
+          minimum: 1
+        following_id:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - follower_id
+        - following_id
   responses:
-
     BadRequest:
-      description: Неверный запрос
-
+      description: 'Неверный запрос'
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-
     Unauthorized:
-      description: Не авторизован
-
+      description: 'Не авторизован'
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-
     NotFound:
-      description: Не найдено
-
+      description: 'Не найдено'
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 'Недостаточно прав'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 'Запись уже существует'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: 'Связанный сервис недоступен'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+security:
+  -
+    bearerAuth: []

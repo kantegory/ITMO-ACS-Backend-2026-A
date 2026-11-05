@@ -1,26 +1,24 @@
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-} from "typeorm"
+import { Entity, PrimaryGeneratedColumn, Column } from "typeorm"
 
 @Entity()
 export class Recipe {
-
     @PrimaryGeneratedColumn()
     id: number
 
     @Column()
     title: string
 
-    @Column()
+    @Column({ default: "" })
     description: string
 
     @Column()
     difficulty: string
 
-    @Column()
+    @Column({ default: 1 })
     cooking_time: number
+
+    @Column({ default: 1 })
+    servings: number
 
     @Column()
     authorId: number

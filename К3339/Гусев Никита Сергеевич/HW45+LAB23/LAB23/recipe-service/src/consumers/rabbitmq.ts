@@ -1,10 +1,13 @@
 import amqp from "amqplib"
+import { RABBIT_URL } from "../../../shared/config"
 
-export async function getChannel() {
-    const connection = await amqp.connect("amqp://rabbitmq:5672")
-    const channel = await connection.createChannel()
+export async function getConnection() {
 
-    await channel.assertQueue("user_events")
+    const connection = await amqp.connect(RABBIT_URL, { timeout: 3000 })
 
-    return channel
+    connection.on("error", error => {
+        console.warn("RabbitMQ:", error.message)
+    })
+
+    return connection
 }

@@ -1,60 +1,234 @@
 openapi: 3.0.3
-
 info:
-  title: Recipe Platform Internal API
+  title: 'Recipe Platform Internal API'
   version: 1.0.0
-
-servers:
-  - url: http://auth-service:8081
-  - url: http://recipe-service:8082
-  - url: http://comment-service:8083
-
+security:
+  -
+    internalToken: []
 paths:
-
-  /internal/users/{id}:
+  '/internal/users/{id}':
+    servers:
+      -
+        url: 'http://auth-service:8081'
+    parameters:
+      -
+        name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
     get:
-      summary: Получить пользователя
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-
       responses:
         '200':
-          description: Пользователь найден
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: 'Неверный ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 'Неверный служебный ключ'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Пользователь не найден
-
-  /internal/recipes/{id}:
+          description: 'Не найдено'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  '/internal/recipes/{id}':
+    servers:
+      -
+        url: 'http://recipe-service:8082'
+    parameters:
+      -
+        name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
     get:
-      summary: Получить рецепт
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-
       responses:
         '200':
-          description: Рецепт найден
-
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+        '400':
+          description: 'Неверный ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 'Неверный служебный ключ'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Рецепт не найден
-
-  /internal/comments/recipe/{id}:
+          description: 'Не найдено'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  '/internal/comments/recipe/{id}':
+    servers:
+      -
+        url: 'http://comment-service:8083'
+    parameters:
+      -
+        name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
     get:
-      summary: Получить комментарии рецепта
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-
       responses:
         '200':
-          description: Комментарии получены
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+        '400':
+          description: 'Неверный ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 'Неверный служебный ключ'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 'Не найдено'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: 'Удалить комментарии при удалении рецепта'
+      responses:
+        '204':
+          description: Удалено
+        '400':
+          description: 'Неверный ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 'Неверный служебный ключ'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+      required:
+        - id
+        - username
+        - email
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          example: Carbonara
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          example: 'Very tasty pasta'
+          maxLength: 10000
+          default: ""
+        difficulty:
+          type: string
+          enum:
+            - easy
+            - medium
+            - hard
+        cooking_time:
+          type: integer
+          example: 30
+          minimum: 1
+          default: 1
+        servings:
+          type: integer
+          example: 2
+          minimum: 1
+          default: 1
+        authorId:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - title
+        - description
+        - difficulty
+        - cooking_time
+        - servings
+        - authorId
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        text:
+          type: string
+        recipe_id:
+          type: integer
+          minimum: 1
+        user_id:
+          type: integer
+          minimum: 1
+      required:
+        - id
+        - text
+        - recipe_id
+        - user_id
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: BadRequest
+        message:
+          type: string
+          example: 'Неверные данные'
