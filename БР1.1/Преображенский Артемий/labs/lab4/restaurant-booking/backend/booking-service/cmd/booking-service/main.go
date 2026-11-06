@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5"
 	httpSwagger "github.com/swaggo/http-swagger"
 
@@ -31,6 +33,13 @@ func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		panic(err)
+	}
+	if os.Getenv("SENTRY_DSN") != "" {
+		if err := sentry.Init(sentry.ClientOptions{AttachStacktrace: true}); err != nil {
+			log.Print("Sentry disabled: invalid configuration")
+		} else {
+			defer sentry.Flush(2 * time.Second)
+		}
 	}
 	if err := AppRun(context.Background(), cfg); err != nil {
 		panic(err)

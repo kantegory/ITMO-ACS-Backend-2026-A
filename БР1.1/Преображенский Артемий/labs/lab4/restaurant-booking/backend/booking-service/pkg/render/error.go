@@ -5,8 +5,12 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/getsentry/sentry-go"
+
 	"restaurant-booking/booking-service/internal/domain"
 )
+
+var errInternalBooking = errors.New("booking request failed with an internal error")
 
 func WriteDomainError(w http.ResponseWriter, err error) {
 	log.Println(err)
@@ -24,6 +28,7 @@ func WriteDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrUnavailable):
 		WriteError(w, http.StatusConflict)
 	default:
+		sentry.CaptureException(errInternalBooking)
 		WriteError(w, http.StatusInternalServerError)
 	}
 }

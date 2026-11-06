@@ -3,6 +3,7 @@ module restaurant-booking
 go 1.25.0
 
 require (
+	github.com/getsentry/sentry-go v0.46.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
@@ -29,6 +30,7 @@ require (
 	github.com/swaggo/swag v1.8.1 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
