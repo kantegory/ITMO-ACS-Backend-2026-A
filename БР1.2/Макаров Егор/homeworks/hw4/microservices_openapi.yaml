@@ -1,0 +1,310 @@
+openapi: 3.0.3
+info:
+  title: JobSite — Internal (межсервисное) API
+  version: 1.0.0
+  description: |
+    Спецификация эндпоинтов **межсервисного взаимодействия** для микросервисной
+    архитектуры сайта поиска работы (после разделения монолита).
+
+    Это внутренний API (`/internal/...`), недоступный внешним клиентам — вызывается
+    только другими сервисами через API Gateway/service mesh. Внешний (публичный) API
+    остаётся прежним и описан в ДЗ2 (`openapi.yaml`).
+
+    ## Принципы
+    - **Database-per-service**: каждый сервис владеет своей БД; данные другого сервиса
+      запрашиваются только через его API (синхронно) или приходят событиями (асинхронно).
+    - **Синхронные** вызовы (REST) — когда нужен немедленный ответ (валидация ссылок,
+      сбор детальной страницы).
+    - **Асинхронные** события (RabbitMQ) — для слабосвязанных реакций (создание профиля
+      после регистрации, уведомление об отклике).
+    - Аутентификация межсервисных вызовов — служебный токен (`X-Internal-Token`).
+
+servers:
+  - url: http://auth-service:3001
+    description: Auth Service
+  - url: http://catalog-service:3002
+    description: Catalog Service
+  - url: http://seeker-service:3003
+    description: Seeker Service
+  - url: http://employer-service:3004
+    description: Employer Service
+  - url: http://vacancy-service:3005
+    description: Vacancy Service
+  - url: http://application-service:3006
+    description: Application Service
+
+security:
+  - internalToken: []
+
+tags:
+  - name: Auth Service
+  - name: Catalog Service
+  - name: Seeker Service
+  - name: Employer Service
+  - name: Vacancy Service
+
+paths:
+
+  # ---------------- Auth Service ----------------
+  /internal/users/{id}:
+    get:
+      tags: [Auth Service]
+      summary: Получить пользователя по id (валидация существования и роли)
+      description: Используется другими сервисами для проверки, что пользователь существует и имеет нужную роль.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Данные пользователя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/users/verify-token:
+    post:
+      tags: [Auth Service]
+      summary: Проверить JWT и вернуть id/роль
+      description: Вызывается API Gateway для централизованной проверки access-токена.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Токен валиден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id: { type: integer, format: int64 }
+                  role: { type: string, enum: [seeker, employer] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------- Catalog Service ----------------
+  /internal/skills:
+    get:
+      tags: [Catalog Service]
+      summary: Получить навыки по списку id
+      description: Seeker/Vacancy сервисы запрашивают названия навыков для отображения.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список id навыков
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: Список навыков
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InternalSkill' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/skills/{id}/exists:
+    get:
+      tags: [Catalog Service]
+      summary: Проверить существование навыка
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/industries/{id}:
+    get:
+      tags: [Catalog Service]
+      summary: Получить отрасль по id
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Отрасль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalIndustry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Seeker Service ----------------
+  /internal/resumes/{id}:
+    get:
+      tags: [Seeker Service]
+      summary: Получить резюме по id (для Application Service)
+      description: |
+        Application Service при создании отклика запрашивает резюме, чтобы проверить
+        существование и принадлежность соискателю, а также для построения детального отклика.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Резюме
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalResume' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/seekers/{id}:
+    get:
+      tags: [Seeker Service]
+      summary: Получить профиль соискателя по id
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Профиль соискателя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalSeeker' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Employer Service ----------------
+  /internal/companies/{id}:
+    get:
+      tags: [Employer Service]
+      summary: Получить компанию по id (для Vacancy Service)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Компания
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalCompany' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/employers/{id}/company:
+    get:
+      tags: [Employer Service]
+      summary: Узнать компанию работодателя (для проверки прав на вакансию)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Связка работодатель→компания
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  employer_id: { type: integer, format: int64 }
+                  company_id: { type: integer, format: int64, nullable: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------- Vacancy Service ----------------
+  /internal/vacancies/{id}:
+    get:
+      tags: [Vacancy Service]
+      summary: Получить вакансию по id (для Application Service)
+      description: Application Service проверяет существование вакансии и её компанию при создании/просмотре отклика.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Вакансия
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalVacancy' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    Unauthorized:
+      description: Недействительный служебный токен
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string, example: NOT_FOUND }
+        message: { type: string, example: "Ресурс не найден" }
+
+    InternalUser:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string, format: email }
+        role: { type: string, enum: [seeker, employer] }
+
+    InternalSkill:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: "Node.js" }
+
+    InternalIndustry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: "Информационные технологии" }
+
+    InternalSeeker:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        first_name: { type: string }
+        last_name: { type: string }
+
+    InternalResume:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        job_seeker_id: { type: integer, format: int64 }
+        title: { type: string }
+
+    InternalCompany:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        industry_id: { type: integer, format: int64, nullable: true }
+
+    InternalVacancy:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        company_id: { type: integer, format: int64 }
+        employer_id: { type: integer, format: int64, nullable: true }
+        title: { type: string }
+        status: { type: string, enum: [active, closed, draft] }
