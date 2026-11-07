@@ -1,0 +1,185 @@
+# =============================================================================
+# ЛР3. Контейнеризация сервиса «Lecter's Recipes»
+#
+#   docker compose up -d --build   — поднять весь контур
+#   docker compose ps              — состояние контейнеров
+#   docker compose logs -f gateway — логи шлюза
+#   docker compose down -v         — остановить и удалить данные
+#
+# Сборка ведётся из каталогов ЛР2: единый исходный код, без дублирования.
+# =============================================================================
+name: lecters-recipes
+
+services:
+  # ------------------------------------------------------------------ данные
+  postgres:
+    image: postgres:17-alpine
+    container_name: lecters-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lecters}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lecters}
+      POSTGRES_DB: postgres
+      # локаль для корректного регистронезависимого поиска по кириллице
+      LANG: en_US.utf8
+      POSTGRES_INITDB_ARGS: "--locale=en_US.utf8 --encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    ports:
+      - "5433:5432"          # 5433 снаружи, чтобы не конфликтовать с локальным PostgreSQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lecters} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [lecters]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: lecters-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-lecters}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-lecters}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"          # AMQP
+      - "15672:15672"        # веб-консоль управления
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks: [lecters]
+
+  # --------------------------------------------------------------- сервисы
+  user-service:
+    build:
+      context: ../lab2/user-service
+      dockerfile: Dockerfile
+    container_name: lecters-user-service
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-lecters}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-lecters}
+      DB_NAME: lecters_users
+      DB_SYNCHRONIZE: "true"
+      JWT_SECRET: ${JWT_SECRET:-lecters-recipes-shared-secret}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-lecters-internal-token}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-lecters}:${RABBITMQ_PASSWORD:-lecters}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipes.events
+      RABBITMQ_ENABLED: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [lecters]
+
+  recipe-service:
+    build:
+      context: ../lab2/recipe-service
+      dockerfile: Dockerfile
+    container_name: lecters-recipe-service
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-lecters}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-lecters}
+      DB_NAME: lecters_recipes
+      DB_SYNCHRONIZE: "true"
+      JWT_SECRET: ${JWT_SECRET:-lecters-recipes-shared-secret}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-lecters-internal-token}
+      USER_SERVICE_URL: http://user-service:3001
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-lecters}:${RABBITMQ_PASSWORD:-lecters}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipes.events
+      RABBITMQ_ENABLED: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [lecters]
+
+  social-service:
+    build:
+      context: ../lab2/social-service
+      dockerfile: Dockerfile
+    container_name: lecters-social-service
+    environment:
+      PORT: 3003
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-lecters}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-lecters}
+      DB_NAME: lecters_social
+      DB_SYNCHRONIZE: "true"
+      JWT_SECRET: ${JWT_SECRET:-lecters-recipes-shared-secret}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-lecters-internal-token}
+      RECIPE_SERVICE_URL: http://recipe-service:3002
+      USER_SERVICE_URL: http://user-service:3001
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-lecters}:${RABBITMQ_PASSWORD:-lecters}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: recipes.events
+      RABBITMQ_ENABLED: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      recipe-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [lecters]
+
+  gateway:
+    build:
+      context: ../lab2/api-gateway
+      dockerfile: Dockerfile
+    container_name: lecters-gateway
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-lecters-recipes-shared-secret}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-lecters-internal-token}
+      USER_SERVICE_URL: http://user-service:3001
+      RECIPE_SERVICE_URL: http://recipe-service:3002
+      SOCIAL_SERVICE_URL: http://social-service:3003
+      UPSTREAM_TIMEOUT_MS: 5000
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    depends_on:
+      user-service: { condition: service_healthy }
+      recipe-service: { condition: service_healthy }
+      social-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [lecters]
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+
+networks:
+  lecters:
+    driver: bridge

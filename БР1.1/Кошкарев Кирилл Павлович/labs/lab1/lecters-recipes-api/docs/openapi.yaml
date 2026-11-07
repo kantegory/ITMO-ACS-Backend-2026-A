@@ -1,0 +1,1363 @@
+openapi: 3.0.3
+info:
+  title: Lecter's Recipes API
+  version: 1.0.0
+  description: |
+    REST API сервиса обмена рецептами и кулинарных блогов «Lecter's Recipes».
+
+    Вариант 5 лабораторного проекта. Спроектировано в рамках ДЗ2 на основе
+    ER-диаграммы из ДЗ1.
+
+    ## Общие соглашения
+
+    * Базовый путь — `/api/v1`, версия фиксируется в URL.
+    * Формат обмена — `application/json; charset=utf-8`.
+    * Аутентификация — JWT (`Authorization: Bearer <access_token>`).
+    * Идентификаторы ресурсов — целые числа (`int64`).
+    * Все коллекции постраничные: параметры `page` (с 1) и `limit` (1..100),
+      ответ содержит объект `meta` с полями `page`, `limit`, `total`, `totalPages`.
+    * Ошибки возвращаются единым объектом `ErrorResponse`.
+    * Время — строки в формате ISO-8601 (UTC).
+    * Ссылки на медиа принимают абсолютный http(s)-URL либо путь от корня сайта
+      (`/images/osso-buco.jpg`) — для файлов, которые отдаёт само приложение.
+  contact:
+    name: Кошкарев Кирилл Павлович, БР1.1
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Локальный сервер разработки (монолит, ЛР1)
+  - url: http://localhost:8080/api/v1
+    description: API Gateway микросервисной версии (ЛР2/ЛР3)
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, обновление токена
+  - name: Users
+    description: Личный кабинет, публичные профили, подписки
+  - name: Recipes
+    description: CRUD рецептов, поиск и фильтрация
+  - name: RecipeContent
+    description: Состав, шаги приготовления и медиа рецепта
+  - name: Social
+    description: Лайки, избранное, комментарии, лента
+  - name: Dictionaries
+    description: Справочники — категории, кухни, теги, ингредиенты
+  - name: System
+    description: Служебные эндпоинты
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==========================================================================
+  # System
+  # ==========================================================================
+  /health:
+    get:
+      tags: [System]
+      summary: Проверка работоспособности сервиса
+      security: []
+      responses:
+        '200':
+          description: Сервис доступен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: lecters-recipes-api }
+                  uptime: { type: number, format: float, example: 128.4 }
+
+  # ==========================================================================
+  # Auth
+  # ==========================================================================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Пользователь создан, выданы токены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: Email или username уже заняты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                error:
+                  code: CONFLICT
+                  message: Пользователь с таким email уже существует
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход по email и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Неверные учётные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Неверный email или пароль
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление пары токенов по refresh-токену
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Новая пара токенов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ==========================================================================
+  # Users
+  # ==========================================================================
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Личный кабинет — профиль текущего пользователя
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Users]
+      summary: Редактирование собственного профиля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users/me/favorites:
+    get:
+      tags: [Social]
+      summary: Сохранённые рецепты текущего пользователя
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список сохранённых рецептов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users/me/feed:
+    get:
+      tags: [Social]
+      summary: Лента публикаций кулинаров, на которых оформлена подписка
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничная лента
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Поиск кулинаров
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Поиск по username и полному имени
+          schema: { type: string, maxLength: 64 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список публичных профилей
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserListResponse' }
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Users]
+      summary: Публичный профиль кулинара
+      security: []
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicUser' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{id}/recipes:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Users]
+      summary: Публикации кулинара
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список рецептов автора
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{id}/follow:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Social]
+      summary: Подписаться на кулинара
+      responses:
+        '204': { description: Подписка оформлена }
+        '400':
+          description: Попытка подписаться на самого себя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Нельзя подписаться на самого себя
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Подписка уже существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [Social]
+      summary: Отписаться от кулинара
+      responses:
+        '204': { description: Подписка удалена }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{id}/followers:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Social]
+      summary: Подписчики кулинара
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список подписчиков
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{id}/following:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Social]
+      summary: Подписки кулинара
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список подписок
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ==========================================================================
+  # Dictionaries
+  # ==========================================================================
+  /categories:
+    get:
+      tags: [Dictionaries]
+      summary: Список типов блюд
+      security: []
+      responses:
+        '200':
+          description: Справочник категорий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Category' }
+    post:
+      tags: [Dictionaries]
+      summary: Добавить тип блюда (только администратор)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 64, example: Десерты }
+                description: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Категория создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /cuisines:
+    get:
+      tags: [Dictionaries]
+      summary: Список кухонь
+      security: []
+      responses:
+        '200':
+          description: Справочник кухонь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Cuisine' }
+    post:
+      tags: [Dictionaries]
+      summary: Добавить кухню (только администратор)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 64, example: Итальянская }
+      responses:
+        '201':
+          description: Кухня создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cuisine' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /tags:
+    get:
+      tags: [Dictionaries]
+      summary: Список тегов
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 48 }
+      responses:
+        '200':
+          description: Справочник тегов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Tag' }
+    post:
+      tags: [Dictionaries]
+      summary: Создать тег
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 48, example: веган }
+      responses:
+        '201':
+          description: Тег создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tag' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /ingredients:
+    get:
+      tags: [Dictionaries]
+      summary: Поиск по справочнику ингредиентов
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Подстрока названия
+          schema: { type: string, maxLength: 128 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список ингредиентов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Ingredient' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+    post:
+      tags: [Dictionaries]
+      summary: Добавить ингредиент в справочник
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 128, example: Базилик }
+                defaultUnit: { type: string, maxLength: 32, default: г }
+                kcalPer100: { type: number, format: float, nullable: true }
+      responses:
+        '201':
+          description: Ингредиент создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ingredient' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ==========================================================================
+  # Recipes
+  # ==========================================================================
+  /recipes:
+    get:
+      tags: [Recipes]
+      summary: Поиск рецептов с фильтрацией
+      description: |
+        Основной поисковый эндпоинт витрины. Фильтры комбинируются по «И».
+        Без авторизации возвращаются только рецепты со статусом `published`.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Полнотекстовый поиск по названию и описанию
+          schema: { type: string, maxLength: 160 }
+        - name: categoryId
+          in: query
+          description: Фильтр по типу блюда
+          schema: { type: integer, format: int64 }
+        - name: cuisineId
+          in: query
+          description: Фильтр по кухне
+          schema: { type: integer, format: int64 }
+        - name: difficulty
+          in: query
+          description: Фильтр по сложности
+          schema: { $ref: '#/components/schemas/Difficulty' }
+        - name: maxCookTime
+          in: query
+          description: Максимальное время приготовления, мин
+          schema: { type: integer, minimum: 0, example: 45 }
+        - name: minCookTime
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: ingredientId
+          in: query
+          description: Рецепт должен содержать все перечисленные ингредиенты
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+        - name: tag
+          in: query
+          description: Слаг тега (можно повторять)
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: string }
+        - name: authorId
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: sort
+          in: query
+          description: Поле сортировки
+          schema:
+            type: string
+            enum: [newest, oldest, popular, cookTimeAsc, cookTimeDesc]
+            default: newest
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список карточек рецептов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeListResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Recipes]
+      summary: Создать рецепт
+      description: |
+        Создаёт черновик рецепта вместе с составом и шагами.
+        Публикация выполняется отдельным вызовом `POST /recipes/{id}/publish`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRecipeRequest' }
+      responses:
+        '201':
+          description: Рецепт создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Указанная категория, кухня или ингредиент не найдены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /recipes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Recipes]
+      summary: Страница рецепта — состав, шаги, медиа, автор
+      security: []
+      responses:
+        '200':
+          description: Полная карточка рецепта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Recipes]
+      summary: Изменить рецепт (только автор или администратор)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRecipeRequest' }
+      responses:
+        '200':
+          description: Обновлённый рецепт
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Recipes]
+      summary: Удалить рецепт (только автор или администратор)
+      responses:
+        '204': { description: Рецепт удалён }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Recipes]
+      summary: Опубликовать рецепт
+      responses:
+        '200':
+          description: Рецепт опубликован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: Рецепт не готов к публикации (нет шагов или состава)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                error:
+                  code: UNPROCESSABLE
+                  message: Нельзя опубликовать рецепт без шагов приготовления
+
+  /recipes/{id}/ingredients:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [RecipeContent]
+      summary: Состав рецепта
+      security: []
+      responses:
+        '200':
+          description: Список позиций состава
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeIngredient' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [RecipeContent]
+      summary: Полностью заменить состав рецепта
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/RecipeIngredientInput' }
+      responses:
+        '200':
+          description: Новый состав рецепта
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeIngredient' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/steps:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [RecipeContent]
+      summary: Пошаговые инструкции
+      security: []
+      responses:
+        '200':
+          description: Шаги приготовления по возрастанию номера
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeStep' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [RecipeContent]
+      summary: Полностью заменить список шагов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/RecipeStepInput' }
+      responses:
+        '200':
+          description: Новый список шагов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeStep' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/media:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [RecipeContent]
+      summary: Галерея фото и видео рецепта
+      security: []
+      responses:
+        '200':
+          description: Медиа рецепта
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeMedia' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [RecipeContent]
+      summary: Добавить медиа к рецепту
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeMediaInput' }
+      responses:
+        '201':
+          description: Медиа добавлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeMedia' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/media/{mediaId}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - name: mediaId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    delete:
+      tags: [RecipeContent]
+      summary: Удалить медиа рецепта
+      responses:
+        '204': { description: Медиа удалено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ==========================================================================
+  # Social
+  # ==========================================================================
+  /recipes/{id}/like:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Social]
+      summary: Поставить лайк рецепту
+      responses:
+        '200':
+          description: Актуальное состояние реакции
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReactionState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Social]
+      summary: Снять лайк
+      responses:
+        '200':
+          description: Актуальное состояние реакции
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReactionState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/favorite:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Social]
+      summary: Сохранить рецепт в личный кабинет
+      responses:
+        '200':
+          description: Актуальное состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReactionState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Social]
+      summary: Убрать рецепт из сохранённых
+      responses:
+        '200':
+          description: Актуальное состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReactionState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Social]
+      summary: Комментарии к рецепту
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Постраничный список комментариев
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentListResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Social]
+      summary: Оставить комментарий (или ответ на комментарий)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCommentRequest' }
+      responses:
+        '201':
+          description: Комментарий создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /comments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    patch:
+      tags: [Social]
+      summary: Изменить свой комментарий
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '200':
+          description: Обновлённый комментарий
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Social]
+      summary: Удалить свой комментарий
+      responses:
+        '204': { description: Комментарий удалён }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access-токен, выдаётся эндпоинтами `/auth/register` и `/auth/login`
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор ресурса
+      schema: { type: integer, format: int64, minimum: 1 }
+    Page:
+      name: page
+      in: query
+      description: Номер страницы (с 1)
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      description: Размер страницы
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationError:
+      description: Некорректные входные данные
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Проверьте корректность переданных данных
+              details:
+                - field: email
+                  message: Некорректный формат email
+    Unauthorized:
+      description: Требуется аутентификация или токен недействителен
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Требуется авторизация
+    Forbidden:
+      description: Недостаточно прав на операцию
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: FORBIDDEN
+              message: Операция доступна только автору рецепта
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: NOT_FOUND
+              message: Рецепт не найден
+    Conflict:
+      description: Конфликт состояния ресурса
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: CONFLICT
+              message: Ресурс с такими данными уже существует
+
+  schemas:
+    # ------------------------------------------------------------------ общие
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR, UNAUTHORIZED, INVALID_CREDENTIALS, FORBIDDEN,
+                     NOT_FOUND, CONFLICT, UNPROCESSABLE, RATE_LIMITED, INTERNAL_ERROR]
+            message: { type: string, example: Рецепт не найден }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+            requestId: { type: string, format: uuid, nullable: true }
+
+    PageMeta:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 137 }
+        totalPages: { type: integer, example: 7 }
+
+    Difficulty:
+      type: string
+      enum: [easy, medium, hard]
+      description: Уровень сложности рецепта
+
+    RecipeStatus:
+      type: string
+      enum: [draft, published, archived]
+
+    MediaType:
+      type: string
+      enum: [photo, video]
+
+    # --------------------------------------------------------------------- auth
+    RegisterRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email: { type: string, format: email, maxLength: 255, example: hannibal@lecters.recipes }
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[a-zA-Z0-9._-]+$'
+          example: dr_lecter
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          example: Chianti2026!
+        fullName: { type: string, maxLength: 128, nullable: true, example: Hannibal Lecter }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: hannibal@lecters.recipes }
+        password: { type: string, format: password, example: Chianti2026! }
+
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken: { type: string, example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: 'Время жизни access-токена в секундах', example: 3600 }
+        tokenType: { type: string, default: Bearer }
+
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [user]
+          properties:
+            user: { $ref: '#/components/schemas/UserProfile' }
+
+    # -------------------------------------------------------------------- users
+    PublicUser:
+      type: object
+      required: [id, username]
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        username: { type: string, example: dr_lecter }
+        fullName: { type: string, nullable: true }
+        bio: { type: string, nullable: true }
+        avatarUrl: { type: string, nullable: true }
+        recipesCount: { type: integer, example: 12 }
+        followersCount: { type: integer, example: 340 }
+        followingCount: { type: integer, example: 8 }
+        createdAt: { type: string, format: date-time }
+
+    UserProfile:
+      allOf:
+        - $ref: '#/components/schemas/PublicUser'
+        - type: object
+          properties:
+            email: { type: string, format: email }
+            role: { type: string, enum: [user, admin] }
+            isActive: { type: boolean }
+
+    UpdateUserRequest:
+      type: object
+      minProperties: 1
+      properties:
+        fullName: { type: string, maxLength: 128, nullable: true }
+        bio: { type: string, maxLength: 2000, nullable: true }
+        avatarUrl: { type: string, format: uri-reference, maxLength: 512, nullable: true }
+        password: { type: string, format: password, minLength: 8, maxLength: 72 }
+
+    UserListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PublicUser' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    # ------------------------------------------------------------- справочники
+    Category:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Основные блюда }
+        slug: { type: string, example: osnovnye-blyuda }
+        description: { type: string, nullable: true }
+
+    Cuisine:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Итальянская }
+        slug: { type: string, example: italyanskaya }
+
+    Tag:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: веган }
+        slug: { type: string, example: vegan }
+
+    Ingredient:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Базилик }
+        defaultUnit: { type: string, example: г }
+        kcalPer100: { type: number, format: float, nullable: true, example: 23 }
+
+    # ----------------------------------------------------------------- рецепты
+    RecipeIngredientInput:
+      type: object
+      required: [ingredientId, quantity]
+      properties:
+        ingredientId: { type: integer, format: int64 }
+        quantity: { type: number, format: float, minimum: 0.01, example: 200 }
+        unit: { type: string, maxLength: 32, default: г }
+        note: { type: string, maxLength: 160, nullable: true, example: мелко нарезать }
+        position: { type: integer, minimum: 0, default: 0 }
+
+    RecipeIngredient:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+            ingredient: { $ref: '#/components/schemas/Ingredient' }
+        - $ref: '#/components/schemas/RecipeIngredientInput'
+
+    RecipeStepInput:
+      type: object
+      required: [stepNumber, instruction]
+      properties:
+        stepNumber: { type: integer, minimum: 1, example: 1 }
+        instruction: { type: string, minLength: 3, maxLength: 4000 }
+        imageUrl: { type: string, format: uri-reference, maxLength: 512, nullable: true }
+        durationMinutes: { type: integer, minimum: 0, nullable: true }
+
+    RecipeStep:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+        - $ref: '#/components/schemas/RecipeStepInput'
+
+    RecipeMediaInput:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri-reference, maxLength: 512 }
+        type: { $ref: '#/components/schemas/MediaType' }
+        caption: { type: string, maxLength: 160, nullable: true }
+        position: { type: integer, minimum: 0, default: 0 }
+
+    RecipeMedia:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+            createdAt: { type: string, format: date-time }
+        - $ref: '#/components/schemas/RecipeMediaInput'
+
+    RecipeCard:
+      type: object
+      description: Краткая карточка рецепта для витрины и списков
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string, example: Оссо буко по-милански }
+        slug: { type: string, example: osso-buko-po-milanski }
+        summary: { type: string, nullable: true }
+        difficulty: { $ref: '#/components/schemas/Difficulty' }
+        cookTimeMinutes: { type: integer, example: 120 }
+        prepTimeMinutes: { type: integer, example: 30 }
+        servings: { type: integer, example: 4 }
+        calories: { type: integer, nullable: true }
+        coverImageUrl: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/RecipeStatus' }
+        likesCount: { type: integer, example: 42 }
+        commentsCount: { type: integer, example: 7 }
+        author: { $ref: '#/components/schemas/PublicUser' }
+        category: { $ref: '#/components/schemas/Category' }
+        cuisine: { $ref: '#/components/schemas/Cuisine' }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/Tag' }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Recipe:
+      allOf:
+        - $ref: '#/components/schemas/RecipeCard'
+        - type: object
+          properties:
+            description: { type: string, nullable: true }
+            videoUrl: { type: string, nullable: true }
+            ingredients:
+              type: array
+              items: { $ref: '#/components/schemas/RecipeIngredient' }
+            steps:
+              type: array
+              items: { $ref: '#/components/schemas/RecipeStep' }
+            media:
+              type: array
+              items: { $ref: '#/components/schemas/RecipeMedia' }
+            isLiked: { type: boolean, description: Лайкнут ли рецепт текущим пользователем }
+            isFavorite: { type: boolean, description: Сохранён ли рецепт текущим пользователем }
+            updatedAt: { type: string, format: date-time }
+
+    CreateRecipeRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 160, example: Оссо буко по-милански }
+        summary: { type: string, maxLength: 512, nullable: true }
+        description: { type: string, nullable: true }
+        categoryId: { type: integer, format: int64, nullable: true }
+        cuisineId: { type: integer, format: int64, nullable: true }
+        difficulty: { $ref: '#/components/schemas/Difficulty' }
+        prepTimeMinutes: { type: integer, minimum: 0, default: 0 }
+        cookTimeMinutes: { type: integer, minimum: 0, default: 0 }
+        servings: { type: integer, minimum: 1, default: 1 }
+        calories: { type: integer, minimum: 0, nullable: true }
+        coverImageUrl: { type: string, format: uri-reference, maxLength: 512, nullable: true }
+        videoUrl: { type: string, format: uri-reference, maxLength: 512, nullable: true }
+        tags:
+          type: array
+          description: Названия тегов; отсутствующие создаются автоматически
+          items: { type: string, maxLength: 48 }
+        ingredients:
+          type: array
+          items: { $ref: '#/components/schemas/RecipeIngredientInput' }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/RecipeStepInput' }
+
+    UpdateRecipeRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateRecipeRequest'
+        - type: object
+          properties:
+            title: { type: string, minLength: 3, maxLength: 160 }
+            status: { $ref: '#/components/schemas/RecipeStatus' }
+      description: Все поля необязательны, изменяются только переданные
+
+    RecipeListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RecipeCard' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    # ------------------------------------------------------------- социальные
+    ReactionState:
+      type: object
+      properties:
+        recipeId: { type: integer, format: int64 }
+        liked: { type: boolean }
+        favorite: { type: boolean }
+        likesCount: { type: integer }
+
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000, example: Великолепно. Подавать с кьянти. }
+        parentId:
+          type: integer
+          format: int64
+          nullable: true
+          description: Идентификатор комментария, на который даётся ответ
+
+    Comment:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        recipeId: { type: integer, format: int64 }
+        parentId: { type: integer, format: int64, nullable: true }
+        body: { type: string }
+        author: { $ref: '#/components/schemas/PublicUser' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CommentListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+        meta: { $ref: '#/components/schemas/PageMeta' }

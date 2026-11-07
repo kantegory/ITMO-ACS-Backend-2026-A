@@ -1,0 +1,143 @@
+# =============================================================================
+# Контракт асинхронного взаимодействия сервиса «Lecter's Recipes»
+# ДЗ4 (проектирование) / ДЗ5 (реализация на RabbitMQ)
+# =============================================================================
+broker:
+  type: rabbitmq
+  exchange:
+    name: recipes.events
+    type: topic
+    durable: true
+  deliveryMode: persistent          # сообщения переживают перезапуск брокера
+  retry:
+    strategy: dead-letter
+    deadLetterExchange: recipes.events.dlx
+    maxAttempts: 3                  # после трёх неудач сообщение уходит в DLQ
+
+envelope:                           # общая оболочка любого сообщения
+  type: object
+  required: [eventId, type, occurredAt, producer, payload]
+  properties:
+    eventId:    { type: string, format: uuid, description: 'идемпотентный ключ для потребителя' }
+    type:       { type: string, description: 'routing key, например recipe.published' }
+    occurredAt: { type: string, format: date-time }
+    producer:   { type: string, enum: [user-service, recipe-service, social-service] }
+    version:    { type: integer, default: 1 }
+    payload:    { type: object }
+
+queues:
+  social.projections:
+    consumer: social-service
+    bindings: ['user.*', 'recipe.*']
+    purpose: поддержание локальных проекций user_projection и recipe_projection
+  recipe.counters:
+    consumer: recipe-service
+    bindings: ['social.recipe.*', 'social.comment.*']
+    purpose: обновление денормализованных счётчиков likes_count и comments_count
+
+events:
+  # --------------------------------------------------------------- user-service
+  user.registered:
+    producer: user-service
+    consumers: [social-service]
+    payload:
+      userId:   { type: integer, format: int64 }
+      username: { type: string }
+      fullName: { type: string, nullable: true }
+      avatarUrl: { type: string, nullable: true }
+    example:
+      userId: 7
+      username: will_graham
+      fullName: Will Graham
+      avatarUrl: null
+
+  user.updated:
+    producer: user-service
+    consumers: [social-service]
+    payload:
+      userId:   { type: integer, format: int64 }
+      username: { type: string }
+      fullName: { type: string, nullable: true }
+      avatarUrl: { type: string, nullable: true }
+
+  # ------------------------------------------------------------- recipe-service
+  recipe.published:
+    producer: recipe-service
+    consumers: [social-service]
+    payload:
+      recipeId: { type: integer, format: int64 }
+      authorId: { type: integer, format: int64 }
+      title:    { type: string }
+      status:   { type: string, enum: [published] }
+    example:
+      recipeId: 12
+      authorId: 1
+      title: Оссо буко по-милански
+      status: published
+
+  recipe.updated:
+    producer: recipe-service
+    consumers: [social-service]
+    payload:
+      recipeId: { type: integer, format: int64 }
+      authorId: { type: integer, format: int64 }
+      title:    { type: string }
+      status:   { type: string, enum: [draft, published, archived] }
+
+  recipe.deleted:
+    producer: recipe-service
+    consumers: [social-service]
+    description: |
+      Social-service каскадно удаляет лайки, избранное и комментарии удалённого
+      рецепта — межбазовых внешних ключей нет, согласованность обеспечивается событием.
+    payload:
+      recipeId: { type: integer, format: int64 }
+
+  # ------------------------------------------------------------- social-service
+  social.recipe.liked:
+    producer: social-service
+    consumers: [recipe-service]
+    payload:
+      recipeId: { type: integer, format: int64 }
+      userId:   { type: integer, format: int64 }
+      delta:    { type: integer, enum: [1] }
+
+  social.recipe.unliked:
+    producer: social-service
+    consumers: [recipe-service]
+    payload:
+      recipeId: { type: integer, format: int64 }
+      userId:   { type: integer, format: int64 }
+      delta:    { type: integer, enum: [-1] }
+
+  social.comment.created:
+    producer: social-service
+    consumers: [recipe-service]
+    payload:
+      recipeId:  { type: integer, format: int64 }
+      commentId: { type: integer, format: int64 }
+      authorId:  { type: integer, format: int64 }
+      delta:     { type: integer, enum: [1] }
+
+  social.comment.deleted:
+    producer: social-service
+    consumers: [recipe-service]
+    payload:
+      recipeId:  { type: integer, format: int64 }
+      commentId: { type: integer, format: int64 }
+      delta:     { type: integer, enum: [-1] }
+
+guarantees:
+  delivery: at-least-once
+  idempotency: |
+    Потребитель хранит обработанные eventId в таблице processed_events и
+    игнорирует повтор. Счётчики обновляются оператором UPDATE ... SET x = x + delta,
+    поэтому повторная доставка не искажает данные.
+  ordering: |
+    Строгий порядок гарантируется только в пределах одной очереди. Проекции
+    содержат synced_at и не применяют событие, которое старше уже сохранённого.
+  degradation: |
+    Недоступность брокера не блокирует пользовательские сценарии: публикация
+    события выполняется после успешной фиксации транзакции, при ошибке пишется
+    предупреждение в лог, а расхождение устраняется синхронным вызовом
+    /internal/recipes/{id}/summary или плановой пересинхронизацией.

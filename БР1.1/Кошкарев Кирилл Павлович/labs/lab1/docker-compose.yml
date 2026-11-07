@@ -1,0 +1,54 @@
+# Запуск монолита ЛР1 одной командой: docker compose up -d --build
+# Витрина и Swagger: http://localhost:${API_PORT:-3000}/
+name: lecters-recipes-monolith
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: lecters-mono-postgres
+    environment:
+      POSTGRES_USER: lecters
+      POSTGRES_PASSWORD: lecters
+      POSTGRES_DB: lecters_recipes
+      LANG: en_US.utf8
+      # локаль нужна, чтобы ILIKE сворачивал регистр кириллицы при поиске рецептов
+      POSTGRES_INITDB_ARGS: "--locale=en_US.utf8 --encoding=UTF8"
+    volumes:
+      - mono-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lecters -d lecters_recipes"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./lecters-recipes-api
+      dockerfile: Dockerfile
+    container_name: lecters-mono-api
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      API_PREFIX: /api/v1
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: lecters
+      DB_PASSWORD: lecters
+      DB_NAME: lecters_recipes
+      DB_SYNCHRONIZE: "true"
+      JWT_SECRET: lecters-recipes-dev-secret-change-me
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  mono-postgres-data:

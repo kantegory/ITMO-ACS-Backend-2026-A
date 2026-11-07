@@ -1,0 +1,184 @@
+(node:97870) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+(Use `node --trace-deprecation ...` to show where the warning was created)
+newman
+
+Lecter's Recipes API — основной сценарий
+
+→ 00. Проверка доступности сервиса
+  GET http://localhost:3000/health [200 OK, 696B, 10ms]
+  ✓  статус 200
+  ✓  сервис отвечает ok
+  ✓  ответ быстрее 1 с
+
+→ 01. Регистрация нового кулинара
+  POST http://localhost:3000/api/v1/auth/register [201 Created, 1.43kB, 73ms]
+  ✓  статус 201
+  ✓  выдан accessToken
+  ✓  выдан refreshToken
+  ✓  профиль содержит наш username
+  ✓  пароль не возвращается наружу
+
+→ 02. Повторная регистрация того же e-mail → 409
+  POST http://localhost:3000/api/v1/auth/register [409 Conflict, 750B, 3ms]
+  ✓  статус 409
+  ✓  код ошибки CONFLICT
+
+→ 03. Регистрация с некорректными данными → 400
+  POST http://localhost:3000/api/v1/auth/register [400 Bad Request, 1kB, 1ms]
+  ✓  статус 400
+  ✓  код VALIDATION_ERROR
+  ✓  перечислены проблемные поля
+
+→ 04. Вход с неверным паролем → 401
+  POST http://localhost:3000/api/v1/auth/login [401 Unauthorized, 734B, 53ms]
+  ✓  статус 401
+  ✓  код INVALID_CREDENTIALS
+
+→ 05. Вход в систему
+  POST http://localhost:3000/api/v1/auth/login [200 OK, 1.42kB, 53ms]
+  ✓  статус 200
+  ✓  тип токена Bearer
+  ✓  срок жизни токена положителен
+
+→ 06. Личный кабинет без токена → 401
+  GET http://localhost:3000/api/v1/users/me [401 Unauthorized, 726B, 1ms]
+  ✓  статус 401
+  ✓  код UNAUTHORIZED
+
+→ 07. Личный кабинет пользователя
+  GET http://localhost:3000/api/v1/users/me [200 OK, 902B, 2ms]
+  ✓  статус 200
+  ✓  e-mail совпадает с регистрационным
+  ✓  есть счётчики профиля
+
+→ 08. Справочник ингредиентов
+  GET http://localhost:3000/api/v1/ingredients?limit=100 [200 OK, 3.02kB, 3ms]
+  ✓  статус 200
+  ✓  справочник не пуст
+  ✓  есть метаданные пагинации
+
+→ 09. Список рецептов (витрина)
+  GET http://localhost:3000/api/v1/recipes?limit=20 [200 OK, 7.58kB, 7ms]
+  ✓  статус 200
+  ✓  список не пуст
+  ✓  выдача содержит только опубликованные
+  ✓  карточка содержит автора и счётчики
+
+→ 10. Фильтрация: сложность + время + сортировка
+  GET http://localhost:3000/api/v1/recipes?difficulty=hard&maxCookTime=180&sort=cookTimeAsc&limit=10 [200 OK, 1.99kB, 6ms]
+  ✓  статус 200
+  ✓  все рецепты со сложностью hard
+  ✓  время приготовления в пределах фильтра
+  ✓  сортировка по возрастанию времени
+  ✓  фильтр сузил выдачу
+
+→ 11. Фильтрация по ингредиенту
+  GET http://localhost:3000/api/v1/recipes?ingredientId=10&limit=10 [200 OK, 3.03kB, 4ms]
+  ✓  статус 200
+  ✓  найден хотя бы один рецепт с этим ингредиентом
+  ✓  фильтр по ингредиенту сузил выдачу
+
+→ 12. Просмотр страницы рецепта
+  GET http://localhost:3000/api/v1/recipes/6 [200 OK, 3.07kB, 8ms]
+  ✓  статус 200
+  ✓  идентификатор совпадает с запрошенным
+  ✓  есть состав
+  ✓  есть пошаговые инструкции
+  ✓  шаги пронумерованы по порядку
+
+→ 13. Запрос несуществующего рецепта → 404
+  GET http://localhost:3000/api/v1/recipes/99999999 [404 Not Found, 709B, 2ms]
+  ✓  статус 404
+  ✓  код NOT_FOUND
+
+→ 14. Лайк рецепта
+  POST http://localhost:3000/api/v1/recipes/6/like [200 OK, 688B, 5ms]
+  ✓  статус 200
+  ✓  лайк проставлен
+  ✓  счётчик лайков не нулевой
+
+→ 15. Повторный лайк идемпотентен
+  POST http://localhost:3000/api/v1/recipes/6/like [200 OK, 688B, 3ms]
+  ✓  статус 200
+  ✓  счётчик не вырос повторно
+
+→ 16. Сохранение рецепта в избранное
+  POST http://localhost:3000/api/v1/recipes/6/favorite [200 OK, 687B, 3ms]
+  ✓  статус 200
+  ✓  рецепт сохранён
+
+→ 17. Сохранённые рецепты в кабинете
+  GET http://localhost:3000/api/v1/users/me/favorites [200 OK, 1.73kB, 3ms]
+  ✓  статус 200
+  ✓  рецепт присутствует в сохранённых
+
+→ 18. Комментарий к рецепту
+  POST http://localhost:3000/api/v1/recipes/6/comments [201 Created, 1.09kB, 5ms]
+  ✓  статус 201
+  ✓  текст сохранён без искажений
+  ✓  автор комментария — текущий пользователь
+
+→ 19. Пустой комментарий → 400
+  POST http://localhost:3000/api/v1/recipes/6/comments [400 Bad Request, 868B, 1ms]
+  ✓  статус 400
+  ✓  код VALIDATION_ERROR
+
+→ 20. Лента комментариев рецепта
+  GET http://localhost:3000/api/v1/recipes/6/comments?limit=50 [200 OK, 1.61kB, 2ms]
+  ✓  статус 200
+  ✓  наш комментарий виден в ленте
+
+→ 21. Подписка на автора рецепта
+  POST http://localhost:3000/api/v1/users/2/follow [204 No Content, 528B, 3ms]
+  ✓  статус 204
+  ✓  тело ответа пустое
+
+→ 22. Повторная подписка → 409
+  POST http://localhost:3000/api/v1/users/2/follow [409 Conflict, 719B, 2ms]
+  ✓  статус 409
+
+→ 23. Лента подписок
+  GET http://localhost:3000/api/v1/users/me/feed?limit=20 [200 OK, 2.65kB, 6ms]
+  ✓  статус 200
+  ✓  в ленте есть рецепт автора, на которого подписались
+
+→ 24. Публикация собственного рецепта
+  POST http://localhost:3000/api/v1/recipes [201 Created, 2.16kB, 12ms]
+  ✓  статус 201
+  ✓  рецепт создан черновиком
+  ✓  slug сгенерирован латиницей
+
+→ 25. Публикация черновика
+  POST http://localhost:3000/api/v1/recipes/9/publish [200 OK, 2.18kB, 15ms]
+  ✓  статус 200
+  ✓  статус стал published
+  ✓  проставлена дата публикации
+
+→ 26. Чужой рецепт изменить нельзя → 403
+  PATCH http://localhost:3000/api/v1/recipes/6 [403 Forbidden, 754B, 10ms]
+  ✓  статус 403
+  ✓  код FORBIDDEN
+
+→ 27. Удаление собственного рецепта
+  DELETE http://localhost:3000/api/v1/recipes/9 [204 No Content, 528B, 12ms]
+  ✓  статус 204
+
+┌─────────────────────────┬──────────────────┬──────────────────┐
+│                         │         executed │           failed │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│              iterations │                1 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│                requests │               28 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│            test-scripts │               28 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│      prerequest-scripts │                1 │                0 │
+├─────────────────────────┼──────────────────┼──────────────────┤
+│              assertions │               75 │                0 │
+├─────────────────────────┴──────────────────┴──────────────────┤
+│ total run duration: 582ms                                     │
+├───────────────────────────────────────────────────────────────┤
+│ total data received: 26.42kB (approx)                         │
+├───────────────────────────────────────────────────────────────┤
+│ average response time: 11ms [min: 1ms, max: 73ms, s.d.: 17ms] │
+└───────────────────────────────────────────────────────────────┘

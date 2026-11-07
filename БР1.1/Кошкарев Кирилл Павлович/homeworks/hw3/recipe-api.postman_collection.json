@@ -1,0 +1,1406 @@
+{
+  "info": {
+    "name": "Lecter's Recipes API — основной сценарий",
+    "_postman_id": "a1f3c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "description": "ДЗ3. Комплексный сценарий основного процесса сервиса обмена рецептами:\nрегистрация → вход → личный кабинет → список рецептов → фильтрация →\nпросмотр рецепта → лайк и сохранение → комментарий → подписка на автора →\nлента подписок → собственная публикация.\n\nКаждый запрос снабжён тестами (pm.test): проверяются коды ответов, структура тела,\nбизнес-правила (идемпотентность лайка, доступ только автора) и негативные сценарии.\n\nЗапуск: newman run recipe-api.postman_collection.json -e local.postman_environment.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00. Проверка доступности сервиса",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "pm.test('сервис отвечает ok', () => pm.expect(pm.response.json().status).to.eql('ok'));",
+              "pm.test('ответ быстрее 1 с', () => pm.expect(pm.response.responseTime).to.be.below(1000));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Убеждаемся, что API поднято, прежде чем выполнять сценарий.",
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "01. Регистрация нового кулинара",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "var suffix = Date.now().toString(36);",
+              "pm.collectionVariables.set('username', 'guest_' + suffix);",
+              "pm.collectionVariables.set('email', 'guest_' + suffix + '@lecters.recipes');",
+              "pm.collectionVariables.set('password', 'Chianti2026!');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('выдан accessToken', () => pm.expect(json.accessToken).to.be.a('string'));",
+              "pm.test('выдан refreshToken', () => pm.expect(json.refreshToken).to.be.a('string'));",
+              "pm.test('профиль содержит наш username', () => pm.expect(json.user.username).to.eql(pm.collectionVariables.get('username')));",
+              "pm.test('пароль не возвращается наружу', () => {",
+              "  pm.expect(json.user).to.not.have.property('passwordHash');",
+              "  pm.expect(json.user).to.not.have.property('password');",
+              "});",
+              "pm.collectionVariables.set('accessToken', json.accessToken);",
+              "pm.collectionVariables.set('userId', json.user.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Шаг 1 основного процесса: регистрация. Логин и e-mail генерируются, чтобы сценарий был повторяемым.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"fullName\": \"Гость за столом\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "02. Повторная регистрация того же e-mail → 409",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 409', () => pm.response.to.have.status(409));",
+              "pm.test('код ошибки CONFLICT', () => pm.expect(pm.response.json().error.code).to.eql('CONFLICT'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Негативная проверка уникальности e-mail.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"username\": \"{{username}}_dup\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "03. Регистрация с некорректными данными → 400",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 400', () => pm.response.to.have.status(400));",
+              "var error = pm.response.json().error;",
+              "pm.test('код VALIDATION_ERROR', () => pm.expect(error.code).to.eql('VALIDATION_ERROR'));",
+              "pm.test('перечислены проблемные поля', () => pm.expect(error.details.length).to.be.above(1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Проверяем валидацию тела запроса и формат ошибки.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"not-an-email\",\n  \"username\": \"a\",\n  \"password\": \"123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "04. Вход с неверным паролем → 401",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 401', () => pm.response.to.have.status(401));",
+              "pm.test('код INVALID_CREDENTIALS', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"wrong-password\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "05. Вход в систему",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('тип токена Bearer', () => pm.expect(json.tokenType).to.eql('Bearer'));",
+              "pm.test('срок жизни токена положителен', () => pm.expect(json.expiresIn).to.be.above(0));",
+              "pm.collectionVariables.set('accessToken', json.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        },
+        "description": "Шаг 2 основного процесса: вход. Токен сохраняется в переменную коллекции.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "06. Личный кабинет без токена → 401",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 401', () => pm.response.to.have.status(401));",
+              "pm.test('код UNAUTHORIZED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "me"
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "07. Личный кабинет пользователя",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('e-mail совпадает с регистрационным', () => pm.expect(json.email).to.eql(pm.collectionVariables.get('email')));",
+              "pm.test('есть счётчики профиля', () => {",
+              "  pm.expect(json).to.have.property('recipesCount');",
+              "  pm.expect(json).to.have.property('followersCount');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "me"
+          ]
+        },
+        "description": "Шаг 3: личный кабинет."
+      }
+    },
+    {
+      "name": "08. Справочник ингредиентов",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var dict = pm.response.json();",
+              "pm.test('справочник не пуст', () => pm.expect(dict.data.length).to.be.above(0));",
+              "pm.test('есть метаданные пагинации', () => pm.expect(dict.meta).to.have.property('total'));",
+              "var oil = dict.data.find((i) => i.name === 'Оливковое масло') || dict.data[0];",
+              "pm.collectionVariables.set('ingredientId', oil.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ingredients?limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ingredients"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "09. Список рецептов (витрина)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('список не пуст', () => pm.expect(json.data.length).to.be.above(0));",
+              "pm.test('выдача содержит только опубликованные', () => {",
+              "  json.data.forEach((r) => pm.expect(r.status).to.eql('published'));",
+              "});",
+              "pm.test('карточка содержит автора и счётчики', () => {",
+              "  var card = json.data[0];",
+              "  pm.expect(card.author).to.have.property('username');",
+              "  pm.expect(card).to.have.property('likesCount');",
+              "});",
+              "pm.collectionVariables.set('totalPublished', json.meta.total);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes?limit=20",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "description": "Шаг 4: список публикаций.",
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "10. Фильтрация: сложность + время + сортировка",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var data = pm.response.json().data;",
+              "pm.test('все рецепты со сложностью hard', () => data.forEach((r) => pm.expect(r.difficulty).to.eql('hard')));",
+              "pm.test('время приготовления в пределах фильтра', () => data.forEach((r) => pm.expect(r.cookTimeMinutes).to.be.at.most(180)));",
+              "pm.test('сортировка по возрастанию времени', () => {",
+              "  var times = data.map((r) => r.cookTimeMinutes);",
+              "  times.forEach((t, i) => { if (i) pm.expect(times[i - 1]).to.be.at.most(t); });",
+              "});",
+              "pm.test('фильтр сузил выдачу', () => pm.expect(pm.response.json().meta.total).to.be.at.most(Number(pm.collectionVariables.get('totalPublished'))));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes?difficulty=hard&maxCookTime=180&sort=cookTimeAsc&limit=10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes"
+          ],
+          "query": [
+            {
+              "key": "difficulty",
+              "value": "hard"
+            },
+            {
+              "key": "maxCookTime",
+              "value": "180"
+            },
+            {
+              "key": "sort",
+              "value": "cookTimeAsc"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "description": "Шаг 5: фильтрация по списку.",
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "11. Фильтрация по ингредиенту",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var found = pm.response.json().data;",
+              "pm.test('найден хотя бы один рецепт с этим ингредиентом', () => pm.expect(found.length).to.be.above(0));",
+              "pm.test('фильтр по ингредиенту сузил выдачу', () => pm.expect(pm.response.json().meta.total)",
+              "  .to.be.at.most(Number(pm.collectionVariables.get('totalPublished'))));",
+              "pm.collectionVariables.set('recipeId', found[0].id);",
+              "pm.collectionVariables.set('authorId', found[0].author.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes?ingredientId={{ingredientId}}&limit=10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes"
+          ],
+          "query": [
+            {
+              "key": "ingredientId",
+              "value": "{{ingredientId}}"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "12. Просмотр страницы рецепта",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('идентификатор совпадает с запрошенным', () => pm.expect(String(json.id)).to.eql(String(pm.collectionVariables.get('recipeId'))));",
+              "pm.test('есть состав', () => pm.expect(json.ingredients.length).to.be.above(0));",
+              "pm.test('есть пошаговые инструкции', () => pm.expect(json.steps.length).to.be.above(0));",
+              "pm.test('шаги пронумерованы по порядку', () => {",
+              "  json.steps.forEach((s, i) => pm.expect(s.stepNumber).to.eql(i + 1));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}"
+          ]
+        },
+        "description": "Шаг 6: просмотр рецепта из отфильтрованного списка.",
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "13. Запрос несуществующего рецепта → 404",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 404', () => pm.response.to.have.status(404));",
+              "pm.test('код NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/99999999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "99999999"
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "14. Лайк рецепта",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('лайк проставлен', () => pm.expect(json.liked).to.be.true);",
+              "pm.test('счётчик лайков не нулевой', () => pm.expect(json.likesCount).to.be.above(0));",
+              "pm.collectionVariables.set('likesAfterLike', json.likesCount);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}/like",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}",
+            "like"
+          ]
+        },
+        "description": "Шаг 7: социальное взаимодействие с публикацией."
+      }
+    },
+    {
+      "name": "15. Повторный лайк идемпотентен",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "pm.test('счётчик не вырос повторно', () => pm.expect(pm.response.json().likesCount)",
+              "  .to.eql(Number(pm.collectionVariables.get('likesAfterLike'))));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}/like",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}",
+            "like"
+          ]
+        }
+      }
+    },
+    {
+      "name": "16. Сохранение рецепта в избранное",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "pm.test('рецепт сохранён', () => pm.expect(pm.response.json().favorite).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}/favorite",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}",
+            "favorite"
+          ]
+        }
+      }
+    },
+    {
+      "name": "17. Сохранённые рецепты в кабинете",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var data = pm.response.json().data;",
+              "pm.test('рецепт присутствует в сохранённых', () => {",
+              "  var id = String(pm.collectionVariables.get('recipeId'));",
+              "  pm.expect(data.some((r) => String(r.id) === id)).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users/me/favorites",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "me",
+            "favorites"
+          ]
+        }
+      }
+    },
+    {
+      "name": "18. Комментарий к рецепту",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('текст сохранён без искажений', () => pm.expect(json.body).to.include('кьянти'));",
+              "pm.test('автор комментария — текущий пользователь', () => pm.expect(String(json.author.id)).to.eql(String(pm.collectionVariables.get('userId'))));",
+              "pm.collectionVariables.set('commentId', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}/comments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}",
+            "comments"
+          ]
+        },
+        "description": "Шаг 8: начало обсуждения по публикации.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Готовил вчера — соус вышел плотным, как и обещано. Подавал с кьянти.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "19. Пустой комментарий → 400",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 400', () => pm.response.to.have.status(400));",
+              "pm.test('код VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}/comments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}",
+            "comments"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "20. Лента комментариев рецепта",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var data = pm.response.json().data;",
+              "pm.test('наш комментарий виден в ленте', () => {",
+              "  var id = String(pm.collectionVariables.get('commentId'));",
+              "  pm.expect(data.some((c) => String(c.id) === id)).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}/comments?limit=50",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}",
+            "comments"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "21. Подписка на автора рецепта",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 204', () => pm.response.to.have.status(204));",
+              "pm.test('тело ответа пустое', () => pm.expect(pm.response.text()).to.be.empty);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users/{{authorId}}/follow",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "{{authorId}}",
+            "follow"
+          ]
+        },
+        "description": "Шаг 9: подписка на кулинара."
+      }
+    },
+    {
+      "name": "22. Повторная подписка → 409",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 409', () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users/{{authorId}}/follow",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "{{authorId}}",
+            "follow"
+          ]
+        }
+      }
+    },
+    {
+      "name": "23. Лента подписок",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var data = pm.response.json().data;",
+              "pm.test('в ленте есть рецепт автора, на которого подписались', () => {",
+              "  var id = String(pm.collectionVariables.get('authorId'));",
+              "  pm.expect(data.length).to.be.above(0);",
+              "  pm.expect(data.every((r) => String(r.author.id) === id)).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users/me/feed?limit=20",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "me",
+            "feed"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "24. Публикация собственного рецепта",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 201', () => pm.response.to.have.status(201));",
+              "var json = pm.response.json();",
+              "pm.test('рецепт создан черновиком', () => pm.expect(json.status).to.eql('draft'));",
+              "pm.test('slug сгенерирован латиницей', () => pm.expect(json.slug).to.match(/^[a-z0-9-]+$/));",
+              "pm.collectionVariables.set('myRecipeId', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes"
+          ]
+        },
+        "description": "Дополнительная ветка: пользователь сам становится автором.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Карпаччо из говядины с каперсами\",\n  \"summary\": \"Тонкие лепестки мяса, лимон и капля оливкового масла.\",\n  \"difficulty\": \"medium\",\n  \"prepTimeMinutes\": 25,\n  \"cookTimeMinutes\": 0,\n  \"servings\": 2,\n  \"tags\": [\n    \"изысканное\",\n    \"быстро\"\n  ],\n  \"ingredients\": [\n    {\n      \"ingredientId\": \"{{ingredientId}}\",\n      \"quantity\": 10,\n      \"unit\": \"г\"\n    }\n  ],\n  \"steps\": [\n    {\n      \"stepNumber\": 1,\n      \"instruction\": \"Подморозить вырезку 40 минут и нарезать тончайшими ломтиками.\",\n      \"durationMinutes\": 40\n    },\n    {\n      \"stepNumber\": 2,\n      \"instruction\": \"Выложить веером, сбрызнуть лимоном и маслом, украсить каперсами.\",\n      \"durationMinutes\": 5\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "25. Публикация черновика",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 200', () => pm.response.to.have.status(200));",
+              "var json = pm.response.json();",
+              "pm.test('статус стал published', () => pm.expect(json.status).to.eql('published'));",
+              "pm.test('проставлена дата публикации', () => pm.expect(json.publishedAt).to.not.be.null);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{myRecipeId}}/publish",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{myRecipeId}}",
+            "publish"
+          ]
+        }
+      }
+    },
+    {
+      "name": "26. Чужой рецепт изменить нельзя → 403",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 403', () => pm.response.to.have.status(403));",
+              "pm.test('код FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{recipeId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{recipeId}}"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Попытка захвата чужой публикации\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "27. Удаление собственного рецепта",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('статус 204', () => pm.response.to.have.status(204));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/recipes/{{myRecipeId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "recipes",
+            "{{myRecipeId}}"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "recipeId",
+      "value": ""
+    },
+    {
+      "key": "authorId",
+      "value": ""
+    },
+    {
+      "key": "ingredientId",
+      "value": ""
+    },
+    {
+      "key": "commentId",
+      "value": ""
+    },
+    {
+      "key": "myRecipeId",
+      "value": ""
+    },
+    {
+      "key": "totalPublished",
+      "value": "0"
+    },
+    {
+      "key": "likesAfterLike",
+      "value": "0"
+    }
+  ]
+}

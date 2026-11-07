@@ -1,0 +1,383 @@
+openapi: 3.0.3
+info:
+  title: Lecter's Recipes — внутренний API межсервисного взаимодействия
+  version: 1.0.0
+  description: |
+    ДЗ4. Спецификация синхронных эндпоинтов, которыми обмениваются микросервисы
+    сервиса «Lecter's Recipes», и API Gateway.
+
+    ## Правила
+
+    * Внутренние эндпоинты живут под префиксом `/internal` и **не публикуются наружу**:
+      API Gateway проксирует только `/api/v1/*`.
+    * Аутентификация межсервисных вызовов — общий секрет в заголовке
+      `X-Internal-Token` (значение из переменной окружения `INTERNAL_TOKEN`).
+      Пользовательский JWT во внутренние вызовы не передаётся: сервис-потребитель
+      сообщает нужный `userId` явным параметром.
+    * Массовые выборки (`?ids=`) ограничены 100 идентификаторами на запрос —
+      это защищает от вырожденного N+1 при агрегации.
+    * Ответы не содержат вложенных сущностей чужих сервисов: сшивание данных —
+      обязанность вызывающей стороны (обычно API Gateway).
+    * Ошибки — тот же формат `ErrorResponse`, что и в публичном API.
+    * Таймаут вызова — 3 с, при недоступности сервиса-владельца вызывающая сторона
+      отдаёт частичный ответ (деградация) либо 503, что указано в описании операций.
+
+servers:
+  - url: http://user-service:3001
+    description: user-service (внутренняя сеть docker compose)
+  - url: http://recipe-service:3002
+    description: recipe-service
+  - url: http://social-service:3003
+    description: social-service
+
+security:
+  - internalToken: []
+
+tags:
+  - name: user-service
+  - name: recipe-service
+  - name: social-service
+
+paths:
+  # ==========================================================================
+  # user-service
+  # ==========================================================================
+  /internal/users:
+    get:
+      tags: [user-service]
+      summary: Массовая выборка профилей по идентификаторам
+      description: |
+        Используется API Gateway и social-service, чтобы подставить автора
+        в карточки рецептов и комментариев. Несуществующие id молча отбрасываются.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список идентификаторов через запятую (не более 100)
+          schema: { type: string, example: '1,2,7' }
+      responses:
+        '200':
+          description: Найденные профили
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InternalUser' }
+              example:
+                data:
+                  - id: 1
+                    username: dr_lecter
+                    fullName: Hannibal Lecter
+                    avatarUrl: null
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/users/{id}/following:
+    get:
+      tags: [user-service]
+      summary: Идентификаторы кулинаров, на которых подписан пользователь
+      description: Нужен recipe-service/Gateway для построения ленты подписок.
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Список идентификаторов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { type: integer, format: int64 }
+              example: { data: [1, 4, 9] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/users/{id}/exists:
+    get:
+      tags: [user-service]
+      summary: Проверка существования пользователя
+      description: Social-service вызывает перед созданием комментария, если проекция ещё не прогрета событием.
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists: { type: boolean }
+                  isActive: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ==========================================================================
+  # recipe-service
+  # ==========================================================================
+  /internal/recipes:
+    get:
+      tags: [recipe-service]
+      summary: Массовая выборка карточек рецептов по идентификаторам
+      description: |
+        Используется Gateway при сборке списка сохранённого (`/users/me/favorites`)
+        и social-service при отображении обсуждений. Порядок ответа не гарантирован —
+        вызывающая сторона сортирует сама.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema: { type: string, example: '12,15,31' }
+      responses:
+        '200':
+          description: Карточки рецептов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InternalRecipeCard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/recipes/{id}/summary:
+    get:
+      tags: [recipe-service]
+      summary: Краткая сводка о рецепте
+      description: |
+        Social-service вызывает синхронно, если рецепта ещё нет в локальной проекции
+        (например, событие `recipe.published` задержалось). Позволяет не терять лайк
+        или комментарий из-за отставания проекции.
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Сводка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalRecipeSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/recipes/by-authors:
+    get:
+      tags: [recipe-service]
+      summary: Опубликованные рецепты перечисленных авторов (лента подписок)
+      parameters:
+        - name: authorIds
+          in: query
+          required: true
+          schema: { type: string, example: '1,4,9' }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Постраничный список карточек
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InternalRecipeCard' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ==========================================================================
+  # social-service
+  # ==========================================================================
+  /internal/social/recipes:
+    get:
+      tags: [social-service]
+      summary: Счётчики реакций и состояние текущего пользователя по списку рецептов
+      description: |
+        Главный агрегирующий вызов Gateway: за один запрос возвращает лайки,
+        комментарии и признаки `liked`/`favorite` для всех карточек страницы.
+        Если сервис недоступен, Gateway отдаёт карточки с нулевыми счётчиками
+        (деградация без ошибки).
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema: { type: string, example: '12,15,31' }
+        - name: userId
+          in: query
+          description: Для кого вычислять `liked`/`favorite`; без параметра оба поля false
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Состояние реакций
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InternalReactionState' }
+              example:
+                data:
+                  - recipeId: 12
+                    likesCount: 42
+                    commentsCount: 7
+                    liked: true
+                    favorite: false
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/social/favorites/{userId}:
+    get:
+      tags: [social-service]
+      summary: Идентификаторы сохранённых рецептов пользователя
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Идентификаторы в порядке добавления (сначала новые)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { type: integer, format: int64 }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/social/health:
+    get:
+      tags: [social-service]
+      summary: Проверка живости сервиса и подключения к брокеру
+      security: []
+      responses:
+        '200':
+          description: Состояние
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  broker: { type: string, enum: [connected, disconnected], example: connected }
+                  projections:
+                    type: object
+                    properties:
+                      recipes: { type: integer, example: 128 }
+                      users: { type: integer, example: 54 }
+
+components:
+  securitySchemes:
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Общий секрет внутренней сети; наружу эндпоинты не публикуются
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+
+  responses:
+    BadRequest:
+      description: Некорректные параметры запроса
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: VALIDATION_ERROR, message: 'Параметр ids обязателен и содержит не более 100 значений' }
+    Unauthorized:
+      description: Отсутствует или неверен X-Internal-Token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: UNAUTHORIZED, message: 'Внутренний вызов не авторизован' }
+    NotFound:
+      description: Объект не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    InternalUser:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        fullName: { type: string, nullable: true }
+        avatarUrl: { type: string, nullable: true }
+        isActive: { type: boolean }
+
+    InternalRecipeCard:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        slug: { type: string }
+        summary: { type: string, nullable: true }
+        authorId: { type: integer, format: int64 }
+        difficulty: { type: string, enum: [easy, medium, hard] }
+        cookTimeMinutes: { type: integer }
+        prepTimeMinutes: { type: integer }
+        servings: { type: integer }
+        coverImageUrl: { type: string, nullable: true }
+        status: { type: string, enum: [draft, published, archived] }
+        publishedAt: { type: string, format: date-time, nullable: true }
+
+    InternalRecipeSummary:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        authorId: { type: integer, format: int64 }
+        status: { type: string, enum: [draft, published, archived] }
+
+    InternalReactionState:
+      type: object
+      properties:
+        recipeId: { type: integer, format: int64 }
+        likesCount: { type: integer }
+        commentsCount: { type: integer }
+        liked: { type: boolean }
+        favorite: { type: boolean }
