@@ -1,0 +1,906 @@
+{
+  "info": {
+    "name": "Rental API (lab2 microservices)",
+    "description": "Postman-коллекция для микросервисной версии (ЛР2 + ДЗ5). Адаптирована под изменённые контракты: id — строки, отдельная авторизация по 403/409, проверки снапшотов и системных сообщений из RabbitMQ.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080/api/v1" },
+    { "key": "landlord_email", "value": "" },
+    { "key": "landlord_b_email", "value": "" },
+    { "key": "tenant_email", "value": "" },
+    { "key": "tenant_b_email", "value": "" },
+    { "key": "landlord_token", "value": "" },
+    { "key": "landlord_b_token", "value": "" },
+    { "key": "tenant_token", "value": "" },
+    { "key": "tenant_b_token", "value": "" },
+    { "key": "property_id", "value": "" },
+    { "key": "property_b_id", "value": "" },
+    { "key": "rental_id", "value": "" },
+    { "key": "rental_b_id", "value": "" },
+    { "key": "original_title", "value": "Уютная квартира в центре" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('landlord_email')) {",
+          "  const stamp = Date.now();",
+          "  pm.collectionVariables.set('landlord_email', `landlord_a_${stamp}@test.com`);",
+          "  pm.collectionVariables.set('landlord_b_email', `landlord_b_${stamp}@test.com`);",
+          "  pm.collectionVariables.set('tenant_email', `tenant_a_${stamp}@test.com`);",
+          "  pm.collectionVariables.set('tenant_b_email', `tenant_b_${stamp}@test.com`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Register landlord A",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{landlord_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Иван Арендодатель\",\n  \"role\": \"landlord\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "const j = pm.response.json();",
+        "pm.test('token returned', () => pm.expect(j.access_token).to.be.a('string').and.not.empty);",
+        "pm.test('user role landlord', () => pm.expect(j.user.role).to.eql('landlord'));",
+        "pm.test('user.id is string (bigint-safe)', () => pm.expect(j.user.id).to.be.a('string'));",
+        "pm.collectionVariables.set('landlord_token', j.access_token);"
+      ]}}]
+    },
+    {
+      "name": "02. Register landlord B",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{landlord_b_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Сергей Второй\",\n  \"role\": \"landlord\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('landlord_b_token', pm.response.json().access_token);"
+      ]}}]
+    },
+    {
+      "name": "03. Register tenant 1",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Пётр Арендатор\",\n  \"role\": \"tenant\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "pm.test('user role tenant', () => pm.expect(pm.response.json().user.role).to.eql('tenant'));"
+      ]}}]
+    },
+    {
+      "name": "04. Register tenant 2",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{tenant_b_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Анна Второй\",\n  \"role\": \"tenant\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('tenant_b_token', pm.response.json().access_token);"
+      ]}}]
+    },
+    {
+      "name": "05. Register duplicate email → 409",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"password123\",\n  \"name\": \"Дубль\",\n  \"role\": \"tenant\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 409', () => pm.response.to.have.status(409));",
+        "pm.test('error email_taken', () => pm.expect(pm.response.json().error).to.eql('email_taken'));"
+      ]}}]
+    },
+    {
+      "name": "06. Register short password → 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"short@test.com\",\n  \"password\": \"qwe\",\n  \"name\": \"X\",\n  \"role\": \"tenant\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400', () => pm.response.to.have.status(400));"
+      ]}}]
+    },
+    {
+      "name": "07. Register missing fields → 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"x@y.com\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400', () => pm.response.to.have.status(400));"
+      ]}}]
+    },
+    {
+      "name": "08. Login tenant 1 → 200",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"password123\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('Bearer token', () => pm.expect(j.token_type).to.eql('Bearer'));",
+        "pm.collectionVariables.set('tenant_token', j.access_token);"
+      ]}}]
+    },
+    {
+      "name": "09. Login wrong password → 401",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{tenant_email}}\",\n  \"password\": \"wrong\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 401', () => pm.response.to.have.status(401));",
+        "pm.test('error unauthorized', () => pm.expect(pm.response.json().error).to.eql('unauthorized'));"
+      ]}}]
+    },
+    {
+      "name": "10. Login non-existent → 401",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"nobody@nowhere.io\",\n  \"password\": \"whatever1\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 401', () => pm.response.to.have.status(401));"
+      ]}}]
+    },
+    {
+      "name": "11. Invalid JSON body → 400 (fix)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] },
+        "body": { "mode": "raw", "raw": "{not-a-json" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400 not 500', () => pm.response.to.have.status(400));",
+        "pm.test('error bad_request', () => pm.expect(pm.response.json().error).to.eql('bad_request'));"
+      ]}}]
+    },
+    {
+      "name": "12. GET /users/me (tenant)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('email matches', () => pm.expect(j.email).to.eql(pm.collectionVariables.get('tenant_email')));",
+        "pm.test('id is string', () => pm.expect(j.id).to.be.a('string'));"
+      ]}}]
+    },
+    {
+      "name": "13. GET /users/me unauthorized → 401",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 401', () => pm.response.to.have.status(401));"
+      ]}}]
+    },
+    {
+      "name": "14. PATCH /users/me (tenant)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] },
+        "body": { "mode": "raw", "raw": "{\n  \"phone\": \"+79991234567\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('phone saved', () => pm.expect(pm.response.json().phone).to.eql('+79991234567'));"
+      ]}}]
+    },
+    {
+      "name": "15. GET property-types",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/property-types", "host": ["{{base_url}}"], "path": ["property-types"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('non-empty array', () => pm.expect(pm.response.json()).to.be.an('array').and.not.empty);"
+      ]}}]
+    },
+    {
+      "name": "16. GET amenities",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/amenities", "host": ["{{base_url}}"], "path": ["amenities"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('has Wi-Fi', () => pm.expect(j.map(a => a.name)).to.include('Wi-Fi'));"
+      ]}}]
+    },
+    {
+      "name": "17. Tenant tries create property → 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"x\",\n  \"description\": \"y\",\n  \"property_type_id\": 1,\n  \"price_per_month\": 1,\n  \"location\": {\"city\":\"X\",\"address\":\"Y\"}\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "18. Create property missing fields → 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"only title\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400', () => pm.response.to.have.status(400));"
+      ]}}]
+    },
+    {
+      "name": "19. Create property invalid amenity → 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"X\",\n  \"description\": \"Y\",\n  \"property_type_id\": 1,\n  \"price_per_month\": 10000,\n  \"location\": {\"city\":\"СПб\",\"address\":\"A\"},\n  \"amenity_ids\": [99999]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400', () => pm.response.to.have.status(400));",
+        "pm.test('code invalid_amenities', () => pm.expect(pm.response.json().error).to.eql('invalid_amenities'));"
+      ]}}]
+    },
+    {
+      "name": "20. Landlord A creates property #1",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"{{original_title}}\",\n  \"description\": \"Двушка с видом на парк\",\n  \"property_type_id\": 1,\n  \"price_per_month\": 45000,\n  \"area_sqm\": 65.5,\n  \"rooms\": 2,\n  \"rental_conditions\": \"Без животных, залог 1 месяц\",\n  \"location\": {\n    \"city\": \"Санкт-Петербург\",\n    \"district\": \"Центральный\",\n    \"address\": \"ул. Пушкина, д. 10\"\n  },\n  \"amenity_ids\": [1, 2, 3]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "const j = pm.response.json();",
+        "pm.test('id is string', () => pm.expect(j.id).to.be.a('string'));",
+        "pm.test('owner_id is string', () => pm.expect(j.owner_id).to.be.a('string'));",
+        "pm.test('amenities saved', () => pm.expect(j.amenities.map(a => a.id)).to.have.members([1,2,3]));",
+        "pm.test('is_available true', () => pm.expect(j.is_available).to.be.true);",
+        "pm.test('no owner field (microservice boundary)', () => pm.expect(j).to.not.have.property('owner'));",
+        "pm.collectionVariables.set('property_id', j.id);"
+      ]}}]
+    },
+    {
+      "name": "21. Landlord A creates property #2 (дешевле)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"Студия у метро\",\n  \"description\": \"Маленькая, но своя\",\n  \"property_type_id\": 5,\n  \"price_per_month\": 28000,\n  \"area_sqm\": 24.0,\n  \"rooms\": 1,\n  \"location\": {\n    \"city\": \"Санкт-Петербург\",\n    \"district\": \"Петроградский\",\n    \"address\": \"Каменноостровский пр., 10\"\n  },\n  \"amenity_ids\": [1, 7]\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('property_b_id', pm.response.json().id);"
+      ]}}]
+    },
+    {
+      "name": "22. GET property detail",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('owner_id present', () => pm.expect(j.owner_id).to.be.a('string'));",
+        "pm.test('photos array', () => pm.expect(j.photos).to.be.an('array'));",
+        "pm.test('rental_conditions string', () => pm.expect(j.rental_conditions).to.be.a('string'));",
+        "pm.test('property_type.name = Квартира', () => pm.expect(j.property_type.name).to.eql('Квартира'));"
+      ]}}]
+    },
+    {
+      "name": "23. GET non-existent property → 404",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/properties/99999999", "host": ["{{base_url}}"], "path": ["properties","99999999"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 404', () => pm.response.to.have.status(404));"
+      ]}}]
+    },
+    {
+      "name": "24. PUT property by other landlord → 403",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_b_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] },
+        "body": { "mode": "raw", "raw": "{\n  \"price_per_month\": 1\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "25. PUT property by owner (price update)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] },
+        "body": { "mode": "raw", "raw": "{\n  \"price_per_month\": 47000\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('price updated', () => pm.expect(pm.response.json().price_per_month).to.eql(47000));"
+      ]}}]
+    },
+    {
+      "name": "26. Add photo to property (landlord A)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/photos", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","photos"] },
+        "body": { "mode": "raw", "raw": "{\n  \"url\": \"https://example.com/photo1.jpg\",\n  \"sort_order\": 0\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "pm.test('url saved', () => pm.expect(pm.response.json().url).to.match(/^https:/));"
+      ]}}]
+    },
+    {
+      "name": "27. Add photo by other landlord → 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_b_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/photos", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","photos"] },
+        "body": { "mode": "raw", "raw": "{\n  \"url\": \"https://evil.example/x.jpg\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "28. Search properties (без фильтров)",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/properties", "host": ["{{base_url}}"], "path": ["properties"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('page structure', () => { pm.expect(j).to.have.property('content'); pm.expect(j).to.have.property('total_elements'); });",
+        "pm.test('at least 2 properties', () => pm.expect(j.total_elements).to.be.at.least(2));"
+      ]}}]
+    },
+    {
+      "name": "29. Search properties: city + amenities",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/properties?city=Санкт-Петербург&amenity_ids=1&sort_by=price_desc",
+          "host": ["{{base_url}}"],
+          "path": ["properties"],
+          "query": [
+            { "key": "city", "value": "Санкт-Петербург" },
+            { "key": "amenity_ids", "value": "1" },
+            { "key": "sort_by", "value": "price_desc" }
+          ]
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('at least 1', () => pm.expect(j.total_elements).to.be.above(0));",
+        "pm.test('all have Wi-Fi (amenity 1)', () => j.content.forEach(p => pm.expect(p.amenities.map(a => a.id)).to.include(1)));",
+        "pm.test('all in СПб', () => j.content.forEach(p => pm.expect(p.location.city).to.eql('Санкт-Петербург')));",
+        "pm.test('sorted DESC by price', () => { const ps = j.content.map(p => p.price_per_month); for (let i=1;i<ps.length;i++) pm.expect(ps[i]).to.be.at.most(ps[i-1]); });"
+      ]}}]
+    },
+    {
+      "name": "30. Search by price range",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/properties?price_min=20000&price_max=30000",
+          "host": ["{{base_url}}"],
+          "path": ["properties"],
+          "query": [
+            { "key": "price_min", "value": "20000" },
+            { "key": "price_max", "value": "30000" }
+          ]
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('all in [20000,30000]', () => j.content.forEach(p => { pm.expect(p.price_per_month).to.be.at.least(20000); pm.expect(p.price_per_month).to.be.at.most(30000); }));"
+      ]}}]
+    },
+    {
+      "name": "31. Search sort_by price_asc",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/properties?sort_by=price_asc",
+          "host": ["{{base_url}}"],
+          "path": ["properties"],
+          "query": [{ "key": "sort_by", "value": "price_asc" }]
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const ps = pm.response.json().content.map(p => p.price_per_month);",
+        "pm.test('sorted ASC', () => { for (let i=1;i<ps.length;i++) pm.expect(ps[i]).to.be.at.least(ps[i-1]); });"
+      ]}}]
+    },
+    {
+      "name": "32. /users/me/properties (landlord A) → 2",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": { "raw": "{{base_url}}/users/me/properties", "host": ["{{base_url}}"], "path": ["users","me","properties"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('2+ items', () => pm.expect(pm.response.json().total_elements).to.be.at.least(2));"
+      ]}}]
+    },
+    {
+      "name": "33. /users/me/properties (tenant) → 0",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/users/me/properties", "host": ["{{base_url}}"], "path": ["users","me","properties"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('empty', () => pm.expect(pm.response.json().total_elements).to.eql(0));"
+      ]}}]
+    },
+    {
+      "name": "34. Landlord rents own property → 400 own_property",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/rentals", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","rentals"] },
+        "body": { "mode": "raw", "raw": "{\n  \"start_date\": \"2026-06-01\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400', () => pm.response.to.have.status(400));",
+        "pm.test('code own_property', () => pm.expect(pm.response.json().error).to.eql('own_property'));"
+      ]}}]
+    },
+    {
+      "name": "35. Tenant creates rental on property #1",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/rentals", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","rentals"] },
+        "body": { "mode": "raw", "raw": "{\n  \"start_date\": \"2026-06-01\",\n  \"end_date\": \"2026-12-01\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "const j = pm.response.json();",
+        "pm.test('status active', () => pm.expect(j.status).to.eql('active'));",
+        "pm.test('tenant email matches', () => pm.expect(j.tenant.email).to.eql(pm.collectionVariables.get('tenant_email')));",
+        "pm.test('owner email matches', () => pm.expect(j.owner.email).to.eql(pm.collectionVariables.get('landlord_email')));",
+        "pm.test('snapshot title set', () => pm.expect(j.property_title_snapshot).to.eql(pm.collectionVariables.get('original_title')));",
+        "pm.test('snapshot price = 47000 (после апдейта в 25)', () => pm.expect(j.price_per_month_snapshot).to.eql(47000));",
+        "pm.collectionVariables.set('rental_id', j.id);"
+      ]}}]
+    },
+    {
+      "name": "36. Property #1 после аренды → is_available false",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('is_available false', () => pm.expect(pm.response.json().is_available).to.be.false);"
+      ]}}]
+    },
+    {
+      "name": "37. Tenant 2 пытается арендовать тот же → 400/409",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_b_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/rentals", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","rentals"] },
+        "body": { "mode": "raw", "raw": "{\n  \"start_date\": \"2026-07-01\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400 or 409 (not 500)', () => pm.expect([400, 409]).to.include(pm.response.code));",
+        "const j = pm.response.json();",
+        "pm.test('code not_available or property_taken', () => pm.expect(['not_available','property_taken']).to.include(j.error));"
+      ]}}]
+    },
+    {
+      "name": "38. Tenant 2 creates rental on property #2",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_b_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_b_id}}/rentals", "host": ["{{base_url}}"], "path": ["properties","{{property_b_id}}","rentals"] },
+        "body": { "mode": "raw", "raw": "{\n  \"start_date\": \"2026-06-15\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('rental_b_id', pm.response.json().id);"
+      ]}}]
+    },
+    {
+      "name": "39. Landlord меняет title property #1 (для снапшота)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] },
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"ИЗМЕНЁННЫЙ ЗАГОЛОВОК\",\n  \"price_per_month\": 99999\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('title changed', () => pm.expect(pm.response.json().title).to.eql('ИЗМЕНЁННЫЙ ЗАГОЛОВОК'));"
+      ]}}]
+    },
+    {
+      "name": "40. GET rental — снапшот не поменялся",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('snapshot title — старый', () => pm.expect(j.property_title_snapshot).to.eql(pm.collectionVariables.get('original_title')));",
+        "pm.test('snapshot price — старый (47000)', () => pm.expect(j.price_per_month_snapshot).to.eql(47000));"
+      ]}}]
+    },
+    {
+      "name": "41. Landlord B пытается GET rental #1 → 403",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_b_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "42. Tenant пытается complete (только landlord) → 403",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/complete", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","complete"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "43. Landlord B пытается cancel чужую → 403",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_b_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/cancel", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","cancel"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "44. Tenant пишет сообщение",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] },
+        "body": { "mode": "raw", "raw": "{\n  \"body\": \"Здравствуйте, интересует аренда с июня.\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));",
+        "const j = pm.response.json();",
+        "pm.test('kind user', () => pm.expect(j.kind).to.eql('user'));",
+        "pm.test('sender email matches', () => pm.expect(j.sender.email).to.eql(pm.collectionVariables.get('tenant_email')));"
+      ]}}]
+    },
+    {
+      "name": "45. Landlord A отвечает",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] },
+        "body": { "mode": "raw", "raw": "{\n  \"body\": \"Можно заселяться.\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201', () => pm.response.to.have.status(201));"
+      ]}}]
+    },
+    {
+      "name": "46. Landlord B пытается писать в чужой чат → 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{landlord_b_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] },
+        "body": { "mode": "raw", "raw": "{\n  \"body\": \"hi\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "47. Пустое сообщение → 400 empty_body",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] },
+        "body": { "mode": "raw", "raw": "{\n  \"body\": \"   \"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 400', () => pm.response.to.have.status(400));",
+        "pm.test('code empty_body', () => pm.expect(pm.response.json().error).to.eql('empty_body'));"
+      ]}}]
+    },
+    {
+      "name": "48. GET messages — есть system rental.created + 2 user",
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+          "// Даём чуть-чуть времени consumer'у messaging-service дочитать rental.created из RabbitMQ.",
+          "const until = Date.now() + 800; while (Date.now() < until) {}"
+        ]}},
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('>= 3 messages (1 system + 2 user)', () => pm.expect(j.total_elements).to.be.at.least(3));",
+          "pm.test('ASC by created_at', () => { const ts = j.content.map(m => new Date(m.created_at).getTime()); for (let i=1;i<ts.length;i++) pm.expect(ts[i]).to.be.at.least(ts[i-1]); });",
+          "pm.test('first message is system rental.created', () => { const sys = j.content[0]; pm.expect(sys.kind).to.eql('system'); pm.expect(sys.sender).to.be.null; pm.expect(sys.body).to.match(/создана/); });"
+        ]}}
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] }
+      }
+    },
+    {
+      "name": "49. Landlord A completes rental #1",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/complete", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","complete"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('status completed', () => pm.expect(pm.response.json().status).to.eql('completed'));"
+      ]}}]
+    },
+    {
+      "name": "50. Property #1 после complete → is_available true",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/properties/{{property_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('is_available true', () => pm.expect(pm.response.json().is_available).to.be.true);"
+      ]}}]
+    },
+    {
+      "name": "51. GET messages — появилось system rental.completed",
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+          "const until = Date.now() + 800; while (Date.now() < until) {}"
+        ]}},
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('status 200', () => pm.response.to.have.status(200));",
+          "const j = pm.response.json();",
+          "pm.test('>= 4 messages', () => pm.expect(j.total_elements).to.be.at.least(4));",
+          "const lastSys = [...j.content].reverse().find(m => m.kind === 'system');",
+          "pm.test('last system says завершена', () => pm.expect(lastSys.body).to.match(/завершена/));"
+        ]}}
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/messages", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","messages"] }
+      }
+    },
+    {
+      "name": "52. Complete дважды → 409 invalid_status (fix)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/complete", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","complete"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 409 not 500', () => pm.response.to.have.status(409));",
+        "pm.test('code invalid_status', () => pm.expect(pm.response.json().error).to.eql('invalid_status'));"
+      ]}}]
+    },
+    {
+      "name": "53. Cancel завершённой → 409 invalid_status",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_id}}/cancel", "host": ["{{base_url}}"], "path": ["rentals","{{rental_id}}","cancel"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 409', () => pm.response.to.have.status(409));"
+      ]}}]
+    },
+    {
+      "name": "54. Tenant 2 cancels rental #2",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_b_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_b_id}}/cancel", "host": ["{{base_url}}"], "path": ["rentals","{{rental_b_id}}","cancel"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('status cancelled', () => pm.expect(pm.response.json().status).to.eql('cancelled'));"
+      ]}}]
+    },
+    {
+      "name": "55. Property #2 после cancel → is_available true",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/properties/{{property_b_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_b_id}}"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "pm.test('is_available true', () => pm.expect(pm.response.json().is_available).to.be.true);"
+      ]}}]
+    },
+    {
+      "name": "56. Cancel дважды → 409",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_b_token}}" }],
+        "url": { "raw": "{{base_url}}/rentals/{{rental_b_id}}/cancel", "host": ["{{base_url}}"], "path": ["rentals","{{rental_b_id}}","cancel"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 409', () => pm.response.to.have.status(409));"
+      ]}}]
+    },
+    {
+      "name": "57. Tenant: /users/me/rentals",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{tenant_token}}" }],
+        "url": { "raw": "{{base_url}}/users/me/rentals", "host": ["{{base_url}}"], "path": ["users","me","rentals"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('>= 1 rental', () => pm.expect(j.total_elements).to.be.at.least(1));",
+        "pm.test('видим завершённую', () => pm.expect(j.content.map(r => r.status)).to.include('completed'));"
+      ]}}]
+    },
+    {
+      "name": "58. Landlord A: /users/me/rentals?status=completed",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/users/me/rentals?status=completed",
+          "host": ["{{base_url}}"],
+          "path": ["users","me","rentals"],
+          "query": [{ "key": "status", "value": "completed" }]
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 200', () => pm.response.to.have.status(200));",
+        "const j = pm.response.json();",
+        "pm.test('все completed', () => j.content.forEach(r => pm.expect(r.status).to.eql('completed')));",
+        "pm.test('>= 1', () => pm.expect(j.total_elements).to.be.at.least(1));"
+      ]}}]
+    },
+    {
+      "name": "59. Tenant 2 заново арендует освободившийся property #1",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tenant_b_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/properties/{{property_id}}/rentals", "host": ["{{base_url}}"], "path": ["properties","{{property_id}}","rentals"] },
+        "body": { "mode": "raw", "raw": "{\n  \"start_date\": \"2027-01-01\"\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 201 (объект снова свободен)', () => pm.response.to.have.status(201));",
+        "const j = pm.response.json();",
+        "pm.test('snapshot title — НОВЫЙ', () => pm.expect(j.property_title_snapshot).to.eql('ИЗМЕНЁННЫЙ ЗАГОЛОВОК'));",
+        "pm.test('snapshot price — НОВЫЙ (99999)', () => pm.expect(j.price_per_month_snapshot).to.eql(99999));"
+      ]}}]
+    },
+    {
+      "name": "60. Internal endpoint через gateway → 404 (скрыт)",
+      "request": { "method": "GET", "url": { "raw": "{{base_url}}/internal/users/1", "host": ["{{base_url}}"], "path": ["internal","users","1"] } },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 404 (gateway не пробрасывает internal)', () => pm.response.to.have.status(404));"
+      ]}}]
+    },
+    {
+      "name": "61. DELETE property by other landlord → 403",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_b_token}}" }],
+        "url": { "raw": "{{base_url}}/properties/{{property_b_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_b_id}}"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 403', () => pm.response.to.have.status(403));"
+      ]}}]
+    },
+    {
+      "name": "62. DELETE property by owner → 204",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{landlord_token}}" }],
+        "url": { "raw": "{{base_url}}/properties/{{property_b_id}}", "host": ["{{base_url}}"], "path": ["properties","{{property_b_id}}"] }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('status 204', () => pm.response.to.have.status(204));"
+      ]}}]
+    }
+  ]
+}

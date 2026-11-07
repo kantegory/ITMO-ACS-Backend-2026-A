@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# Серверное дополнение к docker-compose.yml из lab2:
+# - наружу не публикуется ничего, кроме api-gateway на 127.0.0.1 (к нему ходит nginx);
+#   опубликованные Docker порты обходят UFW, поэтому закрывать их нужно здесь;
+# - пароли БД и RabbitMQ берутся из Ansible Vault вместо rental/rental.
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: "{{ vault_postgres_password }}"
+
+  rabbitmq:
+    ports: !reset []
+    environment:
+      RABBITMQ_DEFAULT_PASS: "{{ vault_rabbitmq_password }}"
+{% for service in app_services if service != 'api-gateway' %}
+
+  {{ service }}:
+    ports: !reset []
+    environment:
+      DB_PASSWORD: "{{ vault_postgres_password }}"
+      RABBITMQ_URL: "amqp://rental:{{ vault_rabbitmq_password }}@rabbitmq:5672"
+{% endfor %}
+
+  api-gateway:
+    ports: !override
+      - "127.0.0.1:{{ gateway_port }}:8080"

@@ -1,0 +1,30 @@
+- name: Установка nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+
+- name: Отключение сайта по умолчанию
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Перезагрузить nginx
+
+- name: Конфигурация обратного прокси
+  ansible.builtin.template:
+    src: rental.conf.j2
+    dest: /etc/nginx/sites-available/rental.conf
+    mode: "0644"
+  notify: Перезагрузить nginx
+
+- name: Включение сайта
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/rental.conf
+    dest: /etc/nginx/sites-enabled/rental.conf
+    state: link
+  notify: Перезагрузить nginx
+
+- name: nginx запущен и стартует при загрузке
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: started
+    enabled: true

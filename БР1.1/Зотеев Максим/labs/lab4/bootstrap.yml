@@ -1,0 +1,73 @@
+# Первичная настройка свежего VPS. Запускается один раз:
+#   ansible-playbook bootstrap.yml
+# После него вход под root и по паролю запрещён, поэтому повторный запуск
+# первого play не пройдёт — дальше сервер обслуживается только через deploy.yml.
+
+- name: Создание пользователя deploy
+  hosts: vps
+  remote_user: root
+  gather_facts: false
+  tasks:
+    - name: Пользователь deploy в группе sudo
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        shell: /bin/bash
+        groups: sudo
+        append: true
+
+    - name: SSH-ключ для deploy
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('ansible.builtin.file', deploy_pubkey_file) }}"
+        exclusive: true
+
+    - name: sudo без пароля для deploy
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/{{ deploy_user }}
+        content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: "0440"
+        validate: visudo -cf %s
+
+- name: Проверка входа под deploy по ключу и работы sudo
+  hosts: vps
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Подключение под deploy
+      ansible.builtin.ping:
+
+    - name: Пользователь после become
+      ansible.builtin.command: whoami
+      register: whoami_result
+      changed_when: false
+
+    - name: sudo работает
+      ansible.builtin.assert:
+        that: whoami_result.stdout == "root"
+
+- name: Ужесточение SSH
+  hosts: vps
+  gather_facts: false
+  become: true
+  tasks:
+    # Файл с префиксом 00- читается раньше 50-cloud-init.conf, а sshd берёт
+    # первое встреченное значение параметра.
+    - name: Запрет входа по паролю и под root
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/00-hardening.conf
+        content: |
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin no
+        mode: "0644"
+      notify: Перезапустить ssh
+
+    - name: Проверка конфигурации sshd
+      ansible.builtin.command: sshd -t
+      changed_when: false
+
+  handlers:
+    - name: Перезапустить ssh
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: restarted
