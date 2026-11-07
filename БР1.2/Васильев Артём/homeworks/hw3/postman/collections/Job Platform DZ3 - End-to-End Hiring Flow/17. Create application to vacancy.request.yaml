@@ -1,0 +1,29 @@
+$kind: http-request
+url: "{{baseUrl}}/vacancies/{{vacancyId}}/applications"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "resume_id": "{{resumeId}}",
+      "cover_letter": "{{coverLetter}}"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{applicantToken}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('201 and application links vacancy, resume and applicant',
+      function () { pm.response.to.have.status(201); const j =
+      pm.response.json();
+      pm.expect(j).to.include.keys(['id','vacancy_id','resume_id','user_id','cover_letter','status','created_at','updated_at']);
+      pm.expect(j.vacancy_id).to.eql(pm.collectionVariables.get('vacancyId'));
+      pm.expect(j.resume_id).to.eql(pm.collectionVariables.get('resumeId'));
+      pm.expect(j.user_id).to.eql(pm.collectionVariables.get('applicantUserId'));
+      pm.expect(j.status).to.eql('PENDING');
+      pm.collectionVariables.set('applicationId', j.id); });
+    language: text/javascript
+order: 17000

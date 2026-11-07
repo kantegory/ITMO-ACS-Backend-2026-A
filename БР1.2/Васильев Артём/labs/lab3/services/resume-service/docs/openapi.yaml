@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: Resume Service API
+  version: 1.0.0
+  description: Resumes and local resume experiences.
+servers:
+  - url: http://localhost:3005/api/v1
+tags:
+  - name: Resumes
+  - name: Internal
+paths:
+  /resumes:
+    post:
+      tags: [Resumes]
+      summary: Create resume
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeRequest'
+      responses:
+        '201':
+          description: Resume created
+    get:
+      tags: [Resumes]
+      summary: List resumes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Resume list
+  /resumes/{resume_id}:
+    get:
+      tags: [Resumes]
+      summary: Get resume
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resumeId'
+      responses:
+        '200':
+          description: Resume found
+    patch:
+      tags: [Resumes]
+      summary: Update resume
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resumeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeRequest'
+      responses:
+        '200':
+          description: Resume updated
+    delete:
+      tags: [Resumes]
+      summary: Delete resume
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resumeId'
+      responses:
+        '204':
+          description: Resume deleted
+  /internal/v1/resumes/batch:
+    post:
+      tags: [Internal]
+      summary: Internal batch resume lookup
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchIdsRequest'
+      responses:
+        '200':
+          description: Resumes and missingIds returned
+components:
+  schemas:
+    ResumeRequest:
+      type: object
+      required:
+        - title
+        - desired_position
+        - about_me
+        - skills
+        - education
+        - salary_expectation
+        - city
+        - employment_type
+        - work_format
+        - is_published
+        - experiences
+      properties:
+        title:
+          type: string
+          example: Backend resume
+        desired_position:
+          type: string
+          example: Backend Developer
+        about_me:
+          type: string
+          example: I build APIs
+        skills:
+          type: string
+          example: TypeScript, PostgreSQL
+        education:
+          type: string
+          example: ITMO
+        salary_expectation:
+          type: number
+          example: 120000
+        city:
+          type: string
+          example: Saint Petersburg
+        employment_type:
+          type: string
+          enum: [FULL_TIME, PART_TIME, CONTRACT, INTERNSHIP]
+        work_format:
+          type: string
+          enum: [OFFICE, REMOTE, HYBRID]
+        is_published:
+          type: boolean
+          example: true
+        experiences:
+          type: array
+          items:
+            type: object
+            required: [company_name, position, description, start_date, months_count]
+            properties:
+              company_name:
+                type: string
+                example: Demo
+              position:
+                type: string
+                example: Intern
+              description:
+                type: string
+                example: Backend tasks
+              start_date:
+                type: string
+                format: date
+                example: 2024-01-01
+              end_date:
+                type: string
+                format: date
+                example: 2024-12-31
+              months_count:
+                type: integer
+                example: 12
+    BatchIdsRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+  parameters:
+    resumeId:
+      name: resume_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token

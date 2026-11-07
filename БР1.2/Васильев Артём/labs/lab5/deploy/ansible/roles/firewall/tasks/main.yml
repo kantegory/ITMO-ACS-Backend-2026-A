@@ -1,0 +1,32 @@
+---
+- name: Проверить состояние UFW без изменений
+  ansible.builtin.command: ufw status verbose
+  changed_when: false
+  when: firewall_preserve_existing | bool
+
+- name: Настроить UFW на чистом сервере
+  when: not firewall_preserve_existing | bool
+  block:
+    - name: Разрешить SSH, HTTP и HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - '22'
+        - '80'
+        - '443'
+
+    - name: Запретить входящие соединения по умолчанию
+      community.general.ufw:
+        direction: incoming
+        policy: deny
+
+    - name: Разрешить исходящие соединения по умолчанию
+      community.general.ufw:
+        direction: outgoing
+        policy: allow
+
+    - name: Включить UFW
+      community.general.ufw:
+        state: enabled

@@ -1,0 +1,453 @@
+openapi: 3.0.3
+info:
+  title: Vacancy Service API
+  version: 1.0.0
+  description: >
+    API сервиса вакансий. Сервис владеет vacancies в vacancies_db. Поля company_id,
+    employer_profile_id, industry_id и experience_level_id являются external IDs, а не FK.
+servers:
+  - url: /api/v1
+    description: Public API
+tags:
+  - name: Vacancies
+  - name: InternalVacancies
+paths:
+  /vacancies:
+    post:
+      tags: [Vacancies]
+      summary: Создать вакансию
+      description: >
+        Создает вакансию. Vacancy Service синхронно проверяет company_id и ownership employer_profile_id
+        через Company Service, а industry_id и experience_level_id через Dictionary Service. Прямое
+        чтение чужих БД запрещено.
+      operationId: createVacancy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVacancyRequest'
+      responses:
+        '201':
+          description: Вакансия создана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacancy'
+        '400':
+          description: ValidationError, salary_to меньше salary_from или company/profile mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Company, employer profile, industry or experience level not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Vacancies]
+      summary: Получить список опубликованных вакансий
+      description: Публичный поиск опубликованных вакансий.
+      operationId: listVacancies
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: industry_id
+          in: query
+          schema: { type: string, format: uuid }
+          description: External ID из Dictionary Service.
+        - name: experience_level_id
+          in: query
+          schema: { type: string, format: uuid }
+          description: External ID из Dictionary Service.
+        - name: employment_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/EmploymentType'
+        - name: work_format
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkFormat'
+        - name: salary_from
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: salary_to
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Список вакансий.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyListResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /vacancies/my:
+    get:
+      tags: [Vacancies]
+      summary: Получить вакансии текущего работодателя
+      description: Возвращает вакансии, связанные с employer profile текущего пользователя, или все вакансии для администратора.
+      operationId: listMyVacancies
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Список вакансий работодателя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /vacancies/{vacancy_id}:
+    parameters:
+      - $ref: '#/components/parameters/VacancyId'
+    get:
+      tags: [Vacancies]
+      summary: Получить вакансию
+      description: Публичный endpoint. Неопубликованная вакансия доступна только владельцу или администратору.
+      operationId: getVacancyById
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Вакансия.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyPublic'
+        '403':
+          description: Vacancy is not published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Vacancies]
+      summary: Обновить вакансию
+      description: Обновляет вакансию после проверки прав работодателя и внешних ссылок на Company и Dictionary сервисы.
+      operationId: updateVacancy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVacancyRequest'
+      responses:
+        '200':
+          description: Вакансия обновлена.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacancy'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Vacancy or dependent entity not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Vacancies]
+      summary: Удалить вакансию
+      operationId: deleteVacancy
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Вакансия удалена.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/vacancies/{vacancy_id}:
+    get:
+      tags: [InternalVacancies]
+      summary: Internal lookup вакансии
+      description: Используется Application и Interaction сервисами. Возвращает external IDs без прямого доступа к БД вакансий.
+      operationId: getInternalVacancy
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Internal vacancy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalVacancyResponse'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/vacancies/{vacancy_id}/owner:
+    get:
+      tags: [InternalVacancies]
+      summary: Получить владельца вакансии
+      description: Возвращает company_id и employer_profile_id как external IDs для проверки прав в Company Service.
+      operationId: getVacancyOwner
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Vacancy owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyOwnerResponse'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/vacancies/{vacancy_id}/publication-status:
+    get:
+      tags: [InternalVacancies]
+      summary: Проверить публикацию вакансии
+      description: Internal endpoint для проверки is_published без прямого доступа к vacancies_db.
+      operationId: getVacancyPublicationStatus
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Publication status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyPublicationStatusResponse'
+        '404':
+          description: Vacancy not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    VacancyId:
+      name: vacancy_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    ValidationError:
+      description: ValidationError.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Dependent service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceUnavailableError'
+  schemas:
+    EmploymentType:
+      type: string
+      enum: [FULL_TIME, PART_TIME, CONTRACT, INTERNSHIP]
+    WorkFormat:
+      type: string
+      enum: [OFFICE, REMOTE, HYBRID]
+    PageMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    Vacancy:
+      type: object
+      required: [id, company_id, employer_profile_id, industry_id, experience_level_id, title, description, requirements, responsibilities, salary_from, salary_to, city, employment_type, work_format, is_published, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid, description: External ID компании из Company Service, не FK. }
+        employer_profile_id: { type: string, format: uuid, description: External ID employer profile из Company Service, не FK. }
+        industry_id: { type: string, format: uuid, description: External ID отрасли из Dictionary Service, не FK. }
+        experience_level_id: { type: string, format: uuid, description: External ID уровня опыта из Dictionary Service, не FK. }
+        title: { type: string, maxLength: 255 }
+        description: { type: string }
+        requirements: { type: string }
+        responsibilities: { type: string }
+        salary_from: { type: number, minimum: 0 }
+        salary_to: { type: number, minimum: 0 }
+        city: { type: string, maxLength: 255 }
+        employment_type:
+          $ref: '#/components/schemas/EmploymentType'
+        work_format:
+          $ref: '#/components/schemas/WorkFormat'
+        is_published: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    VacancyPublic:
+      allOf:
+        - $ref: '#/components/schemas/Vacancy'
+      description: Public vacancy representation. Данные компании/справочников могут добавляться API Gateway или read model.
+    CreateVacancyRequest:
+      type: object
+      required: [company_id, employer_profile_id, industry_id, experience_level_id, title, description, requirements, responsibilities, salary_from, salary_to, city, employment_type, work_format, is_published]
+      properties:
+        company_id: { type: string, format: uuid, description: External ID из Company Service. }
+        employer_profile_id: { type: string, format: uuid, description: External ID из Company Service. }
+        industry_id: { type: string, format: uuid, description: External ID из Dictionary Service. }
+        experience_level_id: { type: string, format: uuid, description: External ID из Dictionary Service. }
+        title: { type: string, maxLength: 255 }
+        description: { type: string }
+        requirements: { type: string }
+        responsibilities: { type: string }
+        salary_from: { type: number, minimum: 0 }
+        salary_to: { type: number, minimum: 0 }
+        city: { type: string, maxLength: 255 }
+        employment_type:
+          $ref: '#/components/schemas/EmploymentType'
+        work_format:
+          $ref: '#/components/schemas/WorkFormat'
+        is_published: { type: boolean }
+    UpdateVacancyRequest:
+      type: object
+      properties:
+        company_id: { type: string, format: uuid, description: External ID из Company Service. }
+        employer_profile_id: { type: string, format: uuid, description: External ID из Company Service. }
+        industry_id: { type: string, format: uuid, description: External ID из Dictionary Service. }
+        experience_level_id: { type: string, format: uuid, description: External ID из Dictionary Service. }
+        title: { type: string, maxLength: 255 }
+        description: { type: string }
+        requirements: { type: string }
+        responsibilities: { type: string }
+        salary_from: { type: number, minimum: 0 }
+        salary_to: { type: number, minimum: 0 }
+        city: { type: string, maxLength: 255 }
+        employment_type:
+          $ref: '#/components/schemas/EmploymentType'
+        work_format:
+          $ref: '#/components/schemas/WorkFormat'
+        is_published: { type: boolean }
+    VacancyListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/VacancyPublic'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    InternalVacancyResponse:
+      type: object
+      required: [id, company_id, employer_profile_id, is_published]
+      properties:
+        id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid, description: External ID из Company Service. }
+        employer_profile_id: { type: string, format: uuid, description: External ID из Company Service. }
+        is_published: { type: boolean }
+    VacancyOwnerResponse:
+      type: object
+      required: [vacancy_id, company_id, employer_profile_id]
+      properties:
+        vacancy_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        employer_profile_id: { type: string, format: uuid }
+    VacancyPublicationStatusResponse:
+      type: object
+      required: [vacancy_id, is_published]
+      properties:
+        vacancy_id: { type: string, format: uuid }
+        is_published: { type: boolean }
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string, example: Validation failed }
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceUnavailableError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: Dependent service unavailable }

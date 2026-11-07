@@ -1,0 +1,40 @@
+---
+- name: Установить nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+
+- name: Проверить существующий virtual host
+  ansible.builtin.stat:
+    path: "{{ nginx_vhost_path }}"
+    follow: true
+  register: nginx_vhost
+  when: nginx_preserve_existing | bool
+
+- name: Проверить существующий locations-файл ЛР4
+  ansible.builtin.stat:
+    path: "{{ nginx_existing_snippet_path }}"
+  register: nginx_snippet
+  when: nginx_preserve_existing | bool
+
+- name: Не продолжать без действующей конфигурации ЛР4
+  ansible.builtin.assert:
+    that:
+      - nginx_vhost.stat.exists
+      - nginx_vhost.stat.isreg
+      - nginx_snippet.stat.exists
+      - nginx_snippet.stat.isreg
+    fail_msg: >-
+      Не найдена действующая Nginx-конфигурация ЛР4. Конфигурация не изменяется,
+      пока не подтверждены nginx_vhost_path и nginx_existing_snippet_path.
+  when: nginx_preserve_existing | bool
+
+- name: Проверить конфигурацию nginx без изменений
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Включить nginx без перезапуска
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started

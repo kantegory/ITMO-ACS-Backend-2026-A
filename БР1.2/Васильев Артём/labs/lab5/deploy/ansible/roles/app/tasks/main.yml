@@ -1,0 +1,103 @@
+---
+- name: Получить код приложения
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dir }}"
+    version: "{{ branch }}"
+    update: true
+    force: true
+    accept_hostkey: true
+
+- name: Проверить каталог приложения
+  ansible.builtin.stat:
+    path: "{{ app_dir }}"
+  register: app_path
+
+- name: Убедиться, что lab5 содержит Compose-файл
+  ansible.builtin.assert:
+    that:
+      - app_path.stat.exists
+      - app_path.stat.isdir
+    fail_msg: "Не найден каталог приложения {{ app_dir }}"
+
+- name: Проверить рабочий .env
+  ansible.builtin.stat:
+    path: "{{ app_dir }}/.env"
+  register: app_env_file
+
+- name: Проверить существующий .env ДЗ6
+  ansible.builtin.stat:
+    path: "{{ legacy_app_dir }}/.env"
+  register: app_legacy_env_file
+
+- name: Перенести существующий .env из ДЗ6 при миграции
+  ansible.builtin.copy:
+    src: "{{ legacy_app_dir }}/.env"
+    dest: "{{ app_dir }}/.env"
+    remote_src: true
+    force: false
+    mode: '0600'
+  when:
+    - not app_env_file.stat.exists
+    - legacy_app_dir != app_dir
+    - app_legacy_env_file.stat.exists
+    - app_legacy_env_file.stat.isreg
+
+- name: Проверить секреты для первого деплоя
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'JWT_SECRET_KEY') | length > 0
+      - lookup('env', 'SERVICE_TOKEN') | length > 0
+      - lookup('env', 'DB_PASSWORD') | length > 0
+      - lookup('env', 'RABBITMQ_USER') | length > 0
+      - lookup('env', 'RABBITMQ_PASSWORD') | length > 0
+    fail_msg: "Для первого деплоя задайте JWT_SECRET_KEY, SERVICE_TOKEN, DB_PASSWORD, RABBITMQ_USER и RABBITMQ_PASSWORD"
+  when:
+    - not app_env_file.stat.exists
+    - not app_legacy_env_file.stat.exists
+
+- name: Создать .env из переменных окружения
+  ansible.builtin.copy:
+    dest: "{{ app_dir }}/.env"
+    mode: '0600'
+    force: false
+    content: |
+      JWT_SECRET_KEY={{ lookup('env', 'JWT_SECRET_KEY') }}
+      SERVICE_TOKEN={{ lookup('env', 'SERVICE_TOKEN') }}
+      DB_PASSWORD={{ lookup('env', 'DB_PASSWORD') }}
+      RABBITMQ_USER={{ lookup('env', 'RABBITMQ_USER') }}
+      RABBITMQ_PASSWORD={{ lookup('env', 'RABBITMQ_PASSWORD') }}
+  when:
+    - not app_env_file.stat.exists
+    - not app_legacy_env_file.stat.exists
+
+- name: Проверить Compose-конфигурацию
+  ansible.builtin.command:
+    cmd: docker compose -p {{ compose_project_name }} config --quiet
+    chdir: "{{ app_dir }}"
+  changed_when: false
+
+- name: Собрать и запустить стек последовательно
+  ansible.builtin.command:
+    cmd: docker compose -p {{ compose_project_name }} up -d --build
+    chdir: "{{ app_dir }}"
+  environment:
+    COMPOSE_PARALLEL_LIMIT: '1'
+  changed_when: true
+
+- name: Выполнить миграции сервисов
+  ansible.builtin.command:
+    cmd: docker compose -p {{ compose_project_name }} exec -T {{ item }} npm run migrate
+    chdir: "{{ app_dir }}"
+  loop: "{{ services }}"
+  changed_when: true
+
+- name: Дождаться доступности API
+  ansible.builtin.uri:
+    url: "{{ health_url }}"
+    status_code: 200
+  register: app_health
+  until: app_health.status | default(0) == 200
+  retries: "{{ health_retries }}"
+  delay: "{{ health_delay }}"
+  changed_when: false

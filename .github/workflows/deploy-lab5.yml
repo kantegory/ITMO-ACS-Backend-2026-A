@@ -1,0 +1,43 @@
+name: LAB5 Ansible deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "БР1.2/Васильев Артём/labs/lab5/**"
+      - ".github/workflows/deploy-lab5.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: lab5-main
+  cancel-in-progress: false
+
+env:
+  LAB5_DIR: ${{ vars.LAB5_DIR || 'БР1.2/Васильев Артём/labs/lab5' }}
+  BRANCH: main
+
+jobs:
+  ansible-deploy:
+    name: Deploy lab5 with Ansible
+    runs-on: ${{ vars.RUNNER_IMAGE || 'ubuntu-24.04' }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy with Ansible
+        shell: bash
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || 'root' }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          BRANCH: ${{ env.BRANCH }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+        run: bash "${LAB5_DIR}/deploy/scripts/ci-deploy.sh"

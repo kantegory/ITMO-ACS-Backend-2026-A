@@ -1,0 +1,61 @@
+# ЛР7. Мониторинг микросервисов средствами Grafana
+
+## Цель
+
+Настроить отдельный стек мониторинга для Job Platform без изменения основного Compose-стека ЛР4/ДЗ6.
+
+## Состав
+
+- Grafana — dashboard и визуализация;
+- Prometheus — сбор метрик;
+- Node Exporter — CPU, RAM, disk и network виртуальной машины;
+- Blackbox Exporter — HTTP healthcheck микросервисов;
+- Loki + Promtail — сбор и просмотр логов контейнеров.
+
+## Dashboard
+
+`grafana/dashboards/job-platform-monitoring.json` содержит:
+
+1. CPU, RAM и использование корневой файловой системы VM;
+2. входящий и исходящий network traffic;
+3. таблицу доступности семи микросервисов;
+4. время ответа healthcheck-запросов;
+5. общий просмотр логов контейнеров через Loki.
+
+Healthcheck использует TCP-проверку портов 3001–3007 всех микросервисов. Blackbox Exporter работает в host network, потому что приложения слушают loopback-интерфейс VM. TCP-проверка показывает доступность процесса и не зависит от авторизации или состояния данных в БД.
+
+## Запуск
+
+```bash
+cp .env.example .env
+# заменить GRAFANA_ADMIN_PASSWORD на непустой пароль
+
+docker compose config --quiet
+docker compose up -d
+```
+
+Grafana доступна локально на `http://127.0.0.1:3100`.
+
+Для просмотра на рабочей машине без изменения внешней конфигурации используется SSH-туннель:
+
+```bash
+ssh -L 3100:127.0.0.1:3100 root@<server-ip>
+```
+
+После подключения открыть `http://127.0.0.1:3100` и войти пользователем из `GRAFANA_ADMIN_USER`.
+
+## Безопасность и границы
+
+- Grafana не публикуется на внешний интерфейс и не добавляет новый Nginx listener;
+- пароль Grafana хранится только в `.env`, который исключён из git;
+- Promtail получает доступ только к Docker socket и журналам контейнеров;
+- Promtail собирает новые записи Docker-журналов; исторические записи старше retention Loki не используются;
+- данные Prometheus, Loki и Grafana сохраняются в отдельных Docker volumes;
+- существующий стек приложения, Nginx и firewall не изменяются.
+
+## Проверки
+
+- `docker compose config --quiet`;
+- проверка YAML-конфигураций Prometheus, Loki, Promtail и Grafana;
+- проверка JSON dashboard;
+- визуальная проверка после запуска контейнеров и открытия Grafana.

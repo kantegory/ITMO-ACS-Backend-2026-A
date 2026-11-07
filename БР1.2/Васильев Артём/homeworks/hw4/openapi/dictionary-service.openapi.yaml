@@ -1,0 +1,209 @@
+openapi: 3.0.3
+info:
+  title: Dictionary Service API
+  version: 1.0.0
+  description: >
+    API сервиса справочников. Сервис владеет industries и experience_levels в dictionaries_db.
+    Для простого учебного варианта этот сервис можно объединить с Vacancy Service, но целевая
+    production-like архитектура выделяет его отдельно.
+servers:
+  - url: /api/v1
+    description: Public API
+tags:
+  - name: Dictionaries
+  - name: InternalDictionaries
+paths:
+  /industries:
+    get:
+      tags: [Dictionaries]
+      summary: Получить список отраслей
+      description: Возвращает опубликованные отрасли из Dictionary Service.
+      operationId: listIndustries
+      responses:
+        '200':
+          description: Список отраслей.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndustryListResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /experience-levels:
+    get:
+      tags: [Dictionaries]
+      summary: Получить список уровней опыта
+      description: Возвращает опубликованные уровни опыта из Dictionary Service.
+      operationId: listExperienceLevels
+      responses:
+        '200':
+          description: Список уровней опыта.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperienceLevelListResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/v1/industries/{industry_id}:
+    get:
+      tags: [InternalDictionaries]
+      summary: Получить отрасль для межсервисной проверки
+      description: Internal endpoint. industry_id используется Vacancy Service как external ID, а не FK.
+      operationId: getInternalIndustry
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - name: industry_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Industry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Industry'
+        '404':
+          description: Industry not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/v1/experience-levels/{experience_level_id}:
+    get:
+      tags: [InternalDictionaries]
+      summary: Получить уровень опыта для межсервисной проверки
+      description: Internal endpoint. experience_level_id используется Vacancy Service как external ID, а не FK.
+      operationId: getInternalExperienceLevel
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - name: experience_level_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Experience level.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperienceLevel'
+        '404':
+          description: Experience level not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  responses:
+    ValidationError:
+      description: ValidationError.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    ServiceUnavailable:
+      description: Service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceUnavailableError'
+  schemas:
+    Industry:
+      type: object
+      required: [id, title, is_published, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        is_published:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExperienceLevel:
+      type: object
+      required: [id, title, min_experience_months, max_experience_months, is_published, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        min_experience_months:
+          type: integer
+          minimum: 0
+        max_experience_months:
+          type: integer
+          minimum: 0
+        is_published:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    IndustryListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Industry'
+    ExperienceLevelListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExperienceLevel'
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceUnavailableError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: Service unavailable

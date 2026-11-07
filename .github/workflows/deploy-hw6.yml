@@ -1,0 +1,112 @@
+name: HW6 CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "БР1.2/Васильев Артём/homeworks/hw6/**"
+      - "!БР1.2/Васильев Артём/homeworks/hw6/**/*.md"
+      - "!БР1.2/Васильев Артём/homeworks/hw6/**/*.pdf"
+      - ".github/workflows/deploy-hw6.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: hw6-main
+  cancel-in-progress: false
+
+env:
+  APP_DIR: ${{ vars.HW6_APP_DIR || 'БР1.2/Васильев Артём/homeworks/hw6' }}
+  NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
+  DOCKER_IMAGE_PREFIX: ${{ vars.DOCKER_IMAGE_PREFIX || 'hw6' }}
+  DEPLOY_COMMAND_TIMEOUT: ${{ vars.DEPLOY_COMMAND_TIMEOUT || '40m' }}
+
+jobs:
+  service-ci:
+    name: Check ${{ matrix.service }}
+    runs-on: ${{ vars.RUNNER_IMAGE || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-user-service
+          - company-service
+          - dictionary-service
+          - vacancy-service
+          - resume-service
+          - application-service
+          - interaction-service
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/services/${{ matrix.service }}/package-lock.json
+
+      - name: Install exact dependencies
+        working-directory: ${{ env.APP_DIR }}/services/${{ matrix.service }}
+        run: npm ci
+
+      - name: Build TypeScript
+        working-directory: ${{ env.APP_DIR }}/services/${{ matrix.service }}
+        run: npm run build
+
+      - name: Build Docker image
+        working-directory: ${{ env.APP_DIR }}/services/${{ matrix.service }}
+        run: docker build --tag ${{ env.DOCKER_IMAGE_PREFIX }}-${{ matrix.service }}:${{ github.sha }} .
+
+  compose-ci:
+    name: Validate Docker Compose
+    runs-on: ${{ vars.RUNNER_IMAGE || 'ubuntu-24.04' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          JWT_SECRET_KEY: ci-jwt-secret
+          SERVICE_TOKEN: ci-service-token
+          DB_PASSWORD: ci-db-password
+          RABBITMQ_USER: ci-rabbit-user
+          RABBITMQ_PASSWORD: ci-rabbit-password
+        run: docker compose config --quiet
+
+  deploy:
+    name: Deploy to remote server
+    needs:
+      - service-ci
+      - compose-ci
+    runs-on: ${{ vars.RUNNER_IMAGE || 'ubuntu-24.04' }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          APP_SUBDIR: ${{ env.APP_DIR }}
+          COMMIT_SHA: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          # The first deployment builds seven images sequentially to stay within
+          # the server's 1.9 GB RAM limit, so allow enough time for a cold cache.
+          command_timeout: ${{ env.DEPLOY_COMMAND_TIMEOUT }}
+          envs: APP_SUBDIR,COMMIT_SHA,REPO_URL,JWT_SECRET_KEY,SERVICE_TOKEN,DB_PASSWORD,RABBITMQ_USER,RABBITMQ_PASSWORD
+          script_path: ${{ env.APP_DIR }}/deploy/scripts/ci-deploy-remote.sh

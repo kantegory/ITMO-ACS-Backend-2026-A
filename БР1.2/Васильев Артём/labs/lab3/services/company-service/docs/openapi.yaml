@@ -1,0 +1,225 @@
+openapi: 3.0.3
+info:
+  title: Company Service API
+  version: 1.0.0
+  description: Companies, employer profiles and internal ownership checks.
+servers:
+  - url: http://localhost:3002/api/v1
+tags:
+  - name: Companies
+  - name: EmployerProfiles
+  - name: Internal
+paths:
+  /companies:
+    post:
+      tags: [Companies]
+      summary: Create company
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyRequest'
+      responses:
+        '201':
+          description: Company created
+    get:
+      tags: [Companies]
+      summary: List companies
+      responses:
+        '200':
+          description: Company list
+  /companies/{company_id}:
+    get:
+      tags: [Companies]
+      summary: Get company
+      parameters:
+        - $ref: '#/components/parameters/companyId'
+      responses:
+        '200':
+          description: Company found
+    patch:
+      tags: [Companies]
+      summary: Update company
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/companyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyRequest'
+      responses:
+        '200':
+          description: Company updated
+  /employer-profiles:
+    post:
+      tags: [EmployerProfiles]
+      summary: Create employer profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployerProfileRequest'
+      responses:
+        '201':
+          description: Employer profile created
+    get:
+      tags: [EmployerProfiles]
+      summary: List employer profiles
+      responses:
+        '200':
+          description: Employer profile list
+  /employer-profiles/me:
+    get:
+      tags: [EmployerProfiles]
+      summary: Current employer profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Employer profile
+    patch:
+      tags: [EmployerProfiles]
+      summary: Update current employer profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployerProfileRequest'
+      responses:
+        '200':
+          description: Employer profile updated
+  /employer-profiles/{profile_id}:
+    get:
+      tags: [EmployerProfiles]
+      summary: Get employer profile
+      parameters:
+        - $ref: '#/components/parameters/profileId'
+      responses:
+        '200':
+          description: Employer profile
+  /internal/v1/companies/batch:
+    post:
+      tags: [Internal]
+      summary: Internal batch company lookup
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchIdsRequest'
+      responses:
+        '200':
+          description: Companies and missingIds returned
+  /internal/v1/employer-profiles/batch:
+    post:
+      tags: [Internal]
+      summary: Internal batch employer profile lookup
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchIdsRequest'
+      responses:
+        '200':
+          description: Employer profiles and missingIds returned
+  /internal/v1/employer-profiles/by-user/{user_id}:
+    get:
+      tags: [Internal]
+      summary: Find employer profile by user
+      security:
+        - serviceToken: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Employer profile found
+components:
+  schemas:
+    CompanyRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: ITMO Jobs
+        description:
+          type: string
+          example: Backend team
+        website:
+          type: string
+          example: https://itmo.ru
+        industry_text:
+          type: string
+          example: IT
+        address:
+          type: string
+          example: Saint Petersburg
+        employee_count:
+          type: integer
+    BatchIdsRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          example: 100
+    EmployerProfileRequest:
+      type: object
+      required: [company_id, position]
+      properties:
+        company_id:
+          type: string
+          format: uuid
+          example: 00000000-0000-0000-0000-000000000000
+        position:
+          type: string
+          example: HR
+  parameters:
+    companyId:
+      name: company_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    profileId:
+      name: profile_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token

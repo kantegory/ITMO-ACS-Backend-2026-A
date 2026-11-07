@@ -1,0 +1,24 @@
+$kind: http-request
+url: "{{baseUrl}}/auth/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{{applicantEmail}}",
+      "password": "{{password}}"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('200, Bearer token and same applicant', function () {
+      pm.response.to.have.status(200); const j = pm.response.json();
+      pm.expect(j).to.include.keys(['access_token','token_type','user']); const
+      expectedId = pm.collectionVariables.get('applicantUserId'); if
+      (expectedId) { pm.expect(j.user.id).to.eql(expectedId); } else {
+      pm.collectionVariables.set('applicantUserId', j.user.id); }
+      pm.expect(j.user.role).to.eql('APPLICANT');
+      pm.collectionVariables.set('applicantToken', j.access_token); });
+    language: text/javascript
+order: 10000

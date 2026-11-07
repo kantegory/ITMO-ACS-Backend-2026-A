@@ -1,0 +1,458 @@
+openapi: 3.0.3
+info:
+  title: Resume Service API
+  version: 1.0.0
+  description: >
+    API сервиса резюме. Сервис владеет resumes и resume_experiences в resumes_db.
+    resumes.user_id является external ID из Auth/User Service, а resume_experiences.resume_id
+    остается внутренним FK внутри Resume Service.
+servers:
+  - url: /api/v1
+    description: Public API
+tags:
+  - name: Resumes
+  - name: InternalResumes
+paths:
+  /resumes:
+    post:
+      tags: [Resumes]
+      summary: Создать резюме
+      description: Создает резюме текущего пользователя. user_id берется из JWT и хранится как external ID.
+      operationId: createResume
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResumeRequest'
+      responses:
+        '201':
+          description: Резюме создано.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [Resumes]
+      summary: Получить список резюме
+      description: Возвращает резюме с учетом роли пользователя и фильтров.
+      operationId: listResumes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: desired_position
+          in: query
+          schema: { type: string }
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: employment_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/EmploymentType'
+        - name: work_format
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkFormat'
+        - name: salary_expectation_from
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: salary_expectation_to
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: is_published
+          in: query
+          schema: { type: boolean }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Список резюме.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeListResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /resumes/{resume_id}:
+    parameters:
+      - $ref: '#/components/parameters/ResumeId'
+    get:
+      tags: [Resumes]
+      summary: Получить резюме
+      description: Возвращает резюме с опытом работы с учетом прав пользователя и статуса публикации.
+      operationId: getResumeById
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Резюме.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Resume is not published or applicant does not own it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Resumes]
+      summary: Обновить резюме
+      description: Обновляет резюме и при необходимости заменяет список опыта работы внутри Resume Service.
+      operationId: updateResume
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateResumeRequest'
+      responses:
+        '200':
+          description: Резюме обновлено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Resumes]
+      summary: Удалить резюме
+      operationId: deleteResume
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Резюме удалено.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/resumes/{resume_id}:
+    get:
+      tags: [InternalResumes]
+      summary: Internal lookup резюме
+      description: Возвращает резюме для межсервисных проверок. user_id является external ID.
+      operationId: getInternalResume
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+      responses:
+        '200':
+          description: Internal resume.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalResumeResponse'
+        '404':
+          description: Resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/resumes/{resume_id}/ownership:
+    get:
+      tags: [InternalResumes]
+      summary: Проверить владельца резюме
+      description: Проверяет, принадлежит ли резюме пользователю. user_id является external ID из Auth/User Service.
+      operationId: checkResumeOwnership
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: External ID пользователя из Auth/User Service.
+      responses:
+        '200':
+          description: Ownership result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeOwnershipResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: Resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/resumes/{resume_id}/publication-status:
+    get:
+      tags: [InternalResumes]
+      summary: Проверить публикацию резюме
+      description: Internal endpoint для проверки is_published без прямого доступа к resumes_db.
+      operationId: getResumePublicationStatus
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+      responses:
+        '200':
+          description: Publication status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumePublicationStatusResponse'
+        '404':
+          description: Resume not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    ResumeId:
+      name: resume_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    ValidationError:
+      description: ValidationError.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceUnavailableError'
+  schemas:
+    EmploymentType:
+      type: string
+      enum: [FULL_TIME, PART_TIME, CONTRACT, INTERNSHIP]
+    WorkFormat:
+      type: string
+      enum: [OFFICE, REMOTE, HYBRID]
+    PageMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    ResumeExperience:
+      type: object
+      required: [id, resume_id, company_name, position, description, start_date, months_count, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        resume_id:
+          type: string
+          format: uuid
+          description: Внутренний FK на resumes.id внутри Resume Service.
+        company_name: { type: string, maxLength: 255 }
+        position: { type: string, maxLength: 255 }
+        description: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+        months_count: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Resume:
+      type: object
+      required: [id, user_id, title, desired_position, about_me, skills, education, salary_expectation, city, employment_type, work_format, is_published, experiences, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id:
+          type: string
+          format: uuid
+          description: External ID пользователя из Auth/User Service, не FK.
+        title: { type: string, maxLength: 255 }
+        desired_position: { type: string, maxLength: 255 }
+        about_me: { type: string }
+        skills: { type: string }
+        education: { type: string }
+        salary_expectation: { type: number, minimum: 0 }
+        city: { type: string, maxLength: 255 }
+        employment_type:
+          $ref: '#/components/schemas/EmploymentType'
+        work_format:
+          $ref: '#/components/schemas/WorkFormat'
+        is_published: { type: boolean }
+        experiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResumeExperience'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ResumeExperienceInput:
+      type: object
+      required: [company_name, position, description, start_date, months_count]
+      properties:
+        company_name: { type: string, maxLength: 255 }
+        position: { type: string, maxLength: 255 }
+        description: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+        months_count: { type: integer, minimum: 1 }
+    CreateResumeRequest:
+      type: object
+      required: [title, desired_position, about_me, skills, education, salary_expectation, city, employment_type, work_format, is_published, experiences]
+      properties:
+        title: { type: string, maxLength: 255 }
+        desired_position: { type: string, maxLength: 255 }
+        about_me: { type: string }
+        skills: { type: string }
+        education: { type: string }
+        salary_expectation: { type: number, minimum: 0 }
+        city: { type: string, maxLength: 255 }
+        employment_type:
+          $ref: '#/components/schemas/EmploymentType'
+        work_format:
+          $ref: '#/components/schemas/WorkFormat'
+        is_published: { type: boolean }
+        experiences:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ResumeExperienceInput'
+    UpdateResumeRequest:
+      type: object
+      properties:
+        title: { type: string, maxLength: 255 }
+        desired_position: { type: string, maxLength: 255 }
+        about_me: { type: string }
+        skills: { type: string }
+        education: { type: string }
+        salary_expectation: { type: number, minimum: 0 }
+        city: { type: string, maxLength: 255 }
+        employment_type:
+          $ref: '#/components/schemas/EmploymentType'
+        work_format:
+          $ref: '#/components/schemas/WorkFormat'
+        is_published: { type: boolean }
+        experiences:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ResumeExperienceInput'
+    ResumeListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resume'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    InternalResumeResponse:
+      type: object
+      required: [id, user_id, is_published]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, description: External ID из Auth/User Service. }
+        is_published: { type: boolean }
+    ResumeOwnershipResponse:
+      type: object
+      required: [owned, resume_id, user_id, is_published]
+      properties:
+        owned: { type: boolean }
+        resume_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        is_published: { type: boolean }
+    ResumePublicationStatusResponse:
+      type: object
+      required: [resume_id, is_published]
+      properties:
+        resume_id: { type: string, format: uuid }
+        is_published: { type: boolean }
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceUnavailableError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: Service unavailable }

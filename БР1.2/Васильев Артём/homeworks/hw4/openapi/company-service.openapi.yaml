@@ -1,0 +1,569 @@
+openapi: 3.0.3
+info:
+  title: Company Service API
+  version: 1.0.0
+  description: >
+    API сервиса компаний и профилей работодателей. Сервис владеет companies и
+    employer_profiles в companies_db. Поле employer_profiles.user_id является external ID
+    пользователя из Auth/User Service, а не FK.
+servers:
+  - url: /api/v1
+    description: Public API
+tags:
+  - name: Companies
+  - name: EmployerProfiles
+  - name: InternalCompanies
+paths:
+  /companies:
+    post:
+      tags: [Companies]
+      summary: Создать компанию
+      description: Создает компанию. Доступно работодателю или администратору.
+      operationId: createCompany
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        '201':
+          description: Компания создана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [Companies]
+      summary: Получить список компаний
+      description: Публичный список компаний с пагинацией и поиском.
+      operationId: listCompanies
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: title
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список компаний.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyListResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /companies/{company_id}:
+    parameters:
+      - $ref: '#/components/parameters/CompanyId'
+    get:
+      tags: [Companies]
+      summary: Получить компанию
+      description: Публичное получение компании по id.
+      operationId: getCompanyById
+      responses:
+        '200':
+          description: Компания.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '404':
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Companies]
+      summary: Обновить компанию
+      description: Обновляет компанию. Владелец определяется через EmployerProfile внутри Company Service.
+      operationId: updateCompany
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCompanyRequest'
+      responses:
+        '200':
+          description: Компания обновлена.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /employer-profiles:
+    post:
+      tags: [EmployerProfiles]
+      summary: Создать профиль работодателя
+      description: Создает связь пользователя с компанией. user_id берется из JWT и является external ID из Auth/User Service.
+      operationId: createEmployerProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmployerProfileRequest'
+      responses:
+        '201':
+          description: Профиль создан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Employer profile already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [EmployerProfiles]
+      summary: Получить список профилей работодателей
+      description: Возвращает профили работодателей с фильтрами. user_id в ответе является external ID.
+      operationId: listEmployerProfiles
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: company_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: External ID пользователя из Auth/User Service.
+        - name: position
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список профилей.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfileListResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /employer-profiles/me:
+    get:
+      tags: [EmployerProfiles]
+      summary: Получить текущий employer profile
+      description: Возвращает профиль работодателя для пользователя из JWT.
+      operationId: getCurrentEmployerProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Профиль текущего работодателя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Employer profile not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [EmployerProfiles]
+      summary: Обновить текущий employer profile
+      description: Обновляет компанию или должность текущего профиля работодателя.
+      operationId: updateCurrentEmployerProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmployerProfileRequest'
+      responses:
+        '200':
+          description: Профиль обновлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Employer profile or company not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /employer-profiles/{profile_id}:
+    get:
+      tags: [EmployerProfiles]
+      summary: Получить employer profile
+      description: Возвращает публичное представление профиля работодателя по profile_id.
+      operationId: getEmployerProfileById
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: Employer profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '404':
+          description: Employer profile not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/companies/{company_id}:
+    get:
+      tags: [InternalCompanies]
+      summary: Internal lookup компании
+      description: Используется Vacancy Service для проверки company_id как external ID.
+      operationId: getInternalCompany
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200':
+          description: Company.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '404':
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/employer-profiles/{profile_id}:
+    get:
+      tags: [InternalCompanies]
+      summary: Internal lookup employer profile
+      description: Возвращает профиль работодателя. user_id является external ID.
+      operationId: getInternalEmployerProfile
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: Employer profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '404':
+          description: Employer profile not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/employer-profiles/{profile_id}/ownership:
+    get:
+      tags: [InternalCompanies]
+      summary: Проверить ownership employer profile
+      description: Проверяет, принадлежит ли profile_id пользователю user_id; company_id опционально проверяет связь профиля с компанией.
+      operationId: checkEmployerProfileOwnership
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: External ID пользователя из Auth/User Service.
+        - name: company_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional external ID компании внутри Company Service.
+      responses:
+        '200':
+          description: Ownership check result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfileOwnershipResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: Employer profile not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/v1/employer-profiles/by-user/{user_id}:
+    get:
+      tags: [InternalCompanies]
+      summary: Найти employer profile пользователя
+      description: user_id является external ID из Auth/User Service.
+      operationId: getEmployerProfileByUser
+      security:
+        - serviceTokenAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Employer profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfile'
+        '404':
+          description: Employer profile not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CompanyId:
+      name: company_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProfileId:
+      name: profile_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    ValidationError:
+      description: ValidationError.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceUnavailableError'
+  schemas:
+    PageMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    Company:
+      type: object
+      required: [id, title, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, maxLength: 255 }
+        description: { type: string, nullable: true }
+        website: { type: string, format: uri, nullable: true }
+        industry_text: { type: string, nullable: true, description: Свободный текст отрасли компании. }
+        address: { type: string, nullable: true }
+        employee_count: { type: integer, nullable: true, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateCompanyRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, maxLength: 255 }
+        description: { type: string, nullable: true }
+        website: { type: string, format: uri, nullable: true }
+        industry_text: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        employee_count: { type: integer, minimum: 0, nullable: true }
+    UpdateCompanyRequest:
+      type: object
+      description: Все поля опциональны при PATCH.
+      properties:
+        title: { type: string, maxLength: 255 }
+        description: { type: string, nullable: true }
+        website: { type: string, format: uri, nullable: true }
+        industry_text: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        employee_count: { type: integer, minimum: 0, nullable: true }
+    CompanyListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Company'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    EmployerProfile:
+      type: object
+      required: [id, user_id, company_id, position, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id:
+          type: string
+          format: uuid
+          description: External ID пользователя из Auth/User Service, не FK.
+        company_id:
+          type: string
+          format: uuid
+          description: ID компании внутри Company Service.
+        position: { type: string, maxLength: 255 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateEmployerProfileRequest:
+      type: object
+      required: [company_id, position]
+      properties:
+        company_id: { type: string, format: uuid }
+        position: { type: string, maxLength: 255 }
+    UpdateEmployerProfileRequest:
+      type: object
+      properties:
+        company_id: { type: string, format: uuid }
+        position: { type: string, maxLength: 255 }
+    EmployerProfileListResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployerProfile'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    EmployerProfileOwnershipResponse:
+      type: object
+      required: [owned, profile_id, user_id, company_id]
+      properties:
+        owned: { type: boolean }
+        profile_id: { type: string, format: uuid }
+        user_id:
+          type: string
+          format: uuid
+          description: External ID пользователя из Auth/User Service.
+        company_id: { type: string, format: uuid }
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string, example: Validation failed }
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceUnavailableError:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: Service unavailable }

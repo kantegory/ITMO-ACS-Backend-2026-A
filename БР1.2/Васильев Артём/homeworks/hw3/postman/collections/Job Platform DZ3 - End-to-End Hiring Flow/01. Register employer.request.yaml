@@ -1,0 +1,44 @@
+$kind: http-request
+url: "{{baseUrl}}/auth/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "role": "EMPLOYER",
+      "first_name": "Egor",
+      "last_name": "Employer",
+      "email": "{{employerEmail}}",
+      "password": "{{password}}",
+      "phone": "+79990000101"
+    }
+scripts:
+  - type: beforeRequest
+    code: const suffix = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      pm.collectionVariables.set('runSuffix', suffix);
+      pm.collectionVariables.set('password', 'Password123!');
+      pm.collectionVariables.set('employerEmail',
+      `dz3-employer-${suffix}@example.com`);
+      pm.collectionVariables.set('applicantEmail',
+      `dz3-applicant-${suffix}@example.com`);
+      pm.collectionVariables.set('companyTitle', `DZ3 Hiring Company
+      ${suffix}`); pm.collectionVariables.set('vacancyTitle', `DZ3 Backend
+      Developer ${suffix}`); pm.collectionVariables.set('vacancyCity',
+      'Moscow'); pm.collectionVariables.set('resumeTitle', `DZ3 Backend Resume
+      ${suffix}`); pm.collectionVariables.set('coverLetter', `Cover letter for
+      DZ3 scenario ${suffix}`);
+      ['employerToken','applicantToken','employerUserId','applicantUserId','companyId','employerProfileId','industryId','experienceLevelId','vacancyId','resumeId','viewId','favoriteId','applicationId'].forEach((key)
+      => pm.collectionVariables.unset(key));
+    language: text/javascript
+  - type: afterResponse
+    code: pm.test('201 and employer user fields', function () {
+      pm.response.to.have.status(201); pm.response.to.be.json; const j =
+      pm.response.json();
+      pm.expect(j).to.include.keys(['id','role','first_name','last_name','email','phone','is_verified','created_at','updated_at']);
+      pm.expect(j.role).to.eql('EMPLOYER');
+      pm.expect(j.email).to.eql(pm.collectionVariables.get('employerEmail'));
+      pm.collectionVariables.set('employerUserId', j.id); });
+    language: text/javascript
+order: 1000

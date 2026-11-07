@@ -1,0 +1,55 @@
+---
+- name: Проверить текущий swap без изменений
+  ansible.builtin.command: swapon --show
+  changed_when: false
+  when: common_preserve_existing | bool
+
+- name: Настроить базовую систему на чистом сервере
+  when: not common_preserve_existing | bool
+  block:
+    - name: Обновить кэш apt и установить базовые пакеты
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - git
+          - nginx
+          - ufw
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Проверить наличие swap-файла
+      ansible.builtin.stat:
+        path: /swapfile
+      register: common_swap_file
+
+    - name: Создать swap-файл 2 ГБ
+      ansible.builtin.shell: |
+        set -eu
+        if ! fallocate -l 2G /swapfile 2>/dev/null; then
+          dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+        fi
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null
+      args:
+        executable: /bin/bash
+        creates: /swapfile
+      when: not common_swap_file.stat.exists
+
+    - name: Проверить подключённый swap
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: common_active_swap
+      changed_when: false
+      check_mode: false
+
+    - name: Подключить swap-файл
+      ansible.builtin.command: swapon /swapfile
+      changed_when: true
+      when: "'/swapfile' not in common_active_swap.stdout"
+
+    - name: Сохранить swap в fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: /swapfile none swap sw 0 0
+        state: present

@@ -1,0 +1,270 @@
+x-service-env: &service-env
+  APP_HOST: 0.0.0.0
+  APP_API_PREFIX: /api/v1
+  JWT_SECRET: super-secret-key
+  JWT_SECRET_KEY: super-secret-key
+  SERVICE_TOKEN: dev-service-token
+  AUTH_USER_SERVICE_URL: http://auth-user-service:3001/api/v1
+  COMPANY_SERVICE_URL: http://company-service:3002/api/v1
+  DICTIONARY_SERVICE_URL: http://dictionary-service:3003/api/v1
+  VACANCY_SERVICE_URL: http://vacancy-service:3004/api/v1
+  RESUME_SERVICE_URL: http://resume-service:3005/api/v1
+  APPLICATION_SERVICE_URL: http://application-service:3006/api/v1
+  INTERACTION_SERVICE_URL: http://interaction-service:3007/api/v1
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: maindb
+  POSTGRES_PASSWORD: maindb
+
+services:
+  auth-user-service:
+    build: ./services/auth-user-service
+    restart: unless-stopped
+    ports:
+      - 3001:3001
+    environment:
+      <<: *service-env
+      APP_PORT: 3001
+      DB_HOST: users-db
+      DB_PORT: 5432
+      DB_NAME: users_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      users-db:
+        condition: service_healthy
+
+  company-service:
+    build: ./services/company-service
+    restart: unless-stopped
+    ports:
+      - 3002:3002
+    environment:
+      <<: *service-env
+      APP_PORT: 3002
+      DB_HOST: companies-db
+      DB_PORT: 5432
+      DB_NAME: companies_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      companies-db:
+        condition: service_healthy
+      auth-user-service:
+        condition: service_started
+
+  dictionary-service:
+    build: ./services/dictionary-service
+    restart: unless-stopped
+    ports:
+      - 3003:3003
+    environment:
+      <<: *service-env
+      APP_PORT: 3003
+      DB_HOST: dictionaries-db
+      DB_PORT: 5432
+      DB_NAME: dictionaries_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      dictionaries-db:
+        condition: service_healthy
+
+  vacancy-service:
+    build: ./services/vacancy-service
+    restart: unless-stopped
+    ports:
+      - 3004:3004
+    environment:
+      <<: *service-env
+      APP_PORT: 3004
+      DB_HOST: vacancies-db
+      DB_PORT: 5432
+      DB_NAME: vacancies_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      vacancies-db:
+        condition: service_healthy
+      company-service:
+        condition: service_started
+      dictionary-service:
+        condition: service_started
+
+  resume-service:
+    build: ./services/resume-service
+    restart: unless-stopped
+    ports:
+      - 3005:3005
+    environment:
+      <<: *service-env
+      APP_PORT: 3005
+      DB_HOST: resumes-db
+      DB_PORT: 5432
+      DB_NAME: resumes_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      resumes-db:
+        condition: service_healthy
+
+  application-service:
+    build: ./services/application-service
+    restart: unless-stopped
+    ports:
+      - 3006:3006
+    environment:
+      <<: *service-env
+      APP_PORT: 3006
+      DB_HOST: applications-db
+      DB_PORT: 5432
+      DB_NAME: applications_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      applications-db:
+        condition: service_healthy
+      vacancy-service:
+        condition: service_started
+      resume-service:
+        condition: service_started
+      company-service:
+        condition: service_started
+
+  interaction-service:
+    build: ./services/interaction-service
+    restart: unless-stopped
+    ports:
+      - 3007:3007
+    environment:
+      <<: *service-env
+      APP_PORT: 3007
+      DB_HOST: interactions-db
+      DB_PORT: 5432
+      DB_NAME: interactions_db
+      DB_USER: maindb
+      DB_PASSWORD: maindb
+    depends_on:
+      interactions-db:
+        condition: service_healthy
+      vacancy-service:
+        condition: service_started
+
+  users-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15439:5432
+    volumes:
+      - ./dbs/users-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: users_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d users_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  companies-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15433:5432
+    volumes:
+      - ./dbs/companies-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: companies_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d companies_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  dictionaries-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15434:5432
+    volumes:
+      - ./dbs/dictionaries-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: dictionaries_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d dictionaries_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  vacancies-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15435:5432
+    volumes:
+      - ./dbs/vacancies-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: vacancies_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d vacancies_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  resumes-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15436:5432
+    volumes:
+      - ./dbs/resumes-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: resumes_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d resumes_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  applications-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15437:5432
+    volumes:
+      - ./dbs/applications-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: applications_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d applications_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  interactions-db:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - 15438:5432
+    volumes:
+      - ./dbs/interactions-db:/var/lib/postgresql/data
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: interactions_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maindb -d interactions_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

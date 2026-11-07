@@ -1,0 +1,44 @@
+$kind: http-request
+url: "{{baseUrl}}/resumes"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "title": "{{resumeTitle}}",
+      "desired_position": "Backend Developer",
+      "about_me": "I build backend services with TypeScript and PostgreSQL.",
+      "skills": "TypeScript, Node.js, PostgreSQL, Docker",
+      "education": "ITMO University",
+      "salary_expectation": 210000,
+      "city": "Moscow",
+      "employment_type": "FULL_TIME",
+      "work_format": "HYBRID",
+      "is_published": true,
+      "experiences": [
+        {
+          "company_name": "DZ3 Previous Company",
+          "position": "Backend Developer",
+          "description": "Developed REST APIs and integrations.",
+          "start_date": "2024-01-01",
+          "months_count": 18
+        }
+      ]
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{applicantToken}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('201 and resume belongs to applicant', function () {
+      pm.response.to.have.status(201); const j = pm.response.json();
+      pm.expect(j).to.include.keys(['id','user_id','title','desired_position','skills','experiences','salary_expectation','city','employment_type','work_format','is_published']);
+      pm.expect(j.user_id).to.eql(pm.collectionVariables.get('applicantUserId'));
+      pm.expect(j.experiences).to.be.an('array').and.have.lengthOf.at.least(1);
+      pm.expect(j.is_published).to.eql(true);
+      pm.collectionVariables.set('resumeId', j.id); });
+    language: text/javascript
+order: 11000

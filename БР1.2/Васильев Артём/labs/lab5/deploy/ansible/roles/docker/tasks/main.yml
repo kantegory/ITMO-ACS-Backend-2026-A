@@ -1,0 +1,72 @@
+---
+- name: Проверить Docker Engine
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+  failed_when: false
+
+- name: Проверить Docker Compose plugin
+  ansible.builtin.command: docker compose version
+  register: docker_compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Проверить существующий runtime Docker
+  ansible.builtin.assert:
+    that:
+      - docker_version.rc == 0
+      - docker_compose_version.rc == 0
+    fail_msg: >-
+      Docker Engine и Docker Compose обязательны на текущем сервере.
+      Установку можно включить явно через docker_preserve_existing=false.
+  when: docker_preserve_existing | bool
+
+- name: Создать каталог для ключей Docker
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: not docker_preserve_existing | bool
+
+- name: Установить GPG-ключ Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+  when: not docker_preserve_existing | bool
+
+- name: Подключить официальный репозиторий Docker
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}
+      signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+    update_cache: true
+  when: not docker_preserve_existing | bool
+
+- name: Установить Docker Engine и Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  when: not docker_preserve_existing | bool
+
+- name: Настроить ротацию логов Docker
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+  notify: Перезапустить Docker
+  when: not docker_preserve_existing | bool
+
+- name: Включить Docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
