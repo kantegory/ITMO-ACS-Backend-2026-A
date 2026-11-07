@@ -1,0 +1,39 @@
+# Promtail читает логи ВСЕХ контейнеров на ВМ через Docker API (docker.sock)
+# и отправляет их в Loki с метками container / service / project / stream.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # /rental_api_gateway → rental_api_gateway
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: project
+      - source_labels: [__meta_docker_container_log_stream]
+        target_label: stream
+      - target_label: host
+        replacement: vm
+    pipeline_stages:
+      # gin пишет "[GIN] 2026/11/04 - 12:00:00 | 200 | ... | GET "/health""
+      # вытаскиваем HTTP-статус и метод как structured metadata (не метки — без роста кардинальности)
+      - regex:
+          expression: '^\[GIN\].*?\|\s*(?P<status>\d{3})\s*\|.*?\|\s*(?P<method>[A-Z]+)\s+"'
+      - structured_metadata:
+          status:
+          method:

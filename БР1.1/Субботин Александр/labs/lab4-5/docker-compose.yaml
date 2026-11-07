@@ -1,0 +1,229 @@
+# Приложение «Сервис аренды недвижимости» (ЛР2-3 → ЛР4).
+#
+# Отличия от ЛР3 (production-ready):
+#   - секреты вынесены в .env (см. .env.example), в git только шаблон;
+#   - наружу (и только на 127.0.0.1) опубликован один api-gateway — доступ
+#     извне идёт через nginx на хосте; БД, брокер и сервисы во внутренней сети;
+#   - restart: unless-stopped, healthcheck'и сервисов, ротация логов;
+#   - переменные Sentry (ЛР5, доп. задание) прокидываются во все сервисы;
+#   - лимиты памяти и oom_score_adj: на общей ВМ (рядом VPN) при нехватке памяти
+#     ядро в первую очередь завершит контейнеры приложения, а не чужие сервисы;
+#   - образы именуются ${IMAGE_PREFIX}-<сервис>:${IMAGE_TAG}, чтобы их можно было
+#     собрать в CI, положить в GHCR и только скачать на сервере (ДЗ6).
+#
+# Мониторинг (ЛР5) описан в docker-compose.monitoring.yaml и подключается через
+# COMPOSE_FILE в .env, поэтому достаточно `docker compose up -d`.
+
+name: rental
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-sentry-env: &sentry-env
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+  SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+  SENTRY_DEBUG_ROUTE: ${SENTRY_DEBUG_ROUTE:-false}
+
+x-service: &service
+  restart: unless-stopped
+  logging: *logging
+  networks: [backend]
+  oom_score_adj: 300
+
+# Go-сервисы потребляют 10–30 МБ, лимит с запасом
+x-go-service: &go-service
+  <<: *service
+  mem_limit: 128m
+
+services:
+  postgres:
+    <<: *service
+    image: postgres:16-alpine
+    container_name: rental_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: rental_db
+    # только для администрирования через SSH-туннель
+    ports:
+      - "${POSTGRES_BIND:-127.0.0.1:5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./user-service/migrations:/migrations/user:ro
+      - ./property-service/migrations:/migrations/property:ro
+      - ./booking-service/migrations:/migrations/booking:ro
+      - ./chat-service/migrations:/migrations/chat:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d rental_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    <<: *service
+    image: rabbitmq:3.13-management-alpine
+    container_name: rental_broker
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rental}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    # management UI — только через SSH-туннель
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  user-service:
+    <<: *go-service
+    build: ./user-service
+    image: ${IMAGE_PREFIX:-rental}-user-service:${IMAGE_TAG:-latest}
+    container_name: rental_user_service
+    environment:
+      <<: *sentry-env
+      ENV: docker
+      WEB_PORT: ":8081"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: user_db
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+    healthcheck: &http-health
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  property-service:
+    <<: *go-service
+    build: ./property-service
+    image: ${IMAGE_PREFIX:-rental}-property-service:${IMAGE_TAG:-latest}
+    container_name: rental_property_service
+    environment:
+      <<: *sentry-env
+      ENV: docker
+      WEB_PORT: ":8082"
+      GRPC_PORT: ":9082"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: property_db
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-rental}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    healthcheck:
+      <<: *http-health
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/health >/dev/null || exit 1"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  booking-service:
+    <<: *go-service
+    build: ./booking-service
+    image: ${IMAGE_PREFIX:-rental}-booking-service:${IMAGE_TAG:-latest}
+    container_name: rental_booking_service
+    environment:
+      <<: *sentry-env
+      ENV: docker
+      WEB_PORT: ":8083"
+      GRPC_PORT: ":9083"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: booking_db
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET}
+      PROPERTY_SERVICE_URL: property-service:9082
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-rental}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    healthcheck:
+      <<: *http-health
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8083/health >/dev/null || exit 1"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      property-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  chat-service:
+    <<: *go-service
+    build: ./chat-service
+    image: ${IMAGE_PREFIX:-rental}-chat-service:${IMAGE_TAG:-latest}
+    container_name: rental_chat_service
+    environment:
+      <<: *sentry-env
+      ENV: docker
+      WEB_PORT: ":8084"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: chat_db
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET}
+    healthcheck:
+      <<: *http-health
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8084/health >/dev/null || exit 1"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api-gateway:
+    <<: *go-service
+    build: ./api-gateway
+    image: ${IMAGE_PREFIX:-rental}-api-gateway:${IMAGE_TAG:-latest}
+    container_name: rental_api_gateway
+    # единственная точка входа; nginx на хосте проксирует сюда
+    ports:
+      - "${GATEWAY_BIND:-127.0.0.1:8080}:8080"
+    environment:
+      <<: *sentry-env
+      WEB_PORT: ":8080"
+      USER_SERVICE_URL: http://user-service:8081
+      PROPERTY_SERVICE_GRPC_URL: property-service:9082
+      BOOKING_SERVICE_GRPC_URL: booking-service:9083
+      CHAT_SERVICE_URL: http://chat-service:8084
+    healthcheck:
+      <<: *http-health
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
+    depends_on:
+      user-service:
+        condition: service_healthy
+      property-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+
+networks:
+  backend:
+    name: rental_backend
+    driver_opts:
+      # фиксированное имя bridge-интерфейса — на него ссылается правило ufw для node-exporter
+      com.docker.network.bridge.name: br-rental
+
+volumes:
+  pgdata:
+  rabbitmq:

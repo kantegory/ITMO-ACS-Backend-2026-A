@@ -1,0 +1,419 @@
+basePath: /api/v1
+definitions:
+  model.CreatePropertyRequest:
+    properties:
+      address:
+        type: string
+      amenity_ids:
+        items:
+          type: string
+        type: array
+      area_m2:
+        type: number
+      beds:
+        type: integer
+      check_in_time:
+        type: string
+      check_out_time:
+        type: string
+      city:
+        type: string
+      description:
+        type: string
+      max_guests:
+        type: integer
+      price_per_night:
+        type: number
+      property_type:
+        type: string
+      rooms:
+        type: integer
+      rules:
+        type: string
+      title:
+        type: string
+    required:
+    - city
+    - description
+    - max_guests
+    - price_per_night
+    - property_type
+    - title
+    type: object
+  model.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      details: {}
+      message:
+        type: string
+    type: object
+  model.Favorite:
+    properties:
+      created_at:
+        type: string
+      property_id:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.PaginatedResponse:
+    properties:
+      items: {}
+      pagination:
+        $ref: '#/definitions/model.Pagination'
+    type: object
+  model.Pagination:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  model.Property:
+    properties:
+      address:
+        type: string
+      area_m2:
+        type: number
+      beds:
+        type: integer
+      check_in_time:
+        type: string
+      check_out_time:
+        type: string
+      city:
+        type: string
+      created_at:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      lat:
+        type: number
+      lon:
+        type: number
+      max_guests:
+        type: integer
+      owner_id:
+        type: string
+      price_per_night:
+        type: number
+      property_type:
+        type: string
+      rooms:
+        type: integer
+      rules:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.UpdatePropertyRequest:
+    properties:
+      amenity_ids:
+        items:
+          type: string
+        type: array
+      city:
+        type: string
+      description:
+        type: string
+      max_guests:
+        type: integer
+      price_per_night:
+        type: number
+      rooms:
+        type: integer
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+host: localhost:8082
+info:
+  contact: {}
+  description: Сервис объявлений и избранного
+  title: Property Service API
+  version: "1.0"
+paths:
+  /favorites:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Property'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Список избранного
+      tags:
+      - favorites
+  /favorites/{propertyId}:
+    delete:
+      parameters:
+      - description: ID объявления
+        in: path
+        name: propertyId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Удалить из избранного
+      tags:
+      - favorites
+    post:
+      parameters:
+      - description: ID объявления
+        in: path
+        name: propertyId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Favorite'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "409":
+          description: Уже в избранном
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Добавить в избранное
+      tags:
+      - favorites
+  /properties:
+    get:
+      parameters:
+      - description: Город
+        in: query
+        name: city
+        type: string
+      - description: Тип
+        in: query
+        name: property_type
+        type: string
+      - description: Мин. цена
+        in: query
+        name: price_min
+        type: number
+      - description: Макс. цена
+        in: query
+        name: price_max
+        type: number
+      - default: 20
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PaginatedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Список объявлений
+      tags:
+      - properties
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные объявления
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreatePropertyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Property'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создать объявление
+      tags:
+      - properties
+  /properties/{propertyId}:
+    delete:
+      parameters:
+      - description: ID объявления
+        in: path
+        name: propertyId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Удалить объявление
+      tags:
+      - properties
+    get:
+      parameters:
+      - description: ID объявления
+        in: path
+        name: propertyId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Property'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Получить объявление по ID
+      tags:
+      - properties
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID объявления
+        in: path
+        name: propertyId
+        required: true
+        type: string
+      - description: Данные для обновления
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.UpdatePropertyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Property'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновить объявление
+      tags:
+      - properties
+  /users/me/properties:
+    get:
+      parameters:
+      - default: 20
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PaginatedResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Мои объявления
+      tags:
+      - properties
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите токен в формате: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

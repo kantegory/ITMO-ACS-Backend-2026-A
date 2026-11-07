@@ -1,0 +1,49 @@
+# Правило: healthcheck сервиса (probe_success) == 0 дольше 30 секунд.
+# Мультимерное — отдельный алерт на каждый сервис (метка service).
+# При восстановлении приходит resolved-письмо, т.е. уведомление на любое
+# изменение состояния healthcheck.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: healthchecks
+    folder: Rental
+    interval: 10s
+    rules:
+      - uid: service-healthcheck-down
+        title: Healthcheck сервиса не проходит
+        condition: C
+        for: 30s
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Сервис {{ .Labels.service }} недоступен"
+          description: >-
+            Healthcheck {{ .Labels.service }} ({{ .Labels.probe }}, {{ .Labels.instance }})
+            не проходит больше 30 секунд.
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              refId: A
+              expr: min by (service, probe, instance) (probe_success)
+              instant: true
+              range: false
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
