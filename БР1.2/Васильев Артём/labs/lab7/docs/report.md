@@ -9,7 +9,6 @@
 - Grafana — dashboard и визуализация;
 - Prometheus — сбор метрик;
 - Node Exporter — CPU, RAM, disk и network виртуальной машины;
-- cAdvisor — метрики Docker-контейнеров;
 - Blackbox Exporter — HTTP healthcheck микросервисов;
 - Loki + Promtail — сбор и просмотр логов контейнеров.
 
