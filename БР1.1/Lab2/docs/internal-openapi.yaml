@@ -1,0 +1,351 @@
+openapi: 3.0.3
+info:
+  title: Recipe Sharing Platform - Internal Microservices API
+  version: 1.0.0
+  description: >
+    Внутренние REST-контракты для взаимодействия микросервисов после
+    разделения монолита на Auth Service, Recipe Service и Interaction Service.
+servers:
+  - url: http://auth-service:8001
+    description: Auth Service
+  - url: http://recipe-service:8002
+    description: Recipe Service
+  - url: http://interaction-service:8003
+    description: Interaction Service
+tags:
+  - name: Auth Internal
+  - name: Recipe Internal
+  - name: Interaction Internal
+paths:
+  /internal/users/{userId}/public:
+    get:
+      tags: [Auth Internal]
+      summary: Получить публичные данные пользователя
+      description: Используется Recipe Service и Interaction Service для обогащения ответов.
+      security:
+        - ServiceToken: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Публичные данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/users/check:
+    post:
+      tags: [Auth Internal]
+      summary: Проверить существование набора пользователей
+      security:
+        - ServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserIdsRequest'
+      responses:
+        '200':
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCheckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/recipes/{recipeId}/exists:
+    get:
+      tags: [Recipe Internal]
+      summary: Проверить существование рецепта
+      description: Используется Interaction Service перед созданием комментария, лайка или избранного.
+      security:
+        - ServiceToken: []
+      parameters:
+        - in: path
+          name: recipeId
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Рецепт найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeExistsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecipeNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/recipes/{recipeId}/summary:
+    get:
+      tags: [Recipe Internal]
+      summary: Получить краткую информацию о рецепте
+      security:
+        - ServiceToken: []
+      parameters:
+        - in: path
+          name: recipeId
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Краткая карточка рецепта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecipeNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/recipes/batch/summaries:
+    post:
+      tags: [Recipe Internal]
+      summary: Получить краткие карточки рецептов по списку id
+      security:
+        - ServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeIdsRequest'
+      responses:
+        '200':
+          description: Список карточек рецептов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeSummariesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/recipes/{recipeId}/stats:
+    get:
+      tags: [Interaction Internal]
+      summary: Получить агрегированные метрики взаимодействий по рецепту
+      description: >
+        Используется API Gateway или Recipe Service для сборки полной карточки рецепта
+        без прямого доступа к interaction_db.
+      security:
+        - ServiceToken: []
+      parameters:
+        - in: path
+          name: recipeId
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Статистика взаимодействий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecipeNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  securitySchemes:
+    ServiceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Внутренний сервисный JWT для service-to-service вызовов.
+  responses:
+    Unauthorized:
+      description: Отсутствует или невалиден service token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UserNotFound:
+      description: Пользователь не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: USER_NOT_FOUND
+            message: User with given id was not found
+    RecipeNotFound:
+      description: Рецепт не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RECIPE_NOT_FOUND
+            message: Recipe with given id was not found
+    ServiceUnavailable:
+      description: Сервис временно недоступен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SERVICE_UNAVAILABLE
+            message: Downstream service is temporarily unavailable
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Request validation failed
+        details:
+          type: object
+          additionalProperties: true
+    PublicUserResponse:
+      type: object
+      required: [id, username, email, avatarUrl]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 17
+        username:
+          type: string
+          example: chef_anna
+        email:
+          type: string
+          format: email
+          example: anna@example.com
+        avatarUrl:
+          type: string
+          nullable: true
+          example: https://cdn.example.com/avatars/17.png
+    UserIdsRequest:
+      type: object
+      required: [userIds]
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+          example: [1, 2, 3]
+    UserCheckResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: object
+            required: [id, exists]
+            properties:
+              id:
+                type: integer
+                format: int64
+              exists:
+                type: boolean
+                example: true
+    RecipeExistsResponse:
+      type: object
+      required: [id, exists, authorId]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 101
+        exists:
+          type: boolean
+          example: true
+        authorId:
+          type: integer
+          format: int64
+          example: 17
+        status:
+          type: string
+          example: PUBLISHED
+    RecipeSummaryResponse:
+      type: object
+      required: [id, title, authorId, categoryId, difficultyId]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 101
+        title:
+          type: string
+          example: Блины на молоке
+        description:
+          type: string
+          example: Простой рецепт тонких домашних блинов.
+        authorId:
+          type: integer
+          format: int64
+          example: 17
+        categoryId:
+          type: integer
+          format: int64
+          example: 1
+        difficultyId:
+          type: integer
+          format: int64
+          example: 1
+        cookingTimeMinutes:
+          type: integer
+          example: 30
+        servings:
+          type: integer
+          example: 4
+    RecipeIdsRequest:
+      type: object
+      required: [recipeIds]
+      properties:
+        recipeIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+          example: [101, 102, 103]
+    RecipeSummariesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeSummaryResponse'
+    RecipeStatsResponse:
+      type: object
+      required: [recipeId, commentsCount, likesCount, favoritesCount]
+      properties:
+        recipeId:
+          type: integer
+          format: int64
+          example: 101
+        commentsCount:
+          type: integer
+          example: 5
+        likesCount:
+          type: integer
+          example: 12
+        favoritesCount:
+          type: integer
+          example: 8

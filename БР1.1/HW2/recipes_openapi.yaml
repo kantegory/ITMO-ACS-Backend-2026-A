@@ -1,0 +1,1308 @@
+openapi: 3.0.3
+info:
+  title: Recipe Sharing Service API
+  version: 1.0.0
+  description: |
+    REST API для сервиса обмена рецептами и кулинарных блогов.
+    Поддерживает регистрацию и аутентификацию, управление профилем,
+    публикацию рецептов, поиск и фильтрацию, комментарии, лайки,
+    избранное и подписки.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local server
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Recipes
+  - name: Comments
+  - name: Favorites
+  - name: Subscriptions
+  - name: Reference Data
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Username или email уже заняты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить профиль текущего пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Данные профиля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Users]
+      summary: Обновить профиль текущего пользователя
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/password:
+    patch:
+      tags: [Users]
+      summary: Изменить пароль текущего пользователя
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Пароль изменен
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Получить публичный профиль пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Публичный профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/recipes:
+    get:
+      tags: [Users]
+      summary: Получить рецепты конкретного пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список рецептов пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecipeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/me/favorites:
+    get:
+      tags: [Favorites]
+      summary: Получить избранные рецепты текущего пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список избранных рецептов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecipeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/subscriptions:
+    get:
+      tags: [Subscriptions]
+      summary: Получить список подписок текущего пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список пользователей, на которых подписан текущий пользователь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsersList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /feed:
+    get:
+      tags: [Subscriptions]
+      summary: Получить ленту рецептов от подписок
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Лента рецептов от авторов, на которых подписан пользователь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecipeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{userId}/subscription:
+    post:
+      tags: [Subscriptions]
+      summary: Подписаться на пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '201':
+          description: Подписка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '400':
+          description: Нельзя подписаться на самого себя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Подписка уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Subscriptions]
+      summary: Отписаться от пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '204':
+          description: Подписка удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recipes:
+    get:
+      tags: [Recipes]
+      summary: Получить список рецептов с фильтрацией и пагинацией
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Поиск по названию и описанию
+        - in: query
+          name: categoryId
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: difficultyId
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: ingredientId
+          schema:
+            type: integer
+            format: int64
+          description: Фильтр по ингредиенту
+        - in: query
+          name: authorId
+          schema:
+            type: integer
+            format: int64
+          description: Фильтр по автору
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [createdAt, cookingTimeMinutes, title]
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список рецептов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecipeList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Recipes]
+      summary: Создать рецепт
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecipeRequest'
+      responses:
+        '201':
+          description: Рецепт создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /recipes/{recipeId}:
+    get:
+      tags: [Recipes]
+      summary: Получить детальную информацию о рецепте
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      responses:
+        '200':
+          description: Детальная информация о рецепте
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Recipes]
+      summary: Обновить рецепт
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRecipeRequest'
+      responses:
+        '200':
+          description: Рецепт обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Recipes]
+      summary: Удалить рецепт
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      responses:
+        '204':
+          description: Рецепт удален
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recipes/{recipeId}/comments:
+    get:
+      tags: [Comments]
+      summary: Получить комментарии к рецепту
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список комментариев
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommentList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Comments]
+      summary: Добавить комментарий к рецепту
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Комментарий создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /comments/{commentId}:
+    patch:
+      tags: [Comments]
+      summary: Изменить комментарий
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommentRequest'
+      responses:
+        '200':
+          description: Комментарий обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Comments]
+      summary: Удалить комментарий
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        '204':
+          description: Комментарий удален
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recipes/{recipeId}/like:
+    post:
+      tags: [Recipes]
+      summary: Поставить лайк рецепту
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      responses:
+        '201':
+          description: Лайк поставлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Лайк уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Recipes]
+      summary: Удалить лайк у рецепта
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      responses:
+        '204':
+          description: Лайк удален
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recipes/{recipeId}/favorite:
+    post:
+      tags: [Favorites]
+      summary: Добавить рецепт в избранное
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      responses:
+        '201':
+          description: Рецепт добавлен в избранное
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Рецепт уже находится в избранном
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Favorites]
+      summary: Удалить рецепт из избранного
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeId'
+      responses:
+        '204':
+          description: Рецепт удален из избранного
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reference-data/categories:
+    get:
+      tags: [Reference Data]
+      summary: Получить список категорий рецептов
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Справочник категорий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reference-data/difficulty-levels:
+    get:
+      tags: [Reference Data]
+      summary: Получить список уровней сложности
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Справочник уровней сложности
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DifficultyLevel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /reference-data/ingredients:
+    get:
+      tags: [Reference Data]
+      summary: Получить список ингредиентов
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Поиск по названию ингредиента
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список ингредиентов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedIngredientList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    RecipeId:
+      in: path
+      name: recipeId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    CommentId:
+      in: path
+      name: commentId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    Page:
+      in: query
+      name: page
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Size:
+      in: query
+      name: size
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+  responses:
+    BadRequest:
+      description: Ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Пользователь не аутентифицирован или токен недействителен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Недостаточно прав для выполнения операции
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: chef_anna
+        email:
+          type: string
+          format: email
+          example: anna@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          example: StrongPass123
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: chef_anna
+        password:
+          type: string
+          example: StrongPass123
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: jwt-token-value
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          example: 86400
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: chef_anna
+        email:
+          type: string
+          format: email
+          example: anna@example.com
+        bio:
+          type: string
+          nullable: true
+          example: Люблю домашнюю выпечку и пасту.
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://cdn.example.com/avatars/1.png
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-30T12:00:00Z'
+
+    PublicUserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        bio:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        followersCount:
+          type: integer
+          example: 120
+        followingCount:
+          type: integer
+          example: 45
+        recipesCount:
+          type: integer
+          example: 18
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        bio:
+          type: string
+          maxLength: 1000
+          nullable: true
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          example: StrongPass123
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 72
+          example: NewStrongPass456
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Десерт
+
+    DifficultyLevel:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Легкий
+
+    Ingredient:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 10
+        name:
+          type: string
+          example: Мука
+
+    RecipeIngredientInput:
+      type: object
+      required: [ingredientId, quantity, unit]
+      properties:
+        ingredientId:
+          type: integer
+          format: int64
+          example: 10
+        quantity:
+          type: number
+          format: float
+          example: 250
+        unit:
+          type: string
+          example: g
+
+    RecipeStepInput:
+      type: object
+      required: [stepNumber, description]
+      properties:
+        stepNumber:
+          type: integer
+          minimum: 1
+          example: 1
+        description:
+          type: string
+          maxLength: 2000
+          example: Смешайте муку, яйца и молоко до однородной массы.
+
+    RecipeMediaInput:
+      type: object
+      required: [mediaType, url, sortOrder]
+      properties:
+        mediaType:
+          type: string
+          enum: [image, video]
+          example: image
+        url:
+          type: string
+          format: uri
+          example: https://cdn.example.com/recipes/1/main.jpg
+        sortOrder:
+          type: integer
+          minimum: 1
+          example: 1
+
+    CreateRecipeRequest:
+      type: object
+      required:
+        [title, description, categoryId, difficultyId, cookingTimeMinutes, servings, ingredients, steps]
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 255
+          example: Блины на молоке
+        description:
+          type: string
+          maxLength: 5000
+          example: Простой рецепт тонких домашних блинов.
+        categoryId:
+          type: integer
+          format: int64
+          example: 2
+        difficultyId:
+          type: integer
+          format: int64
+          example: 1
+        cookingTimeMinutes:
+          type: integer
+          minimum: 1
+          example: 30
+        servings:
+          type: integer
+          minimum: 1
+          example: 4
+        ingredients:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RecipeIngredientInput'
+        steps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RecipeStepInput'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeMediaInput'
+
+    UpdateRecipeRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 5000
+        categoryId:
+          type: integer
+          format: int64
+        difficultyId:
+          type: integer
+          format: int64
+        cookingTimeMinutes:
+          type: integer
+          minimum: 1
+        servings:
+          type: integer
+          minimum: 1
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeIngredientInput'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeStepInput'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeMediaInput'
+
+    RecipeAuthor:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: chef_anna
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://cdn.example.com/avatars/1.png
+
+    RecipeIngredient:
+      type: object
+      properties:
+        ingredient:
+          $ref: '#/components/schemas/Ingredient'
+        quantity:
+          type: number
+          format: float
+          example: 250
+        unit:
+          type: string
+          example: g
+
+    RecipeStep:
+      type: object
+      properties:
+        stepNumber:
+          type: integer
+          example: 1
+        description:
+          type: string
+          example: Смешайте муку, яйца и молоко до однородной массы.
+
+    RecipeMedia:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 15
+        mediaType:
+          type: string
+          enum: [image, video]
+          example: image
+        url:
+          type: string
+          format: uri
+          example: https://cdn.example.com/recipes/1/main.jpg
+        sortOrder:
+          type: integer
+          example: 1
+
+    RecipeSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 101
+        title:
+          type: string
+          example: Блины на молоке
+        description:
+          type: string
+          example: Простой рецепт тонких домашних блинов.
+        cookingTimeMinutes:
+          type: integer
+          example: 30
+        servings:
+          type: integer
+          example: 4
+        category:
+          $ref: '#/components/schemas/Category'
+        difficulty:
+          $ref: '#/components/schemas/DifficultyLevel'
+        author:
+          $ref: '#/components/schemas/RecipeAuthor'
+        likesCount:
+          type: integer
+          example: 18
+        commentsCount:
+          type: integer
+          example: 6
+        isLiked:
+          type: boolean
+          example: true
+        isFavorite:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-30T15:40:00Z'
+
+    RecipeDetail:
+      allOf:
+        - $ref: '#/components/schemas/RecipeSummary'
+        - type: object
+          properties:
+            ingredients:
+              type: array
+              items:
+                $ref: '#/components/schemas/RecipeIngredient'
+            steps:
+              type: array
+              items:
+                $ref: '#/components/schemas/RecipeStep'
+            media:
+              type: array
+              items:
+                $ref: '#/components/schemas/RecipeMedia'
+
+    CreateCommentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: Очень вкусно получилось, спасибо за рецепт!
+
+    UpdateCommentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: Обновленный текст комментария.
+
+    CommentAuthor:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 3
+        username:
+          type: string
+          example: cook_pavel
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 55
+        recipeId:
+          type: integer
+          format: int64
+          example: 101
+        author:
+          $ref: '#/components/schemas/CommentAuthor'
+        content:
+          type: string
+          example: Очень вкусно получилось, спасибо за рецепт!
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-30T16:00:00Z'
+
+    SubscriptionResponse:
+      type: object
+      properties:
+        followerId:
+          type: integer
+          format: int64
+          example: 5
+        followingId:
+          type: integer
+          format: int64
+          example: 2
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-30T16:10:00Z'
+
+    ReactionResponse:
+      type: object
+      properties:
+        recipeId:
+          type: integer
+          format: int64
+          example: 101
+        userId:
+          type: integer
+          format: int64
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-30T16:12:00Z'
+
+    PaginatedRecipeList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeSummary'
+        page:
+          type: integer
+          example: 1
+        size:
+          type: integer
+          example: 10
+        totalItems:
+          type: integer
+          example: 57
+        totalPages:
+          type: integer
+          example: 6
+
+    PaginatedCommentList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentResponse'
+        page:
+          type: integer
+          example: 1
+        size:
+          type: integer
+          example: 10
+        totalItems:
+          type: integer
+          example: 23
+        totalPages:
+          type: integer
+          example: 3
+
+    PaginatedUsersList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicUserProfile'
+        page:
+          type: integer
+          example: 1
+        size:
+          type: integer
+          example: 10
+        totalItems:
+          type: integer
+          example: 14
+        totalPages:
+          type: integer
+          example: 2
+
+    PaginatedIngredientList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ingredient'
+        page:
+          type: integer
+          example: 1
+        size:
+          type: integer
+          example: 20
+        totalItems:
+          type: integer
+          example: 240
+        totalPages:
+          type: integer
+          example: 12
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Некорректные входные данные
+        details:
+          type: array
+          items:
+            type: string
+          example:
+            - field 'email' must be a valid email
+            - field 'password' length must be at least 8
