@@ -1,0 +1,47 @@
+name: Deploy lab2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "БР1.1/**"
+      - ".github/workflows/deploy-lab2.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          envs: JWT_SECRET,INTERNAL_SECRET,JWT_EXPIRES_IN
+          script_stop: true
+          script: |
+            set -euo pipefail
+            ROOT="${{ secrets.DEPLOY_REPO_ROOT }}"
+            LAB2_REL="${{ secrets.DEPLOY_LAB2_REL }}"
+            BRANCH='${{ github.ref_name }}'
+
+            if [ -z "${JWT_SECRET:-}" ] || [ -z "${INTERNAL_SECRET:-}" ]; then
+              echo "JWT_SECRET and INTERNAL_SECRET must be set in repository secrets"
+              exit 1
+            fi
+            if [ -z "${JWT_EXPIRES_IN:-}" ]; then
+              unset JWT_EXPIRES_IN
+            fi
+
+            cd "$ROOT"
+            git fetch origin
+            git checkout "$BRANCH"
+            git pull origin "$BRANCH"
+
+            cd "$ROOT/$LAB2_REL"
+            docker compose pull || true
+            docker compose up -d --build

@@ -1,0 +1,912 @@
+{
+  "info": {
+    "name": "Lab2 — полное API через gateway",
+    "_postman_id": "lab2-gateway-full-collection",
+    "description": "Все публичные маршруты **через gateway** (`baseUrl`, обычно http://127.0.0.1:3000).\n\n**Перед сценарием:** заполните `candidateAccessToken` и `employerAccessToken`** вручную** из ответов Login/Register.\n\nПорядок «с нуля»: зарегистрировать employer и candidate → залогинить обоих (скопировать accessToken) → employer: создать компанию (заполнить companyId из ответа) → создать вакансию со status `published`, при необходимости PUT навыков → candidate: PUT профиль → POST резюме (resumeId из ответа) → навыки/education/work по желанию → POST отклик.\n\n`skillIdsJson` по умолчанию `[1,2]` — id из каталога GET /skills (после seed).\n\nОчереди: **RabbitMQ** (не Kafka). После POST отклика смотрите логи сервиса employer.\n\nВнутренние `/internal/...` **не включены**: gateway их не проксирует.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:3000"
+    },
+    {
+      "key": "candidateEmail",
+      "value": "postman.candidate@example.com"
+    },
+    {
+      "key": "candidatePassword",
+      "value": "password123"
+    },
+    {
+      "key": "employerEmail",
+      "value": "postman.employer@example.com"
+    },
+    {
+      "key": "employerPassword",
+      "value": "password123"
+    },
+    {
+      "key": "candidateAccessToken",
+      "value": ""
+    },
+    {
+      "key": "employerAccessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "companyId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "vacancyId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "resumeId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "educationId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "workExperienceId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "applicationId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "skillIdsJson",
+      "value": "[1,2]"
+    }
+  ],
+  "item": [
+    {
+      "name": "Служебное",
+      "item": [
+        {
+          "name": "Gateway health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Каталог (без авторизации)",
+      "item": [
+        {
+          "name": "Отрасли",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/industries"
+          }
+        },
+        {
+          "name": "Уровни опыта",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/experience-levels"
+          }
+        },
+        {
+          "name": "Навыки",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/skills?page=1&pageSize=50"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Авторизация",
+      "item": [
+        {
+          "name": "Регистрация candidate",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{candidateEmail}}\",\n  \"password\": \"{{candidatePassword}}\",\n  \"roleCode\": \"candidate\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Регистрация employer",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{employerPassword}}\",\n  \"roleCode\": \"employer\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Вход candidate",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{candidateEmail}}\",\n  \"password\": \"{{candidatePassword}}\"\n}"
+            },
+            "description": "Скопируйте из ответа поле **accessToken** в переменную коллекции `candidateAccessToken`."
+          }
+        },
+        {
+          "name": "Вход employer",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{employerPassword}}\"\n}"
+            },
+            "description": "Скопируйте из ответа **accessToken** в `employerAccessToken`."
+          }
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/refresh",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "description": "Подставьте refresh из последнего login/register."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Пользователь (/me)",
+      "item": [
+        {
+          "name": "GET /me",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /me",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Соискатель — профиль и резюме",
+      "item": [
+        {
+          "name": "GET профиль",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/job-seeker/profile",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT профиль",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/job-seeker/profile",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Иван\",\n  \"lastName\": \"Тестов\",\n  \"phone\": \"+79000000000\",\n  \"city\": \"СПб\",\n  \"bio\": \"Профиль из Postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Список резюме",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/resumes",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Создать резюме",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/resumes",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend developer\",\n  \"summary\": \"Bun, Elysia, Docker\",\n  \"isPublic\": true\n}"
+            },
+            "description": "Заполните переменную `resumeId` из ответа (поле id)."
+          }
+        },
+        {
+          "name": "Резюме по id GET",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH резюме",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend developer (правка)\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT навыков резюме",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/skills",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skillIds\": {{skillIdsJson}}\n}"
+            },
+            "description": "Числовые id должны быть в каталоге (GET /skills). Переменная `skillIdsJson` = например `[1,2]` без обёрточных кавычек."
+          }
+        },
+        {
+          "name": "Образование GET",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/education",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Образование POST",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/education",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"institution\": \"Университет ИТМО\",\n  \"degree\": \"Бакалавр\",\n  \"yearFrom\": 2022,\n  \"yearTo\": 2026\n}"
+            },
+            "description": "При необходимости обновите `educationId`."
+          }
+        },
+        {
+          "name": "Образование PATCH",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/education/{{educationId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"degree\": \"Магистр\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Образование DELETE",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/education/{{educationId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Опыт работы GET",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/work-experience",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Опыт работы POST",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/work-experience",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"ООО Тест\",\n  \"position\": \"Стажёр\",\n  \"description\": \"REST API\",\n  \"dateFrom\": \"2025-01-01\",\n  \"dateTo\": \"2025-08-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Опыт работы PATCH",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/work-experience/{{workExperienceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"position\": \"Junior\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Опыт работы DELETE",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}/work-experience/{{workExperienceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE резюме",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/resumes/{{resumeId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Осторожно: удаление резюме. Выполняйте последним или пропускайте при повторном прогоне."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Работодатель — компании и вакансии",
+      "item": [
+        {
+          "name": "Мои членства",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/me/employer/memberships",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Создать компанию",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/companies",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Компания Postman Labs\",\n  \"industryId\": 1,\n  \"description\": \"Тест работодателя\"\n}"
+            },
+            "description": "Подставьте валидный industryId из GET /industries. Ответ содержит id компании → в `companyId`."
+          }
+        },
+        {
+          "name": "Компания по id GET",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/companies/{{companyId}}"
+          }
+        },
+        {
+          "name": "Компания PATCH",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/companies/{{companyId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Обновлено из Postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Список вакансий",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/vacancies?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "Вакансия по id GET",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}"
+          }
+        },
+        {
+          "name": "Создать вакансию",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/companies/{{companyId}}/vacancies",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend (Bun)\",\n  \"description\": \"Разработка микросервисов\",\n  \"requirements\": \"PostgreSQL, Docker\",\n  \"salaryMin\": 120000,\n  \"salaryMax\": 220000,\n  \"currency\": \"RUB\",\n  \"employmentType\": \"full_time\",\n  \"industryId\": 1,\n  \"experienceLevelId\": 2,\n  \"status\": \"published\"\n}"
+            },
+            "description": "industryId / experienceLevelId — из каталога. Отклики возможны при status=published."
+          }
+        },
+        {
+          "name": "PATCH вакансии",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend (Bun) v2\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT навыков вакансии",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}/skills",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skillIds\": {{skillIdsJson}}\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE вакансии",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Удаляет вакансию. Опционально, в конце сценария."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Отклики (application-сервис)",
+      "item": [
+        {
+          "name": "Создать отклик",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}/applications",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resumeId\": {{resumeId}}\n}"
+            },
+            "description": "**Важно:** в JSON должно быть число resumeId. В редакторе переменная без кавычек может не подставиться как число — при необходимости впишите id вручную числом.\nОтправляет событие в **RabbitMQ**."
+          }
+        },
+        {
+          "name": "Мои отклики (кандидат)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/me/applications?page=1&pageSize=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{candidateAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Отклики на вакансию (работодатель)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}/applications?page=1&pageSize=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Изменить статус отклика",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/applications/{{applicationId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"viewed\"\n}"
+            },
+            "description": "`applicationId` — из списка откликов или ответа POST отклика."
+          }
+        }
+      ]
+    }
+  ]
+}
