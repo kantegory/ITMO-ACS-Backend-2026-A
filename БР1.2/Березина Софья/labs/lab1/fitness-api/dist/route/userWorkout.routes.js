@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const UserWorkoutController_1 = require("../controller/UserWorkoutController");
+const auth_1 = require("../middleware/auth");
+const router = (0, express_1.Router)();
+router.get("/", auth_1.authenticate, UserWorkoutController_1.UserWorkoutController.getUserWorkouts);
+router.post("/", auth_1.authenticate, UserWorkoutController_1.UserWorkoutController.assignWorkout);
+router.patch("/:user_workout_id", auth_1.authenticate, UserWorkoutController_1.UserWorkoutController.updateUserWorkout);
+exports.default = router;
