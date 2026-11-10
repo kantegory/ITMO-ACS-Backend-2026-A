@@ -44,7 +44,9 @@ async function seed() {
 
 async function main() {
   await initDatabase(AppDataSource, seed);
-  await initBus();
+  // брокер подключается в фоне: публикация событий best-effort (ДЗ5), поэтому старт сервиса
+  // и его готовность (/health) не ждут RabbitMQ — важно для startup-пробы в k8s (ЛР7)
+  void initBus();
 
   const app = express();
   app.use(metricsMiddleware);
