@@ -1,0 +1,57 @@
+# Restaurant Booking (Якшин Артемий, БР1.1) — сборка Docker-образов микросервисов и публикация в GHCR.
+# Переиспользуемый workflow: вызывается из rb-deploy-compose.yml (ДЗ6) и rb-deploy-k8s.yml (ДЗ8),
+# а также может быть запущен вручную.
+name: rb-build-images
+
+on:
+  workflow_call:
+    outputs:
+      tag:
+        description: "Тег собранных образов (полный SHA коммита)"
+        value: ${{ jobs.build.outputs.tag }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  APP_DIR: "БР1.1/Якшин Артемий/labs/lab2"
+  IMAGE_PREFIX: ghcr.io/cicada-pops/rb
+
+jobs:
+  build:
+    # защита: в чужих форках/апстриме курса workflow ничего не делает
+    if: github.repository == 'cicada-pops/itmo-backend-sem2'
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ github.sha }}
+    strategy:
+      fail-fast: true
+      matrix:
+        service: [gateway, auth-service, catalog-service, reservation-service, review-service, notification-service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.APP_DIR }}/${{ matrix.service }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
