@@ -107,8 +107,60 @@ deploy_app() {
   return 1
 }
 
+K8S_NODE=k3d-rb-server-0
+K8S_NS=rb
+SERVICES=(gateway auth-service catalog-service reservation-service review-service notification-service)
+
 deploy_k8s() {
-  log "k8s deployment is not configured yet (ДЗ8)"
+  # ЛР7/ДЗ8: релиз в k3d-кластер. Образы импортируются прямо в containerd узла (кластеру не нужен
+  # доступ к реестру и pull-секреты), манифесты берутся из коммита, тег = SHA.
+  export KUBECONFIG=$ROOT/k3d/kubeconfig
+  local kc=("$ROOT/bin/kubectl" -n "$K8S_NS") s img imgs=() fail=0
+  docker inspect -f '{{.State.Running}}' "$K8S_NODE" 2>/dev/null | grep -q true || { log "k3d node $K8S_NODE is not running"; return 1; }
+  "${kc[@]}" get secret rb-secrets >/dev/null || { log "secret rb-secrets is missing (ansible role k3d)"; return 1; }
+
+  for s in "${SERVICES[@]}"; do
+    img="$IMAGE_PREFIX-$s:$sha"
+    docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null
+    imgs+=("$img")
+  done
+  docker save "${imgs[@]}" | docker exec -i "$K8S_NODE" ctr -n k8s.io images import - >/dev/null
+  log "images imported into $K8S_NODE containerd (${#imgs[@]})"
+
+  # манифесты коммита + слой release с тегом образов (во временной копии, репозиторий не меняется)
+  local tmp; tmp=$(mktemp -d /run/rb-k8s-XXXXXX)
+  local lab
+  for lab in lab7 lab8; do   # та же структура каталогов, что в репозитории (относительные ссылки kustomize)
+    [[ -d $SRC/$ME/labs/$lab/k8s ]] && mkdir -p "$tmp/labs/$lab" && cp -r "$SRC/$ME/labs/$lab/k8s" "$tmp/labs/$lab/k8s"
+  done
+  local rel="$tmp/labs/lab7/k8s/overlays/release"
+  mkdir -p "$rel"
+  {
+    echo "apiVersion: kustomize.config.k8s.io/v1beta1"
+    echo "kind: Kustomization"
+    echo "resources: [../prod]"
+    echo "images:"
+    for s in "${SERVICES[@]}"; do echo "  - { name: $IMAGE_PREFIX-$s, newTag: \"$sha\" }"; done
+  } > "$rel/kustomization.yaml"
+
+  "${kc[@]}" apply -k "$rel" | grep -v unchanged || true
+  rm -rf "$tmp"
+
+  for s in "${SERVICES[@]}"; do
+    "${kc[@]}" rollout status "deploy/$s" --timeout=180s || { fail=1; break; }
+  done
+  if ((fail == 0)) && health "http://127.0.0.1:8088/k8s/health" \
+     && curl -fsS -m 3 http://127.0.0.1:8088/k8s/health | grep -q "\"version\":\"$sha\""; then
+    echo "$(date -Is) k8s $sha" >> "$ROOT/releases.log"
+    log "k8s release $sha is live"
+    "${kc[@]}" get deploy,statefulset
+    docker exec "$K8S_NODE" crictl rmi --prune >/dev/null 2>&1 || true   # старые образы внутри узла
+    return 0
+  fi
+
+  log "k8s deploy FAILED -> kubectl rollout undo"
+  for s in "${SERVICES[@]}"; do "${kc[@]}" rollout undo "deploy/$s" >/dev/null 2>&1 || true; done
+  for s in "${SERVICES[@]}"; do "${kc[@]}" rollout status "deploy/$s" --timeout=180s || true; done
   return 1
 }
 

@@ -1,0 +1,89 @@
+# notification-service — stateless-под: состояние вынесено в PostgreSQL/RabbitMQ (см. ДЗ7)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  labels: { app: notification-service, app.kubernetes.io/component: backend }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: notification-service }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }   # обновление без простоя
+  template:
+    metadata:
+      labels: { app: notification-service, app.kubernetes.io/component: backend }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8085"
+        prometheus.io/path: /metrics
+    spec:
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:       # на нескольких узлах реплики разойдутся по разным узлам
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: notification-service }
+      containers:
+        - name: app
+          image: rb-notification-service            # реальный реестр и тег подставляет kustomize (images:)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8085 }
+          env:
+            - { name: PORT, value: "8085" }
+            - { name: SERVICE_NAME, value: notification-service }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: rb-secrets, key: POSTGRES_PASSWORD } }
+            - name: DATABASE_URL
+              value: postgres://rb:$(POSTGRES_PASSWORD)@postgres:5432/notifications
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: rb-secrets, key: JWT_SECRET } }
+            - name: JWT_EXPIRES_IN
+              valueFrom: { configMapKeyRef: { name: rb-config, key: JWT_EXPIRES_IN } }
+            - name: RABBITMQ_PASS
+              valueFrom: { secretKeyRef: { name: rb-secrets, key: RABBITMQ_PASS } }
+            - name: RABBITMQ_URL
+              value: amqp://rb:$(RABBITMQ_PASS)@rabbitmq:5672
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+          startupProbe:                # до 120 с: при холодном старте ждём PostgreSQL и RabbitMQ
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  labels: { app: notification-service }
+spec:
+  selector: { app: notification-service }
+  ports:
+    - { name: http, port: 8085, targetPort: http }

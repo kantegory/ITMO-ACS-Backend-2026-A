@@ -1,0 +1,56 @@
+# RabbitMQ — брокер доменных событий (ДЗ5): StatefulSet со стабильным именем узла и PVC
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  labels: { app: rabbitmq, app.kubernetes.io/component: broker }
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels: { app: rabbitmq }
+  template:
+    metadata:
+      labels: { app: rabbitmq, app.kubernetes.io/component: broker }
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-alpine
+          ports:
+            - { name: amqp, containerPort: 5672 }
+          env:
+            - { name: RABBITMQ_DEFAULT_USER, value: rb }
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: { secretKeyRef: { name: rb-secrets, key: RABBITMQ_PASS } }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+          readinessProbe:
+            tcpSocket: { port: amqp }
+            periodSeconds: 10
+          livenessProbe:
+            exec: { command: ["rabbitmq-diagnostics", "-q", "ping"] }
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 15
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/rabbitmq }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests: { storage: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels: { app: rabbitmq }
+spec:
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: amqp }

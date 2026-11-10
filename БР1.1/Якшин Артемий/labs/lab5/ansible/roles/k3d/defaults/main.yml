@@ -1,0 +1,25 @@
+# ЛР7: платформа Kubernetes (k3s в Docker через k3d) — версии и ограничения (см. ДЗ7, раздел 4)
+k3d_version: v5.9.0
+# sha256 из официального checksums.txt релиза (запись '_dist/k3d-linux-amd64' — get_url её не находит по имени)
+k3d_sha256: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0
+k3d_k3s_image: rancher/k3s:v1.36.6-k3s1
+k3d_kubectl_version: v1.36.6
+k3d_cluster: rb
+k3d_node: "k3d-{{ k3d_cluster }}-server-0"
+k3d_api: "127.0.0.1:6550"            # Kubernetes API только на loopback
+k3d_memory: 2560m                     # docker memory limit узла (+ поддельный /proc/meminfo для kubelet)
+k3d_cpus: "1.5"                       # потолок CPU узла
+k3d_storage: "{{ rb_root }}/k3d/storage"   # PVC (local-path) на диске хоста
+k3d_kubeconfig: "{{ rb_root }}/k3d/kubeconfig"
+k3d_namespace: rb
+
+# Kubelet внутри привилегированного узла при старте меняет ГЛОБАЛЬНЫЕ параметры ядра хоста
+# (обнаружено сравнением sysctl до/после создания кластера). Сервер общий — возвращаем исходные значения.
+# Внутри узла k3d мосты CNI живут в своём netns (bridge-nf-call-* в ядре >= 5.3 — per-netns), кластеру это не мешает.
+k3d_host_sysctl_restore:
+  kernel.panic: "0"
+  kernel.panic_on_oops: "0"
+  vm.overcommit_memory: "0"
+  net.bridge.bridge-nf-call-iptables: "0"
+  net.bridge.bridge-nf-call-ip6tables: "0"
+  net.bridge.bridge-nf-call-arptables: "0"
