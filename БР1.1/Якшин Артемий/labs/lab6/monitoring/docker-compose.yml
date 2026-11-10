@@ -1,0 +1,141 @@
+# ЛР6: мониторинг стенда «Restaurant Booking» — Grafana + Prometheus + Loki + Promtail.
+#   node-exporter — CPU / RAM / диск ВМ;  cadvisor — сеть ВМ и ресурсы контейнеров;
+#   blackbox-exporter — healthcheck всех сервисов;  promtail -> loki — логи контейнеров стенда.
+# Наружу ничего не публикуется: Grafana доступна только через edge-nginx (/grafana/).
+# Сервер общий: cpuset 2-3 + лимиты; метрики и логи соседнего проекта отбрасываются (см. prometheus.yml, promtail.yml).
+name: rb-mon
+
+x-common: &common
+  restart: unless-stopped
+  cpuset: "2,3"
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [mon, app]
+    deploy: { resources: { limits: { cpus: "0.50", memory: 448M } } }
+
+  node-exporter:
+    <<: *common
+    image: prom/node-exporter:v1.12.1
+    pid: host
+    command:
+      - --path.rootfs=/host
+      # сетевые счётчики ВМ берём из cadvisor (корневой cgroup): из контейнера без host-network
+      # node-exporter видит только свой netns, а host-network закрыт ufw (INPUT DROP)
+      - --no-collector.netdev
+      - --no-collector.netclass
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|run|sys|var/lib/docker/.+)($|/)
+    volumes:
+      - /:/host:ro,rslave
+    networks: [mon]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
+
+  cadvisor:
+    <<: *common
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    privileged: true
+    devices: [/dev/kmsg]
+    command:
+      - --housekeeping_interval=30s
+      - --docker_only=true
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+      - --disable_metrics=advtcp,app,cpu_topology,cpuLoad,cpuset,disk,hugetlb,memory_numa,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks: [mon]
+    deploy: { resources: { limits: { cpus: "0.50", memory: 192M } } }
+
+  blackbox:
+    <<: *common
+    image: prom/blackbox-exporter:v0.29.1
+    command: [--config.file=/etc/blackbox/blackbox.yml]
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks: [mon, app, edge]   # пробы идут к сервисам (rb-app) и к входу через nginx (rb-edge)
+    deploy: { resources: { limits: { cpus: "0.25", memory: 48M } } }
+
+  loki:
+    <<: *common
+    image: grafana/loki:3.7.9
+    command: [-config.file=/etc/loki/loki.yml]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    networks: [mon]
+    deploy: { resources: { limits: { cpus: "0.50", memory: 320M } } }
+
+  promtail:
+    <<: *common
+    image: grafana/promtail:3.6.11
+    command: [-config.file=/etc/promtail/promtail.yml]
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/tmp/positions
+    networks: [mon]
+    depends_on: [loki]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 96M } } }
+
+  grafana:
+    <<: *common
+    image: grafana/grafana:13.2.5-slim
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:?}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # в Grafana 12+ источники Prometheus/Loki — отдельные плагины, ставятся при первом старте (preinstall)
+      GF_USERS_DEFAULT_THEME: light
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/rb-overview.json
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      mon: {}
+      edge:
+        aliases: [rb-grafana]
+    depends_on: [prometheus, loki]
+    deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } }   # с предустановленными плагинами ~250 МБ
+
+volumes:
+  prometheus-data:
+  loki-data:
+  grafana-data:
+  promtail-positions:
+
+networks:
+  mon:
+    name: rb-mon
+  app:
+    name: rb-app
+    external: true
+  edge:
+    name: rb-edge
+    external: true
