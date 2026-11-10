@@ -13,7 +13,7 @@ kubectl kustomize labs/lab7/k8s/overlays/prod | less     # итоговые ма
 | `Deployment` ×6 | stateless-сервисы; пробы startup/readiness/liveness; `preStop: sleep 5`; read-only ФС, non-root |
 | `StatefulSet postgres`, `rabbitmq` | данные на PVC (`local-path`) |
 | `Ingress` (Traefik) | вход → gateway |
-| `HorizontalPodAutoscaler` ×5 | масштабирование по CPU (ЛР8) |
+| `HorizontalPodAutoscaler` ×4 | масштабирование по CPU (ЛР8): gateway 2–3, auth 1–3, catalog 1–2, review 1–2 |
 | `NetworkPolicy` ×4 | default-deny и явные разрешения |
 | `PodDisruptionBudget` | хотя бы один gateway при добровольных прерываниях |
 | `CronJob postgres-backup` | ежедневный `pg_dump` всех БД, 7 копий |

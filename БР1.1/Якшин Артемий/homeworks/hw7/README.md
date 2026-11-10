@@ -70,7 +70,7 @@ flowchart LR
   subgraph k3d["k3d-кластер rb (контейнер k3d-rb-server-0, ≤1.5 CPU / 2.5 ГБ)"]
     traefik[Ingress<br/>Traefik] --> gw
     subgraph ns_rb["namespace rb"]
-      gw[gateway ×2..4<br/>Deployment + HPA]
+      gw[gateway ×2..3<br/>Deployment + HPA]
       auth[auth-service]
       cat[catalog-service]
       res[reservation-service]
@@ -213,6 +213,8 @@ flowchart TB
 | PostgreSQL | 1 | 100m / 128Mi | 1 / 384Mi |
 | RabbitMQ | 1 | 100m / 192Mi | 500m / 384Mi |
 | системные (k3s, Traefik, CoreDNS, metrics-server) | — | ~300m / ~600Mi (факт) | — |
+
+> Диапазоны HPA и requests/limits в таблице — стартовые значения дизайна. В ЛР8 по результатам нагрузочных испытаний они уточнены: gateway 2–3, auth-service 1–3, catalog-service 1–2, review-service 1–2 реплики, reservation-service без HPA; requests 25–150m, CPU-лимиты auth и catalog — 1 ядро (подробно — в отчёте ЛР8).
 
 Расчёт памяти: 7 подов приложения × ~70 МиБ + PostgreSQL ~60 МиБ + RabbitMQ ~130 МиБ + k3s ~600 МиБ ≈ 1.3 ГиБ. Это укладывается в лимит узла 2.5 ГиБ с запасом под масштабирование: каждая дополнительная реплика добавляет ~70 МиБ. Узел k3s при этом считает, что у него 4 ядра: cgroup-ограничение `--cpus 1.5` ядру Kubernetes не видно. Поэтому реальный потолок CPU — 1.5 ядра, и HPA в ЛР8 упрётся именно в него.
 
