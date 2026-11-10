@@ -1,0 +1,45 @@
+# Только проверки: роль ничего не меняет на сервере.
+- name: ОС и ресурсы подходят для стенда
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == "Ubuntu"
+      - ansible_facts['distribution_version'] is version("22.04", ">=")
+      - ansible_facts['processor_vcpus'] | int >= rb_min_vcpus
+    fail_msg: "нужна Ubuntu >= 22.04 и не меньше {{ rb_min_vcpus }} vCPU (cpuset {{ rb_cpuset }})"
+    quiet: true
+
+- name: Проверить, установлен ли Docker
+  ansible.builtin.command: docker version --format '{{ "{{" }}.Server.Version{{ "}}" }}'
+  register: preflight_docker
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Docker уже есть -> демон должен работать (его НЕ перезапускаем)
+  ansible.builtin.assert:
+    that: preflight_docker.rc == 0
+    fail_msg: "docker установлен, но демон недоступен — разбираться вручную, плейбук его не трогает"
+    quiet: true
+  when: preflight_docker.rc != 127 and preflight_docker.rc != 2
+
+- name: Публичный порт свободен или занят нашим edge-nginx — {{ rb_edge_port }}
+  ansible.builtin.shell: |
+    set -o pipefail
+    if ss -ltnH "sport = :{{ rb_edge_port }}" | grep -q .; then
+      docker ps --filter name=^rb-edge-nginx$ --format '{{ "{{" }}.Names{{ "}}" }}' | grep -qx rb-edge-nginx && echo ours || echo foreign
+    else
+      echo free
+    fi
+  args: { executable: /bin/bash }
+  register: preflight_port
+  changed_when: false
+  check_mode: false
+  failed_when: preflight_port.stdout == "foreign"
+
+- name: Сводка
+  ansible.builtin.debug:
+    msg:
+      - "OS: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+      - "vCPU: {{ ansible_facts['processor_vcpus'] }}, RAM: {{ ansible_facts['memtotal_mb'] }} MB"
+      - "Docker: {{ preflight_docker.stdout | default('not installed', true) }}"
+      - "Port {{ rb_edge_port }}: {{ preflight_port.stdout }}"

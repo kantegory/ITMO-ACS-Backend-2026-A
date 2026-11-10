@@ -1,0 +1,32 @@
+# Docker Engine из официального репозитория — только если его нет.
+# На уже настроенном сервере роль ничего не делает (демон не перезапускается).
+- name: Установить Docker (только на чистой машине)
+  when: preflight_docker.rc in [2, 127]
+  block:
+    - name: Репозиторий Docker (формат deb822, ключ скачивается в /etc/apt/keyrings)
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        architectures: ["{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"]
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Обновить индекс после добавления репозитория
+      ansible.builtin.apt: { update_cache: true }
+
+    - name: Пакеты Docker Engine
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        state: present
+
+    - name: Демон Docker запущен и в автозагрузке
+      ansible.builtin.systemd_service: { name: docker, state: started, enabled: true }
+
+- name: Docker Compose и Buildx доступны
+  ansible.builtin.command: "{{ item }}"
+  loop: ["docker compose version --short", "docker buildx version"]
+  changed_when: false
+  check_mode: false

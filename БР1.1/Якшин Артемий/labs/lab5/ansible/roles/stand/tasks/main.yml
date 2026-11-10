@@ -1,0 +1,49 @@
+# Окружение стенда: каталоги, docker-сеть, ограниченный сборщик, исходники, секреты.
+- name: Корень стенда (0711 — пользователь CI может пройти к bin/, но не листать)
+  ansible.builtin.file: { path: "{{ rb_root }}", state: directory, owner: root, group: root, mode: "0711" }
+
+- name: Каталоги стенда
+  ansible.builtin.file: { path: "{{ item.path }}", state: directory, owner: root, group: root, mode: "{{ item.mode }}" }
+  loop:
+    - { path: "{{ rb_root }}/app", mode: "0750" }
+    - { path: "{{ rb_root }}/bin", mode: "0755" }
+    - { path: "{{ rb_root }}/edge", mode: "0755" }
+    - { path: "{{ rb_root }}/edge/conf.d", mode: "0755" }
+    - { path: "{{ rb_root }}/edge/html", mode: "0755" }
+
+- name: Общая docker-сеть {{ rb_edge_network }}
+  community.docker.docker_network:
+    name: "{{ rb_edge_network }}"
+    state: present
+
+- name: Есть ли сборщик {{ rb_builder_name }}
+  ansible.builtin.command: docker buildx inspect {{ rb_builder_name }}
+  register: stand_builder
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Сборщик образов с лимитами (1 CPU, RAM) на ядрах {{ rb_cpuset }}
+  ansible.builtin.command: >-
+    docker buildx create --name {{ rb_builder_name }} --driver docker-container
+    --driver-opt '"cpuset-cpus={{ rb_cpuset }}"'
+    --driver-opt cpu-quota={{ rb_builder_cpu_quota }} --driver-opt cpu-period=100000
+    --driver-opt memory={{ rb_builder_memory }} --driver-opt default-load=true
+  when: stand_builder.rc != 0
+  changed_when: true
+
+- name: Исходники (клонируются один раз; версией checkout дальше управляет CI)
+  ansible.builtin.git:
+    repo: "{{ rb_repo_url }}"
+    dest: "{{ rb_src }}"
+    version: main
+    update: false
+
+- name: Секреты стенда (генерируются один раз на сервере, в git не попадают)
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "{{ rb_root }}/app/.env"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false          # существующие секреты не перезаписываются

@@ -1,0 +1,27 @@
+# Edge-nginx (ЛР4): единственная публичная точка входа.
+- name: Конфигурация и compose-файл edge-nginx
+  ansible.builtin.copy:
+    src: "{{ rb_local }}/labs/lab4/deploy/edge/{{ item }}"
+    dest: "{{ rb_root }}/edge/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [nginx.conf, docker-compose.yml]
+  notify: Reload edge nginx
+
+- name: Дополнительные маршруты conf.d/*.conf
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ rb_root }}/edge/conf.d/"
+    owner: root
+    group: root
+    mode: "0644"
+  with_fileglob: ["{{ rb_local }}/labs/lab4/deploy/edge/conf.d/*.conf"]
+  notify: Reload edge nginx
+
+- name: Edge-nginx запущен
+  community.docker.docker_compose_v2:
+    project_src: "{{ rb_root }}/edge"
+    state: present
+    wait: true
+    wait_timeout: 60

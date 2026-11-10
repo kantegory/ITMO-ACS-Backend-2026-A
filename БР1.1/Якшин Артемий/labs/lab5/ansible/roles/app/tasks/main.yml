@@ -1,0 +1,36 @@
+# Compose-стенд приложения (ЛР4). Версию образов (release.env) задаёт CI (ДЗ6):
+# роль лишь гарантирует, что стенд запущен в текущем релизе, и не откатывает его.
+- name: Файл релиза существует (по умолчанию — локальная сборка)
+  ansible.builtin.copy:
+    content: "IMAGE_PREFIX=local/rb\nIMAGE_TAG=latest\n"
+    dest: "{{ rb_root }}/app/release.env"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+
+- name: Стенд rb-app запущен и здоров
+  community.docker.docker_compose_v2:
+    project_src: "{{ rb_app_dir }}"
+    files: [docker-compose.prod.yml]
+    env_files: ["{{ rb_root }}/app/.env", "{{ rb_root }}/app/release.env"]
+    state: present
+    pull: missing
+    build: never
+    wait: true
+    wait_timeout: 240
+  register: app_compose
+
+- name: Проверка через nginx
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ rb_edge_port }}/health"
+    return_content: true
+  register: app_health
+  check_mode: false
+  retries: 10
+  delay: 3
+  until: app_health.status == 200
+
+- name: Текущий релиз
+  ansible.builtin.debug:
+    msg: "{{ app_health.json }}"
