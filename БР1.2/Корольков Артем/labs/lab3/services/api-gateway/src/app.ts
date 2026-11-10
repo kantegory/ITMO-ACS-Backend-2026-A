@@ -8,6 +8,13 @@ import {
   RESERVATION_SERVICE_URL,
   RESTAURANT_SERVICE_URL
 } from '../../shared/src/config';
+// подключил sentry
+import * as Sentry from '@sentry/node';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: 'lab6'
+});
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3010;
@@ -81,6 +88,8 @@ async function proxy(req: Request, res: Response) {
     return res.send(body);
   } catch (error) {
     console.error('Gateway proxy error:', error);
+    // ошибка sentry
+    Sentry.captureException(error);
     return res.status(502).json({ error: 'upstream service unavailable' });
   }
 }

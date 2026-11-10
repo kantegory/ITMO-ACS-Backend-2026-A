@@ -1,0 +1,80 @@
+name: restaurant-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    networks: [monitoring]
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.26.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox.yml
+    volumes:
+      - ./blackbox.yml:/etc/blackbox.yml:ro
+    networks: [monitoring]
+
+  loki:
+    image: grafana/loki:3.5.0
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/tmp/loki
+    networks: [monitoring]
+
+  alloy:
+    image: grafana/alloy:v1.8.3
+    restart: unless-stopped
+    user: '0:0'
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    networks: [monitoring]
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    env_file:
+      - /etc/restaurant-monitoring/grafana.env
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    networks: [monitoring]
+
+networks:
+  monitoring:
+    external: true
+    name: restaurant-lab4
+
+volumes:
+  prometheus_data:
+  loki_data:
+  alloy_data:
+  grafana_data:
