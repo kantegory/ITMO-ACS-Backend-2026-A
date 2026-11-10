@@ -45,7 +45,8 @@ kubectl -n rb run pg-restore --rm -it --restart=Never --image=postgres:17-alpine
   "env":[{"name":"PGHOST","value":"postgres"},{"name":"PGUSER","value":"rb"},
          {"name":"PGPASSWORD","valueFrom":{"secretKeyRef":{"name":"rb-secrets","key":"POSTGRES_PASSWORD"}}}],
   "volumeMounts":[{"name":"b","mountPath":"/backups"}]}]}}'
-# внутри пода:
+# внутри пода (новый под попадает в правила NetworkPolicy с задержкой — сначала дождаться БД):
+for i in $(seq 1 30); do pg_isready -q -d postgres && break; sleep 2; done
 ls /backups
 pg_restore -d reservations --clean --if-exists /backups/<время>/reservations.dump
 ```
