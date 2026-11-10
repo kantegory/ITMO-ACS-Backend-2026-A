@@ -143,6 +143,8 @@ deploy_k8s() {
     for s in "${SERVICES[@]}"; do echo "  - { name: $IMAGE_PREFIX-$s, newTag: \"$sha\" }"; done
   } > "$rel/kustomization.yaml"
 
+  log "kubectl diff (что изменится в кластере):"
+  "${kc[@]}" diff -k "$rel" 2>/dev/null | grep -E '^[-+] ' | grep -v -E '(generation|resourceVersion|uid|creationTimestamp|deployment.kubernetes.io/revision):' | head -40 || true
   "${kc[@]}" apply -k "$rel" | grep -v unchanged || true
   rm -rf "$tmp"
 
