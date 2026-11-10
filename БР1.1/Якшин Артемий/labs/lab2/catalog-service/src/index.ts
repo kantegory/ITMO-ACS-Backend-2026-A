@@ -118,7 +118,7 @@ async function main() {
   app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
-  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'catalog-service' }));
+  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'catalog-service', version: process.env.APP_VERSION || 'dev' }));
 
   const api = express.Router();
 

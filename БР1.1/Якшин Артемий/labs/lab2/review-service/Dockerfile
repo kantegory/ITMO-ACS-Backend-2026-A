@@ -12,7 +12,10 @@ RUN npm run build && npm prune --omit=dev
 
 # ── этап запуска: только dist + prod-зависимости, непривилегированный пользователь ──
 FROM node:22-bookworm-slim
-ENV NODE_ENV=production \
+# версия релиза (SHA коммита) — видна в /health, по ней CI проверяет, что выкатился нужный релиз
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION \
+    NODE_ENV=production \
     SERVICE_NAME=review-service \
     PORT=8084
 WORKDIR /app

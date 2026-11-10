@@ -38,7 +38,7 @@ async function main() {
   app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
-  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'auth-service' }));
+  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'auth-service', version: process.env.APP_VERSION || 'dev' }));
 
   // ── публичный API (через gateway) ──────────────────────────────
   const api = express.Router();

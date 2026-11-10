@@ -58,7 +58,7 @@ async function main() {
   app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
-  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'notification-service' }));
+  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'notification-service', version: process.env.APP_VERSION || 'dev' }));
 
   const api = express.Router();
   // Список уведомлений текущего пользователя (формируются из событий очереди).

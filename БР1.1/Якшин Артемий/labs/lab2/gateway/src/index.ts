@@ -47,7 +47,7 @@ app.use(cors());
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'api-gateway' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'api-gateway', version: process.env.APP_VERSION || 'dev' }));
 app.get('/', (_req, res) => res.json({
   service: 'api-gateway',
   routes: {
