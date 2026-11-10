@@ -72,6 +72,16 @@ health() {
   return 1
 }
 
+wait_version() {
+  # после rollout ждём (до 60 с), пока через Ingress не начнёт отвечать именно новая версия
+  local i
+  for i in $(seq 1 20); do
+    curl -fsS -m 3 "$1" 2>/dev/null | grep -q "\"version\":\"$2\"" && return 0
+    sleep 3
+  done
+  return 1
+}
+
 prune_old_images() {
   # удаляем только свои старые образы (последние 3 тега каждого сервиса оставляем); глобальный prune не используем
   local repo
@@ -151,8 +161,7 @@ deploy_k8s() {
   for s in "${SERVICES[@]}"; do
     "${kc[@]}" rollout status "deploy/$s" --timeout=180s || { fail=1; break; }
   done
-  if ((fail == 0)) && health "http://127.0.0.1:8088/k8s/health" \
-     && curl -fsS -m 3 http://127.0.0.1:8088/k8s/health | grep -q "\"version\":\"$sha\""; then
+  if ((fail == 0)) && wait_version "http://127.0.0.1:8088/k8s/health" "$sha"; then
     echo "$(date -Is) k8s $sha" >> "$ROOT/releases.log"
     log "k8s release $sha is live"
     "${kc[@]}" get deploy,statefulset
