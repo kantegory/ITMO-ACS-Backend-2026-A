@@ -120,7 +120,7 @@ Error: Process completed with exit code 1.
 
 ### 5. Второй запуск: успешная доставка
 
-![Запуски конвейера rb-deploy-k8s: первый откатился, второй прошёл](img/k8s-runs.png)
+![Запуски конвейера rb-deploy-k8s: #1 откатился, #2 прошёл после исправления, #3 — выкатка HPA из ЛР8](img/k8s-runs.png)
 
 ![Второй запуск: validate → build → deploy (с smoke-тестом)](img/k8s-run-ok.png)
 
