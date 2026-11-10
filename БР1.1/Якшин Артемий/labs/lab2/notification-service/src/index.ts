@@ -3,6 +3,8 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { AppDataSource } from './data-source';
+import { initDatabase } from './db';
+import { metricsMiddleware, metricsHandler, installGracefulShutdown } from './observability';
 import { Notification } from './entities/Notification';
 import { asyncHandler, errorHandler, authMiddleware, NotFound } from './common';
 import { startConsumer, DomainEvent } from './bus';
@@ -49,9 +51,11 @@ async function handleEvent(ev: DomainEvent): Promise<void> {
 }
 
 async function main() {
-  await AppDataSource.initialize();
+  await initDatabase(AppDataSource);
 
   const app = express();
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'notification-service' }));
@@ -82,7 +86,8 @@ async function main() {
 
   app.use((_req, _res, next) => next(NotFound('Endpoint not found')));
   app.use(errorHandler);
-  app.listen(PORT, () => console.log(`[notification-service] listening on :${PORT}`));
+  const server = app.listen(PORT, () => console.log(`[notification-service] listening on :${PORT}`));
+  installGracefulShutdown(server, () => AppDataSource.destroy());
 
   // потребитель очереди — фоном, с собственным переподключением
   startConsumer(handleEvent).catch((e) => console.error('[notification-service] consumer fatal', e));

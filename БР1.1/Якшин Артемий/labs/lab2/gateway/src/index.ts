@@ -2,6 +2,10 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import fs from 'fs';
+import path from 'path';
+import swaggerUi from 'swagger-ui-express';
+import { metricsMiddleware, metricsHandler, installGracefulShutdown } from './observability';
 
 const PORT = Number(process.env.PORT || 3000);
 const AUTH_URL = process.env.AUTH_URL || 'http://localhost:8081';
@@ -34,8 +38,14 @@ function pick(path: string): Key | undefined {
   return undefined;
 }
 
+// OpenAPI-спецификация публичного API (ДЗ9): /api/openapi.yaml + Swagger UI на /api/docs/
+const OPENAPI_FILE = process.env.OPENAPI_FILE || path.join(__dirname, '..', 'openapi.yaml');
+
 const app = express();
+app.disable('x-powered-by');
 app.use(cors());
+app.use(metricsMiddleware);
+app.get('/metrics', metricsHandler);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'api-gateway' }));
 app.get('/', (_req, res) => res.json({
@@ -52,16 +62,26 @@ app.get('/', (_req, res) => res.json({
   },
 }));
 
+if (fs.existsSync(OPENAPI_FILE)) {
+  app.get('/api/openapi.yaml', (_req, res) => res.type('application/yaml').sendFile(OPENAPI_FILE));
+  // спецификация подгружается по относительному URL — работает и за префиксом (/k8s/api/docs/)
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(undefined, {
+    customSiteTitle: 'Restaurant Booking API',
+    swaggerOptions: { url: '../openapi.yaml' },
+  }));
+}
+
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/v1')) return next();
   const key = pick(req.path);
   if (!key) return res.status(404).json({ error: 'Not Found', message: `No route for ${req.method} ${req.path}` });
+  res.locals.routeLabel = `proxy:${key}`; // метка для http_request_duration_seconds
   return proxies[key](req, res, next);
 });
 
 app.use((_req, res) => res.status(404).json({ error: 'Not Found', message: 'Unknown endpoint' }));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[api-gateway] listening on :${PORT}`);
   console.log(`  auth        -> ${AUTH_URL}`);
   console.log(`  catalog     -> ${CATALOG_URL}`);
@@ -69,3 +89,4 @@ app.listen(PORT, () => {
   console.log(`  review      -> ${REVIEW_URL}`);
   console.log(`  notification-> ${NOTIFICATION_URL}`);
 });
+installGracefulShutdown(server);

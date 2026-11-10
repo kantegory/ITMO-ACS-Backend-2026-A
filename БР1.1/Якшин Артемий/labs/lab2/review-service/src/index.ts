@@ -4,6 +4,8 @@ import express from 'express';
 import cors from 'cors';
 import { In } from 'typeorm';
 import { AppDataSource } from './data-source';
+import { initDatabase } from './db';
+import { metricsMiddleware, metricsHandler, installGracefulShutdown } from './observability';
 import { Review } from './entities/Review';
 import {
   asyncHandler, errorHandler, authMiddleware, internalKeyMiddleware,
@@ -41,11 +43,12 @@ async function seed() {
 }
 
 async function main() {
-  await AppDataSource.initialize();
-  await seed();
+  await initDatabase(AppDataSource, seed);
   await initBus();
 
   const app = express();
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'review-service' }));
@@ -168,7 +171,8 @@ async function main() {
 
   app.use((_req, _res, next) => next(NotFound('Endpoint not found')));
   app.use(errorHandler);
-  app.listen(PORT, () => console.log(`[review-service] listening on :${PORT}`));
+  const server = app.listen(PORT, () => console.log(`[review-service] listening on :${PORT}`));
+  installGracefulShutdown(server, () => AppDataSource.destroy());
 }
 
 main().catch((e) => { console.error('[review-service] fatal', e); process.exit(1); });

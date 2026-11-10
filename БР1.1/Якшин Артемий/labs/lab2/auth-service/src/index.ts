@@ -5,6 +5,8 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import { In } from 'typeorm';
 import { AppDataSource } from './data-source';
+import { initDatabase } from './db';
+import { metricsMiddleware, metricsHandler, installGracefulShutdown } from './observability';
 import { User } from './entities/User';
 import {
   asyncHandler, errorHandler, authMiddleware, internalKeyMiddleware,
@@ -29,10 +31,11 @@ async function seed() {
 }
 
 async function main() {
-  await AppDataSource.initialize();
-  await seed();
+  await initDatabase(AppDataSource, seed);
 
   const app = express();
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'auth-service' }));
@@ -106,7 +109,8 @@ async function main() {
 
   app.use((_req, _res, next) => next(NotFound('Endpoint not found')));
   app.use(errorHandler);
-  app.listen(PORT, () => console.log(`[auth-service] listening on :${PORT}`));
+  const server = app.listen(PORT, () => console.log(`[auth-service] listening on :${PORT}`));
+  installGracefulShutdown(server, () => AppDataSource.destroy());
 }
 
 main().catch((e) => { console.error('[auth-service] fatal', e); process.exit(1); });

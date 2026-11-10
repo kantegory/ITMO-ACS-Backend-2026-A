@@ -2,8 +2,10 @@ import 'reflect-metadata';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { In, Like } from 'typeorm';
+import { In, Raw } from 'typeorm';
 import { AppDataSource } from './data-source';
+import { initDatabase } from './db';
+import { metricsMiddleware, metricsHandler, installGracefulShutdown } from './observability';
 import { Restaurant } from './entities/Restaurant';
 import { Cuisine } from './entities/Cuisine';
 import { RestaurantPhoto } from './entities/RestaurantPhoto';
@@ -109,10 +111,11 @@ async function seed() {
 }
 
 async function main() {
-  await AppDataSource.initialize();
-  await seed();
+  await initDatabase(AppDataSource, seed);
 
   const app = express();
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'catalog-service' }));
@@ -131,7 +134,8 @@ async function main() {
     const qb = AppDataSource.getRepository(Restaurant).createQueryBuilder('r').leftJoinAndSelect('r.cuisines', 'c');
     if (city) qb.andWhere('r.city = :city', { city });
     if (price_level) qb.andWhere('r.price_level = :pl', { pl: price_level });
-    if (search) qb.andWhere('r.name LIKE :q', { q: `%${search}%` });
+    // LOWER(...) LIKE LOWER(...) — одинаково регистронезависимо в SQLite и PostgreSQL
+    if (search) qb.andWhere('LOWER(r.name) LIKE LOWER(:q)', { q: `%${search}%` });
     if (cuisine_id) {
       const sub = AppDataSource.createQueryBuilder().select('rc.restaurant_id').from('restaurant_cuisines', 'rc').where('rc.cuisine_id = :cid', { cid: Number(cuisine_id) });
       qb.andWhere(`r.restaurant_id IN (${sub.getQuery()})`).setParameters(sub.getParameters());
@@ -164,7 +168,7 @@ async function main() {
     const id = Number(req.params.id);
     if (!(await AppDataSource.getRepository(Restaurant).findOne({ where: { restaurant_id: id } }))) throw NotFound('Restaurant not found');
     const where: Record<string, unknown> = { restaurant_id: id };
-    if (req.query.category) where.category = Like(`%${req.query.category}%`);
+    if (req.query.category) where.category = Raw((col) => `LOWER(${col}) LIKE LOWER(:cat)`, { cat: `%${req.query.category}%` });
     const items = await AppDataSource.getRepository(MenuItem).find({ where });
     res.json(items.map(sMenu));
   }));
@@ -217,7 +221,8 @@ async function main() {
 
   app.use((_req, _res, next) => next(NotFound('Endpoint not found')));
   app.use(errorHandler);
-  app.listen(PORT, () => console.log(`[catalog-service] listening on :${PORT}`));
+  const server = app.listen(PORT, () => console.log(`[catalog-service] listening on :${PORT}`));
+  installGracefulShutdown(server, () => AppDataSource.destroy());
 }
 
 main().catch((e) => { console.error('[catalog-service] fatal', e); process.exit(1); });

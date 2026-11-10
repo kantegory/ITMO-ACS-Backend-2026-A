@@ -1,11 +1,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Notification } from './entities/Notification';
+import { dbOptions } from './db';
 
-export const AppDataSource = new DataSource({
-  type: 'sqlite',
-  database: process.env.DB_PATH || './notifications.sqlite',
-  synchronize: true,
-  logging: false,
-  entities: [Notification],
-});
+// SQLite (dev/compose) или PostgreSQL (k8s) — в зависимости от DATABASE_URL, см. db.ts
+export const AppDataSource = new DataSource(dbOptions('./notifications.sqlite', [Notification]));

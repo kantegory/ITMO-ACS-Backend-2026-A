@@ -3,6 +3,8 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { AppDataSource } from './data-source';
+import { initDatabase } from './db';
+import { metricsMiddleware, metricsHandler, installGracefulShutdown } from './observability';
 import { Reservation } from './entities/Reservation';
 import {
   asyncHandler, errorHandler, authMiddleware, internalKeyMiddleware,
@@ -44,10 +46,12 @@ async function serialize(r: Reservation) {
 }
 
 async function main() {
-  await AppDataSource.initialize();
+  await initDatabase(AppDataSource);
   await initBus();
 
   const app = express();
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
   app.use(cors());
   app.use(express.json());
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'reservation-service' }));
@@ -169,7 +173,8 @@ async function main() {
 
   app.use((_req, _res, next) => next(NotFound('Endpoint not found')));
   app.use(errorHandler);
-  app.listen(PORT, () => console.log(`[reservation-service] listening on :${PORT}`));
+  const server = app.listen(PORT, () => console.log(`[reservation-service] listening on :${PORT}`));
+  installGracefulShutdown(server, () => AppDataSource.destroy());
 }
 
 main().catch((e) => { console.error('[reservation-service] fatal', e); process.exit(1); });

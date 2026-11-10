@@ -1,11 +1,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Review } from './entities/Review';
+import { dbOptions } from './db';
 
-export const AppDataSource = new DataSource({
-  type: 'sqlite',
-  database: process.env.DB_PATH || './reviews.sqlite',
-  synchronize: true,
-  logging: false,
-  entities: [Review],
-});
+// SQLite (dev/compose) или PostgreSQL (k8s) — в зависимости от DATABASE_URL, см. db.ts
+export const AppDataSource = new DataSource(dbOptions('./reviews.sqlite', [Review]));
