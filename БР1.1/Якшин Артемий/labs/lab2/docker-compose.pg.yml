@@ -1,0 +1,17 @@
+# Режим PostgreSQL для локальной разработки (как в Kubernetes): поверх docker-compose.yml
+#   docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --scale catalog-service=3
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: { POSTGRES_USER: rb, POSTGRES_PASSWORD: rbpass }
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg-data:/var/lib/postgresql/data
+    networks: [rbnet]
+  auth-service:         { environment: { DATABASE_URL: "postgres://rb:rbpass@postgres:5432/auth" } }
+  catalog-service:      { environment: { DATABASE_URL: "postgres://rb:rbpass@postgres:5432/catalog" } }
+  reservation-service:  { environment: { DATABASE_URL: "postgres://rb:rbpass@postgres:5432/reservations" } }
+  review-service:       { environment: { DATABASE_URL: "postgres://rb:rbpass@postgres:5432/reviews" } }
+  notification-service: { environment: { DATABASE_URL: "postgres://rb:rbpass@postgres:5432/notifications" } }
+volumes:
+  pg-data:
