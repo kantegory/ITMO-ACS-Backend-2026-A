@@ -1,0 +1,21 @@
+# ЛР8: мониторинг внутри кластера (Prometheus + kube-state-metrics) из labs/lab8/k8s/monitoring
+- name: Манифесты мониторинга кластера
+  ansible.builtin.copy:
+    src: "{{ rb_local }}/labs/lab8/k8s/monitoring/"
+    dest: "{{ rb_root }}/k8s/monitoring/"
+    owner: root
+    group: root
+    mode: "u=rwX,g=rX,o="
+
+- name: Применить манифесты (kubectl apply -k)
+  ansible.builtin.command: >-
+    {{ rb_root }}/bin/kubectl --kubeconfig {{ rb_root }}/k3d/kubeconfig apply -k {{ rb_root }}/k8s/monitoring
+  register: k8s_monitoring_apply
+  changed_when: k8s_monitoring_apply.stdout_lines | reject('search', ' unchanged$') | list | length > 0
+
+- name: Prometheus и kube-state-metrics готовы
+  ansible.builtin.command: >-
+    {{ rb_root }}/bin/kubectl --kubeconfig {{ rb_root }}/k3d/kubeconfig -n monitoring
+    rollout status deploy/{{ item }} --timeout=180s
+  loop: [prometheus, kube-state-metrics]
+  changed_when: false
