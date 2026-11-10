@@ -47,7 +47,10 @@ log "$(docker compose version)"
 log "$(docker buildx version | cut -d' ' -f1-2)"
 
 # 3. Каталоги стенда
-install -d -m 0750 "$ROOT" "$ROOT/app" "$ROOT/bin"
+# 0711: в корень можно «пройти» (нужно пользователю CI для запуска bin/deploy-gate.sh), но не листать
+install -d -m 0711 "$ROOT"
+install -d -m 0750 "$ROOT/app"
+install -d -m 0755 "$ROOT/bin"
 install -d -m 0755 "$ROOT/edge" "$ROOT/edge/conf.d" "$ROOT/edge/html"
 log "directories under $ROOT ready"
 
@@ -59,7 +62,7 @@ log "docker network rb-edge ready"
 #    чтобы сборка не отнимала ресурсы у соседнего проекта
 if ! docker buildx inspect "$BUILDER" >/dev/null 2>&1; then
   docker buildx create --name "$BUILDER" --driver docker-container \
-    --driver-opt cpuset-cpus=2,3 --driver-opt cpu-quota=100000 --driver-opt cpu-period=100000 \
+    --driver-opt '"cpuset-cpus=2,3"' --driver-opt cpu-quota=100000 --driver-opt cpu-period=100000 \
     --driver-opt memory=1536m --driver-opt default-load=true >/dev/null
 fi
 log "buildx builder $BUILDER ready (cpuset 2-3, 1 CPU, 1.5 GiB)"
