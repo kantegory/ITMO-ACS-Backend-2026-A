@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ========== ENUMS ==========
+
+
+enum Role {
+  user
+  admin
+}
+
+
+// ========== MODELS ==========
+
+
+model User {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique @db.VarChar(255)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  firstName     String    @map("first_name") @db.VarChar(255)
+  lastName      String    @map("last_name") @db.VarChar(255)
+  about         String?   @db.Text
+  role          Role      @default(user)
+  createdAt     DateTime  @map("created_at") @default(now())
+  updatedAt     DateTime  @map("updated_at") @updatedAt
+
+
+  subscriptions  Subscription[]  @relation("subscriber")
+  subscribers    Subscription[]  @relation("subscribedTo")
+
+  @@map("users")
+}
+
+
+model Subscription {
+  id              Int       @id @default(autoincrement())
+  subscriberId    Int       @map("subscriber_id")
+  subscribedToId  Int       @map("subscribed_to_id")
+  subscribedAt    DateTime  @map("subscribed_at") @default(now())
+
+  subscriber    User  @relation("subscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscribedTo  User  @relation("subscribedTo", fields: [subscribedToId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriberId, subscribedToId])
+  @@map("subscriptions")
+}
