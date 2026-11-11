@@ -1,0 +1,59 @@
+# Ежедневный логический бэкап всех БД сервисов (RPO варианта A ≤ 24 ч, см. ДЗ7):
+# pg_dump -Fc каждой базы в PVC postgres-backups, хранятся 7 последних копий.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  labels: { app: postgres-backup }
+spec:
+  schedule: "30 2 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels: { app: postgres-backup }
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: postgres:17-alpine
+              env:
+                - { name: PGHOST, value: postgres }
+                - { name: PGUSER, value: rb }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: rb-secrets, key: POSTGRES_PASSWORD } }
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  # новый под попадает в правила NetworkPolicy (kube-router) с задержкой — ждём БД до 60 с
+                  for i in $(seq 1 30); do pg_isready -q -d postgres && break; sleep 2; done
+                  dir=/backups/$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$dir"
+                  for db in auth catalog reservations reviews notifications; do
+                    pg_dump -Fc -d "$db" -f "$dir/$db.dump"
+                  done
+                  ls -1dt /backups/*/ | tail -n +8 | xargs -r rm -rf   # оставляем 7 копий
+                  du -sh "$dir"; ls -l "$dir"
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: postgres-backups }

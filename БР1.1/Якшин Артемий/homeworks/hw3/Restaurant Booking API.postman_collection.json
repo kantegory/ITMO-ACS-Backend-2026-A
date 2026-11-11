@@ -1,0 +1,476 @@
+{
+  "info": {
+    "_postman_id": "a3f1c2d4-7b8e-4c1a-9d2e-5f6a7b8c9d01",
+    "name": "Restaurant Booking API — ДЗ3 (Якшин Артемий, БР1.1)",
+    "description": "Комплексный сценарий тестирования REST API приложения для бронирования столиков.\n\nОсновной процесс: регистрация → вход → профиль → список кухонь → список ресторанов → фильтрация по городу → просмотр случайного ресторана → доступные столики → создание бронирования → просмотр бронирования → история бронирований → создание отзыва → отзывы ресторана.\n\nЗапуск: Collection Runner (или newman). Базовый URL берётся из переменной `base_url` (по умолчанию http://localhost:3000/api/v1). Перед запуском поднять сервер: `npm run seed && npm run dev`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Глобальный pre-request: один раз готовим данные сценария.",
+          "if (!pm.collectionVariables.get('user_email')) {",
+          "  pm.collectionVariables.set('user_email', 'qa_' + Date.now() + '@example.com');",
+          "  pm.collectionVariables.set('user_password', 'qaPassw0rd123');",
+          "  pm.collectionVariables.set('user_name', 'QA Тестовый Пользователь');",
+          "  const offsetDays = 30 + Math.floor(Math.random() * 60);",
+          "  const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);",
+          "  pm.collectionVariables.set('reservation_date', d.toISOString().slice(0, 10));",
+          "  const times = ['18:00','18:30','19:00','19:30','20:00','20:30','21:00'];",
+          "  pm.collectionVariables.set('reservation_time', times[Math.floor(Math.random() * times.length)]);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api/v1" },
+    { "key": "token", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "user_email", "value": "" },
+    { "key": "user_password", "value": "" },
+    { "key": "user_name", "value": "" },
+    { "key": "cuisine_id", "value": "" },
+    { "key": "restaurant_id", "value": "" },
+    { "key": "restaurant_name", "value": "" },
+    { "key": "table_id", "value": "" },
+    { "key": "reservation_id", "value": "" },
+    { "key": "reservation_date", "value": "" },
+    { "key": "reservation_time", "value": "" },
+    { "key": "review_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01. Регистрация пользователя",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{user_name}}\",\n  \"email\": \"{{user_email}}\",\n  \"phone\": \"+79991234567\",\n  \"password\": \"{{user_password}}\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('Ответ содержит JWT-токен', () => {",
+              "  pm.expect(json).to.have.property('token');",
+              "  pm.expect(json.token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('Ответ содержит данные пользователя без хеша пароля', () => {",
+              "  pm.expect(json).to.have.property('user');",
+              "  pm.expect(json.user).to.have.property('user_id').that.is.a('number');",
+              "  pm.expect(json.user.email).to.eql(pm.collectionVariables.get('user_email'));",
+              "  pm.expect(json.user).to.not.have.property('password_hash');",
+              "});",
+              "pm.collectionVariables.set('token', json.token);",
+              "pm.collectionVariables.set('user_id', json.user.user_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Вход в систему",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Получен JWT-токен', () => pm.expect(json.token).to.be.a('string').and.not.empty);",
+              "pm.test('Авторизован тот же пользователь', () => {",
+              "  pm.expect(json.user.user_id).to.eql(Number(pm.collectionVariables.get('user_id')));",
+              "});",
+              "pm.collectionVariables.set('token', json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Профиль текущего пользователя",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users", "me"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Профиль принадлежит зарегистрированному пользователю', () => {",
+              "  pm.expect(json.user_id).to.eql(Number(pm.collectionVariables.get('user_id')));",
+              "  pm.expect(json.email).to.eql(pm.collectionVariables.get('user_email'));",
+              "});",
+              "pm.test('В профиле нет хеша пароля', () => pm.expect(json).to.not.have.property('password_hash'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Список типов кухонь",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/cuisines", "host": ["{{base_url}}"], "path": ["cuisines"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const arr = pm.response.json();",
+              "pm.test('Получен непустой список кухонь', () => {",
+              "  pm.expect(arr).to.be.an('array').that.is.not.empty;",
+              "  pm.expect(arr[0]).to.have.property('cuisine_id');",
+              "  pm.expect(arr[0]).to.have.property('name');",
+              "});",
+              "pm.collectionVariables.set('cuisine_id', arr[0].cuisine_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Список всех ресторанов",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/restaurants", "host": ["{{base_url}}"], "path": ["restaurants"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Ответ постраничный и содержит рестораны', () => {",
+              "  pm.expect(json).to.have.property('data').that.is.an('array');",
+              "  pm.expect(json).to.have.property('total').that.is.a('number');",
+              "  pm.expect(json).to.have.property('page');",
+              "  pm.expect(json).to.have.property('limit');",
+              "  pm.expect(json.total).to.be.above(0);",
+              "  pm.expect(json.data.length).to.be.above(0);",
+              "});",
+              "pm.test('Каждый ресторан содержит обязательные поля', () => {",
+              "  json.data.forEach(r => {",
+              "    pm.expect(r).to.have.property('restaurant_id');",
+              "    pm.expect(r).to.have.property('name');",
+              "    pm.expect(r).to.have.property('price_level');",
+              "    pm.expect(r).to.have.property('cuisines').that.is.an('array');",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Фильтрация ресторанов по городу",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants?city=Москва&limit=50",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants"],
+          "query": [
+            { "key": "city", "value": "Москва" },
+            { "key": "limit", "value": "50" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Получены рестораны Москвы', () => {",
+              "  pm.expect(json.data).to.be.an('array').that.is.not.empty;",
+              "});",
+              "pm.test('Фильтр по городу применён ко всем элементам', () => {",
+              "  json.data.forEach(r => pm.expect(r.city).to.eql('Москва'));",
+              "});",
+              "// Выбор случайного ресторана из отфильтрованной выборки",
+              "const idx = Math.floor(Math.random() * json.data.length);",
+              "const chosen = json.data[idx];",
+              "pm.collectionVariables.set('restaurant_id', chosen.restaurant_id);",
+              "pm.collectionVariables.set('restaurant_name', chosen.name);",
+              "console.log('Выбран ресторан #' + chosen.restaurant_id + ' — ' + chosen.name);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Просмотр случайного ресторана",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const r = pm.response.json();",
+              "pm.test('Возвращён выбранный ранее ресторан', () => {",
+              "  pm.expect(r.restaurant_id).to.eql(Number(pm.collectionVariables.get('restaurant_id')));",
+              "  pm.expect(r.name).to.eql(pm.collectionVariables.get('restaurant_name'));",
+              "});",
+              "pm.test('Детальная карточка содержит меню, фото и кухни', () => {",
+              "  pm.expect(r).to.have.property('menu_items').that.is.an('array');",
+              "  pm.expect(r).to.have.property('photos').that.is.an('array');",
+              "  pm.expect(r).to.have.property('cuisines').that.is.an('array');",
+              "  pm.expect(r).to.have.property('reviews_count').that.is.a('number');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Доступные столики ресторана",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/tables?date={{reservation_date}}&time={{reservation_time}}&guests=2",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "tables"],
+          "query": [
+            { "key": "date", "value": "{{reservation_date}}" },
+            { "key": "time", "value": "{{reservation_time}}" },
+            { "key": "guests", "value": "2" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const tables = pm.response.json();",
+              "pm.test('Получен список столиков', () => pm.expect(tables).to.be.an('array').that.is.not.empty);",
+              "pm.test('Каждый столик вмещает минимум 2 гостей (фильтр guests=2)', () => {",
+              "  tables.forEach(t => pm.expect(t.capacity).to.be.at.least(2));",
+              "});",
+              "const free = tables.filter(t => t.status === 'available');",
+              "pm.test('Есть хотя бы один свободный столик', () => pm.expect(free.length).to.be.above(0));",
+              "pm.collectionVariables.set('table_id', free[0].table_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Создание бронирования",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"table_id\": {{table_id}},\n  \"reservation_date\": \"{{reservation_date}}\",\n  \"reservation_time\": \"{{reservation_time}}\",\n  \"guests_count\": 2\n}"
+        },
+        "url": { "raw": "{{base_url}}/reservations", "host": ["{{base_url}}"], "path": ["reservations"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const r = pm.response.json();",
+              "pm.test('Бронирование создано корректно', () => {",
+              "  pm.expect(r).to.have.property('reservation_id').that.is.a('number');",
+              "  pm.expect(r.status).to.eql('confirmed');",
+              "  pm.expect(r.guests_count).to.eql(2);",
+              "  pm.expect(r.reservation_date).to.eql(pm.collectionVariables.get('reservation_date'));",
+              "  pm.expect(r.reservation_time).to.eql(pm.collectionVariables.get('reservation_time'));",
+              "  pm.expect(r.table.table_id).to.eql(Number(pm.collectionVariables.get('table_id')));",
+              "  pm.expect(r.user_id).to.eql(Number(pm.collectionVariables.get('user_id')));",
+              "});",
+              "pm.collectionVariables.set('reservation_id', r.reservation_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Просмотр созданного бронирования",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/reservations/{{reservation_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["reservations", "{{reservation_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const r = pm.response.json();",
+              "pm.test('Возвращено именно созданное бронирование', () => {",
+              "  pm.expect(r.reservation_id).to.eql(Number(pm.collectionVariables.get('reservation_id')));",
+              "  pm.expect(r.user_id).to.eql(Number(pm.collectionVariables.get('user_id')));",
+              "  pm.expect(r.table.table_id).to.eql(Number(pm.collectionVariables.get('table_id')));",
+              "});",
+              "pm.test('Бронирование связано с выбранным рестораном', () => {",
+              "  pm.expect(r.restaurant.restaurant_id).to.eql(Number(pm.collectionVariables.get('restaurant_id')));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. История бронирований пользователя",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/users/me/reservations",
+          "host": ["{{base_url}}"],
+          "path": ["users", "me", "reservations"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Ответ постраничный', () => {",
+              "  pm.expect(json).to.have.property('data').that.is.an('array');",
+              "  pm.expect(json).to.have.property('total').that.is.a('number');",
+              "});",
+              "pm.test('История содержит созданное бронирование', () => {",
+              "  const ids = json.data.map(x => x.reservation_id);",
+              "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('reservation_id')));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Создание отзыва о ресторане",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurant_id\": {{restaurant_id}},\n  \"rating\": 5,\n  \"comment\": \"Отличный ресторан — отзыв оставлен в рамках автотеста Postman.\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/reviews", "host": ["{{base_url}}"], "path": ["reviews"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 201 Created', () => pm.response.to.have.status(201));",
+              "const r = pm.response.json();",
+              "pm.test('Отзыв создан корректно', () => {",
+              "  pm.expect(r).to.have.property('review_id').that.is.a('number');",
+              "  pm.expect(r.rating).to.eql(5);",
+              "  pm.expect(r.restaurant_id).to.eql(Number(pm.collectionVariables.get('restaurant_id')));",
+              "  pm.expect(r.user.user_id).to.eql(Number(pm.collectionVariables.get('user_id')));",
+              "  pm.expect(r.comment).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.collectionVariables.set('review_id', r.review_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Отзывы выбранного ресторана",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+          "host": ["{{base_url}}"],
+          "path": ["restaurants", "{{restaurant_id}}", "reviews"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Статус 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Ответ содержит список отзывов и средний рейтинг', () => {",
+              "  pm.expect(json).to.have.property('data').that.is.an('array').that.is.not.empty;",
+              "  pm.expect(json).to.have.property('average_rating').that.is.a('number');",
+              "  pm.expect(json).to.have.property('total').that.is.a('number');",
+              "});",
+              "pm.test('Отзыв пользователя присутствует в списке', () => {",
+              "  const ids = json.data.map(x => x.review_id);",
+              "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('review_id')));",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

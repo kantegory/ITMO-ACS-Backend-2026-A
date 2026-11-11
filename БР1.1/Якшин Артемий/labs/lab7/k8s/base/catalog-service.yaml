@@ -1,0 +1,90 @@
+# catalog-service — stateless-под: состояние вынесено в PostgreSQL/RabbitMQ (см. ДЗ7)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  labels: { app: catalog-service, app.kubernetes.io/component: backend }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: catalog-service }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }   # обновление без простоя
+  template:
+    metadata:
+      labels: { app: catalog-service, app.kubernetes.io/component: backend }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: /metrics
+    spec:
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:       # на нескольких узлах реплики разойдутся по разным узлам
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: catalog-service }
+      containers:
+        - name: app
+          image: rb-catalog-service            # реальный реестр и тег подставляет kustomize (images:)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8082 }
+          env:
+            - { name: PORT, value: "8082" }
+            - { name: SERVICE_NAME, value: catalog-service }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: rb-secrets, key: POSTGRES_PASSWORD } }
+            - name: DATABASE_URL
+              value: postgres://rb:$(POSTGRES_PASSWORD)@postgres:5432/catalog
+            - name: INTERNAL_API_KEY
+              valueFrom: { secretKeyRef: { name: rb-secrets, key: INTERNAL_API_KEY } }
+            - { name: REVIEW_URL, value: "http://review-service:8084" }
+            - { name: RESERVATION_URL, value: "http://reservation-service:8083" }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+          startupProbe:                # до 120 с: при холодном старте ждём PostgreSQL и RabbitMQ
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # пауза перед SIGTERM: Ingress и Endpoints успевают убрать под из балансировки,
+              # поэтому во время rolling update запросы не уходят на останавливающийся под (ДЗ8)
+              sleep: { seconds: 5 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  labels: { app: catalog-service }
+spec:
+  selector: { app: catalog-service }
+  ports:
+    - { name: http, port: 8082, targetPort: http }

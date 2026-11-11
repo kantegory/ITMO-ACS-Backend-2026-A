@@ -1,0 +1,150 @@
+# ЛР4: production-стек «Restaurant Booking» на удалённом сервере.
+#
+# Отличия от учебного docker-compose.yml из ЛР3:
+#   • ни один сервис не публикует порты — наружу смотрит только edge-nginx (deploy/edge);
+#   • секреты не захардкожены: берутся из /opt/rb-sem2/app/.env (генерируется на сервере);
+#   • лимиты CPU/RAM, привязка к CPU 2-3 (cpuset) — сервер общий, ядра 0-1 остаются соседям;
+#   • ротация логов json-file, restart: unless-stopped;
+#   • образы: локальная сборка (ЛР4, IMAGE_PREFIX=local/rb) или готовые из GHCR (ДЗ6, CI задаёт IMAGE_TAG).
+#
+# Ручной запуск (на сервере):
+#   docker compose -f docker-compose.prod.yml --env-file /opt/rb-sem2/app/.env build --builder rb-builder
+#   docker compose -f docker-compose.prod.yml --env-file /opt/rb-sem2/app/.env up -d
+name: rb-app
+
+x-service: &service
+  restart: unless-stopped
+  cpuset: "2,3"
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+  networks: [app]
+
+x-node-limits: &node-limits
+  deploy:
+    resources:
+      limits: { cpus: "0.50", memory: 192M }
+
+x-healthcheck: &healthcheck
+  interval: 15s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
+
+services:
+  rabbitmq:
+    <<: *service
+    image: rabbitmq:3.13-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?}
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 320M }
+
+  auth-service:
+    <<: [*service, *node-limits]
+    image: ${IMAGE_PREFIX:-local/rb}-auth-service:${IMAGE_TAG:-latest}
+    build: ../../lab2/auth-service
+    environment:
+      DB_PATH: /data/auth.sqlite
+      JWT_SECRET: ${JWT_SECRET:?}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    volumes: [auth-data:/data]
+
+  catalog-service:
+    <<: [*service, *node-limits]
+    image: ${IMAGE_PREFIX:-local/rb}-catalog-service:${IMAGE_TAG:-latest}
+    build: ../../lab2/catalog-service
+    environment:
+      DB_PATH: /data/catalog.sqlite
+      REVIEW_URL: http://review-service:8084
+      RESERVATION_URL: http://reservation-service:8083
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+    volumes: [catalog-data:/data]
+
+  reservation-service:
+    <<: [*service, *node-limits]
+    image: ${IMAGE_PREFIX:-local/rb}-reservation-service:${IMAGE_TAG:-latest}
+    build: ../../lab2/reservation-service
+    environment:
+      DB_PATH: /data/reservations.sqlite
+      JWT_SECRET: ${JWT_SECRET:?}
+      CATALOG_URL: http://catalog-service:8082
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672
+    volumes: [reservation-data:/data]
+    depends_on:
+      catalog-service: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  review-service:
+    <<: [*service, *node-limits]
+    image: ${IMAGE_PREFIX:-local/rb}-review-service:${IMAGE_TAG:-latest}
+    build: ../../lab2/review-service
+    environment:
+      DB_PATH: /data/reviews.sqlite
+      JWT_SECRET: ${JWT_SECRET:?}
+      CATALOG_URL: http://catalog-service:8082
+      AUTH_URL: http://auth-service:8081
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672
+    volumes: [review-data:/data]
+    depends_on:
+      catalog-service: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  notification-service:
+    <<: [*service, *node-limits]
+    image: ${IMAGE_PREFIX:-local/rb}-notification-service:${IMAGE_TAG:-latest}
+    build: ../../lab2/notification-service
+    environment:
+      DB_PATH: /data/notifications.sqlite
+      JWT_SECRET: ${JWT_SECRET:?}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672
+    volumes: [notification-data:/data]
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+
+  gateway:
+    <<: [*service, *node-limits]
+    image: ${IMAGE_PREFIX:-local/rb}-gateway:${IMAGE_TAG:-latest}
+    build: ../../lab2/gateway
+    environment:
+      AUTH_URL: http://auth-service:8081
+      CATALOG_URL: http://catalog-service:8082
+      RESERVATION_URL: http://reservation-service:8083
+      REVIEW_URL: http://review-service:8084
+      NOTIFICATION_URL: http://notification-service:8085
+    networks:
+      app: {}
+      edge:
+        aliases: [rb-gateway]   # по этому имени gateway находит edge-nginx
+    depends_on:
+      auth-service: { condition: service_healthy }
+      catalog-service: { condition: service_healthy }
+      reservation-service: { condition: service_healthy }
+      review-service: { condition: service_healthy }
+      notification-service: { condition: service_healthy }
+
+volumes:
+  rabbitmq-data:
+  auth-data:
+  catalog-data:
+  reservation-data:
+  review-data:
+  notification-data:
+
+networks:
+  app:
+    name: rb-app
+  edge:
+    name: rb-edge
+    external: true

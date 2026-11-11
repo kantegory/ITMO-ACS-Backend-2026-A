@@ -1,0 +1,93 @@
+# ДЗ6 (Якшин Артемий, БР1.1): автодеплой compose-стенда «Restaurant Booking» на удалённый сервер.
+#
+# Триггер: push в ветку main (изменения приложения или конфигурации деплоя) + ручной запуск.
+# Конвейер: test (typecheck всех сервисов) → build (образы в GHCR, rb-build-images.yml) → deploy (SSH) → smoke.
+# Сервер принимает от CI только команду "app <sha>" (forced command, см. homeworks/hw6/server).
+name: rb-deploy-compose
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/labs/lab2/**"
+      - "**/labs/lab4/deploy/**"
+      - ".github/workflows/rb-deploy-compose.yml"
+      - ".github/workflows/rb-build-images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-compose
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.repository == 'cicada-pops/itmo-backend-sem2'
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        service: [gateway, auth-service, catalog-service, reservation-service, review-service, notification-service]
+    defaults:
+      run:
+        working-directory: "БР1.1/Якшин Артемий/labs/lab2/${{ matrix.service }}"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: "БР1.1/Якшин Артемий/labs/lab2/${{ matrix.service }}/package-lock.json"
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck & build
+        run: npm run build
+
+  build:
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/rb-build-images.yml
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      packages: read   # токен этого job'а сервер использует для docker pull из GHCR
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy release ${{ github.sha }}
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s\n' "$TOKEN" | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "rb-deploy@$HOST" "app ${{ github.sha }}"
+
+      - name: Smoke test через nginx (публичный порт 8088)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -e
+          # отвечает именно новый релиз: версия в /health = SHA коммита
+          curl -fsS --retry 5 --retry-delay 3 "http://$HOST:8088/health" | tee /dev/stderr \
+            | grep -q '"version":"${{ github.sha }}"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://$HOST:8088/api/v1/restaurants?limit=1")
+          echo "GET /api/v1/restaurants -> $code"; test "$code" = 200
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://$HOST:8088/api/docs/")
+          echo "GET /api/docs/ -> $code"; test "$code" = 200
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

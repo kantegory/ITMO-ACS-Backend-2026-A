@@ -1,0 +1,461 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking — Internal (service-to-service) API
+  description: >
+    Спецификация эндпоинтов межсервисного взаимодействия после декомпозиции монолита
+    «Restaurant Booking» на микросервисы (database-per-service).
+    Эти эндпоинты НЕ выставляются наружу через API Gateway — они доступны только внутри
+    сетевого периметра и защищены сервисным токеном (заголовок `X-Service-Token`,
+    короткоживущий JWT, выдаваемый Auth Service сервисам по client_credentials).
+    Публичный (клиентский) контракт описан отдельно в ДЗ2 (homeworks/hw2/openapi.yaml).
+  version: 1.0.0
+
+servers:
+  - url: http://auth-service:8081
+    description: Auth / User Service
+  - url: http://catalog-service:8082
+    description: Catalog (Restaurant) Service
+  - url: http://reservation-service:8083
+    description: Reservation Service
+  - url: http://review-service:8084
+    description: Review Service
+
+tags:
+  - name: auth-internal
+    description: Auth Service — внутренние эндпоинты
+  - name: catalog-internal
+    description: Catalog Service — внутренние эндпоинты
+  - name: reservation-internal
+    description: Reservation Service — внутренние эндпоинты
+  - name: review-internal
+    description: Review Service — внутренние эндпоинты
+
+paths:
+
+  # ─────────────────────────── AUTH SERVICE ───────────────────────────
+
+  /internal/auth/introspect:
+    post:
+      tags: [auth-internal]
+      summary: Валидация клиентского access-токена (token introspection)
+      description: >
+        Используется API Gateway и любым сервисом, который получает клиентский JWT,
+        чтобы проверить его подпись/срок и получить идентификатор пользователя.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Клиентский access-токен (JWT)
+            example:
+              token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Результат интроспекции
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active]
+                properties:
+                  active:
+                    type: boolean
+                  user_id:
+                    type: integer
+                  email:
+                    type: string
+                    format: email
+                  expires_at:
+                    type: string
+                    format: date-time
+              examples:
+                active:
+                  value: { active: true, user_id: 1, email: "ivan@example.com", expires_at: "2026-05-20T10:00:00Z" }
+                inactive:
+                  value: { active: false }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+  /internal/users/{userId}:
+    get:
+      tags: [auth-internal]
+      summary: Краткая карточка пользователя
+      description: Нужна Reservation и Review сервисам для обогащения ответов данными пользователя.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Карточка пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/users/batch:
+    post:
+      tags: [auth-internal]
+      summary: Пакетное получение карточек пользователей
+      description: Снижает количество вызовов при обогащении списков (например, списка отзывов).
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_ids]
+              properties:
+                user_ids:
+                  type: array
+                  items: { type: integer }
+                  maxItems: 200
+            example: { user_ids: [1, 2, 5] }
+      responses:
+        '200':
+          description: Найденные карточки (отсутствующие id просто не возвращаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+  # ────────────────────────── CATALOG SERVICE ─────────────────────────
+
+  /internal/restaurants/{restaurantId}:
+    get:
+      tags: [catalog-internal]
+      summary: Краткая карточка ресторана
+      description: Используется Reservation и Review сервисами для проверки существования и обогащения ответов.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Карточка ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantSummary'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/restaurants/batch:
+    post:
+      tags: [catalog-internal]
+      summary: Пакетное получение карточек ресторанов
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restaurant_ids]
+              properties:
+                restaurant_ids:
+                  type: array
+                  items: { type: integer }
+                  maxItems: 200
+            example: { restaurant_ids: [1, 3] }
+      responses:
+        '200':
+          description: Найденные карточки ресторанов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RestaurantSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+  /internal/tables/{tableId}:
+    get:
+      tags: [catalog-internal]
+      summary: Карточка столика
+      description: >
+        Reservation Service вызывает этот эндпоинт при создании брони, чтобы проверить,
+        что столик существует, узнать его вместимость и ресторан-владелец.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/TableId'
+      responses:
+        '200':
+          description: Карточка столика
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableSummary'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────── RESERVATION SERVICE ───────────────────────
+
+  /internal/tables/{tableId}/availability:
+    get:
+      tags: [reservation-internal]
+      summary: Доступность столика на дату/время
+      description: >
+        Catalog Service вызывает Reservation Service, чтобы в публичном ответе
+        `GET /restaurants/{id}/tables` пометить столики как `available` / `reserved`.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/TableId'
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          example: "2026-07-01"
+        - name: time
+          in: query
+          required: true
+          schema: { type: string, pattern: '^\d{2}:\d{2}$' }
+          example: "19:00"
+      responses:
+        '200':
+          description: Статус доступности
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [table_id, date, time, available]
+                properties:
+                  table_id: { type: integer }
+                  date: { type: string, format: date }
+                  time: { type: string }
+                  available: { type: boolean }
+              example: { table_id: 5, date: "2026-07-01", time: "19:00", available: false }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+  /internal/reservations/availability-batch:
+    post:
+      tags: [reservation-internal]
+      summary: Пакетная проверка доступности столиков
+      description: За один вызов вернуть статус занятости для набора столиков на дату/время.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [table_ids, date, time]
+              properties:
+                table_ids:
+                  type: array
+                  items: { type: integer }
+                date: { type: string, format: date }
+                time: { type: string, pattern: '^\d{2}:\d{2}$' }
+            example: { table_ids: [1, 2, 3, 4, 5], date: "2026-07-01", time: "19:00" }
+      responses:
+        '200':
+          description: Карта доступности
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    table_id: { type: integer }
+                    available: { type: boolean }
+              example:
+                - { table_id: 1, available: true }
+                - { table_id: 2, available: false }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+  # ────────────────────────── REVIEW SERVICE ──────────────────────────
+
+  /internal/restaurants/{restaurantId}/rating-summary:
+    get:
+      tags: [review-internal]
+      summary: Сводка рейтинга ресторана
+      description: >
+        Catalog Service вызывает Review Service, чтобы добавить в публичные ответы
+        поля `average_rating` и `reviews_count`.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Сводка рейтинга
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingSummary'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+  /internal/ratings/batch:
+    post:
+      tags: [review-internal]
+      summary: Пакетная сводка рейтингов
+      description: Для обогащения списка ресторанов в одном запросе вместо N.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restaurant_ids]
+              properties:
+                restaurant_ids:
+                  type: array
+                  items: { type: integer }
+                  maxItems: 200
+            example: { restaurant_ids: [1, 2, 3, 4] }
+      responses:
+        '200':
+          description: Сводки рейтингов (для ресторанов без отзывов возвращается 0 / 0)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RatingSummary'
+              example:
+                - { restaurant_id: 1, average_rating: 4.5, reviews_count: 2 }
+                - { restaurant_id: 2, average_rating: 0, reviews_count: 0 }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/ServiceUnauthorized'
+
+components:
+
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: >
+        Короткоживущий служебный JWT, выдаваемый Auth Service сервисам по
+        OAuth2 client_credentials. Содержит claim `svc` (имя сервиса-вызывающего)
+        и список разрешённых scope'ов. Проверяется каждым сервисом на входе.
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    BadRequest:
+      description: Некорректное тело/параметры запроса
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: "Bad Request", message: "user_ids must be a non-empty array" }
+    ServiceUnauthorized:
+      description: Отсутствует или недействителен сервисный токен
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: "Unauthorized", message: "Invalid or missing X-Service-Token" }
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: "Not Found", message: "Resource not found" }
+    ServiceUnavailable:
+      description: Зависимый сервис временно недоступен (вернётся вызывающему как 503)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: "Service Unavailable", message: "catalog-service is unavailable" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string }
+        message: { type: string }
+        correlation_id:
+          type: string
+          description: Сквозной идентификатор запроса для трассировки
+
+    UserSummary:
+      type: object
+      properties:
+        user_id: { type: integer, example: 1 }
+        name: { type: string, example: "Иван Иванов" }
+        email: { type: string, format: email, example: "ivan@example.com" }
+        phone: { type: string, nullable: true, example: "+79001234567" }
+
+    RestaurantSummary:
+      type: object
+      properties:
+        restaurant_id: { type: integer, example: 1 }
+        name: { type: string, example: "La Piazza" }
+        city: { type: string, nullable: true, example: "Москва" }
+        address: { type: string, example: "ул. Тверская, 10, Москва" }
+        price_level: { type: string, enum: ['$', '$$', '$$$', '$$$$'], example: "$$" }
+
+    TableSummary:
+      type: object
+      properties:
+        table_id: { type: integer, example: 5 }
+        restaurant_id: { type: integer, example: 1 }
+        table_number: { type: integer, example: 5 }
+        capacity: { type: integer, example: 4 }
+
+    RatingSummary:
+      type: object
+      properties:
+        restaurant_id: { type: integer, example: 1 }
+        average_rating: { type: number, format: float, minimum: 0, maximum: 5, example: 4.5 }
+        reviews_count: { type: integer, example: 2 }

@@ -1,0 +1,1026 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking API
+  description: REST API для приложения бронирования столиков в ресторанах. Реализуется на Node.js + Express + TypeORM.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Локальный сервер разработки
+
+tags:
+  - name: auth
+    description: Аутентификация и регистрация
+  - name: users
+    description: Управление профилем пользователя
+  - name: restaurants
+    description: Рестораны
+  - name: cuisines
+    description: Типы кухонь
+  - name: tables
+    description: Столики ресторана
+  - name: reservations
+    description: Бронирования
+  - name: reviews
+    description: Отзывы
+
+paths:
+
+  # ─── AUTH ────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: "Иван Иванов"
+              email: "ivan@example.com"
+              phone: "+79001234567"
+              password: "securepass123"
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Пользователь с таким email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Conflict"
+                message: "User with this email already exists"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: "ivan@example.com"
+              password: "securepass123"
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized"
+                message: "Invalid email or password"
+
+  # ─── USERS ───────────────────────────────────────────────
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: Получить профиль текущего пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [users]
+      summary: Обновить профиль текущего пользователя
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+            example:
+              name: "Иван Иванов"
+              phone: "+79009876543"
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/reservations:
+    get:
+      tags: [reservations, users]
+      summary: История бронирований текущего пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, completed]
+          description: Фильтр по статусу
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─── RESTAURANTS ─────────────────────────────────────────
+
+  /restaurants:
+    get:
+      tags: [restaurants]
+      summary: Список ресторанов с фильтрацией
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+          description: Фильтр по городу
+          example: "Москва"
+        - name: cuisine_id
+          in: query
+          schema:
+            type: integer
+          description: Фильтр по типу кухни
+        - name: price_level
+          in: query
+          schema:
+            type: string
+            enum: ['$', '$$', '$$$', '$$$$']
+          description: Фильтр по ценовому уровню
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Поиск по названию ресторана
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Список ресторанов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantListResponse'
+
+  /restaurants/{id}:
+    get:
+      tags: [restaurants]
+      summary: Информация о ресторане
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Детальная информация о ресторане
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{id}/photos:
+    get:
+      tags: [restaurants]
+      summary: Фотографии ресторана
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Список фотографий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Photo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{id}/menu:
+    get:
+      tags: [restaurants]
+      summary: Меню ресторана
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Фильтр по категории
+      responses:
+        '200':
+          description: Позиции меню
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{id}/reviews:
+    get:
+      tags: [restaurants, reviews]
+      summary: Отзывы о ресторане
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: Список отзывов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── CUISINES ────────────────────────────────────────────
+
+  /cuisines:
+    get:
+      tags: [cuisines]
+      summary: Все типы кухонь
+      responses:
+        '200':
+          description: Список кухонь
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cuisine'
+              example:
+                - cuisine_id: 1
+                  name: "Итальянская"
+                - cuisine_id: 2
+                  name: "Японская"
+                - cuisine_id: 3
+                  name: "Русская"
+
+  # ─── TABLES ──────────────────────────────────────────────
+
+  /restaurants/{id}/tables:
+    get:
+      tags: [tables]
+      summary: Доступные столики ресторана
+      description: Возвращает столики с учётом занятости на указанную дату и время
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Дата бронирования (YYYY-MM-DD)
+          example: "2026-04-15"
+        - name: time
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{2}:\d{2}$'
+          description: Время бронирования (HH:MM)
+          example: "19:00"
+        - name: guests
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Количество гостей (фильтр по вместимости)
+      responses:
+        '200':
+          description: Доступные столики
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Table'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── RESERVATIONS ────────────────────────────────────────
+
+  /reservations:
+    post:
+      tags: [reservations]
+      summary: Создать бронирование
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+            example:
+              table_id: 5
+              reservation_date: "2026-04-15"
+              reservation_time: "19:00"
+              guests_count: 2
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Столик уже занят на это время
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Conflict"
+                message: "Table is already booked for this date and time"
+
+  /reservations/{id}:
+    get:
+      tags: [reservations]
+      summary: Детали бронирования
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Бронирование
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [reservations]
+      summary: Изменить бронирование
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReservationRequest'
+      responses:
+        '200':
+          description: Обновлённое бронирование
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Столик занят на новое время
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [reservations]
+      summary: Отменить бронирование
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204':
+          description: Бронирование отменено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── REVIEWS ─────────────────────────────────────────────
+
+  /reviews:
+    post:
+      tags: [reviews]
+      summary: Оставить отзыв
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+            example:
+              restaurant_id: 3
+              rating: 5
+              comment: "Отличный ресторан, вкусная еда!"
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Пользователь уже оставил отзыв на этот ресторан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Conflict"
+                message: "You have already reviewed this restaurant"
+
+  /reviews/{id}:
+    put:
+      tags: [reviews]
+      summary: Редактировать отзыв
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReviewRequest'
+      responses:
+        '200':
+          description: Обновлённый отзыв
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [reviews]
+      summary: Удалить отзыв
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204':
+          description: Отзыв удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ─── COMPONENTS ──────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT-токен, полученный при входе или регистрации
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Идентификатор ресурса
+
+  responses:
+    BadRequest:
+      description: Ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Bad Request"
+            message: "Validation failed"
+            details:
+              - field: "email"
+                message: "Must be a valid email address"
+    Unauthorized:
+      description: Отсутствует или недействителен токен авторизации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "Missing or invalid authorization token"
+    Forbidden:
+      description: Нет прав на выполнение операции
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Forbidden"
+            message: "You don't have permission to perform this action"
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Not Found"
+            message: "Resource not found"
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Краткий код ошибки
+        message:
+          type: string
+          description: Человекочитаемое описание
+        details:
+          type: array
+          description: Детали ошибки (для ошибок валидации)
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    # ── Auth ──────────────────────────────────────────────
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          pattern: '^\+7\d{10}$'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 64
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/User'
+
+    # ── User ──────────────────────────────────────────────
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Иван Иванов"
+        email:
+          type: string
+          format: email
+          example: "ivan@example.com"
+        phone:
+          type: string
+          example: "+79001234567"
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^\+7\d{10}$'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 64
+
+    # ── Restaurant ────────────────────────────────────────
+
+    Restaurant:
+      type: object
+      properties:
+        restaurant_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "La Piazza"
+        description:
+          type: string
+        address:
+          type: string
+          example: "ул. Ленина, 10, Москва"
+        price_level:
+          type: string
+          enum: ['$', '$$', '$$$', '$$$$']
+          example: "$$"
+        opening_time:
+          type: string
+          example: "11:00"
+        closing_time:
+          type: string
+          example: "23:00"
+        phone:
+          type: string
+          example: "+74951234567"
+        cuisines:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cuisine'
+        average_rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          example: 4.7
+        main_photo:
+          type: string
+          nullable: true
+          example: "https://example.com/photos/restaurant1.jpg"
+
+    RestaurantDetail:
+      allOf:
+        - $ref: '#/components/schemas/Restaurant'
+        - type: object
+          properties:
+            photos:
+              type: array
+              items:
+                $ref: '#/components/schemas/Photo'
+            menu_items:
+              type: array
+              items:
+                $ref: '#/components/schemas/MenuItem'
+            reviews_count:
+              type: integer
+              example: 42
+
+    RestaurantListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Restaurant'
+        total:
+          type: integer
+          example: 150
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+
+    # ── Cuisine ───────────────────────────────────────────
+
+    Cuisine:
+      type: object
+      properties:
+        cuisine_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Итальянская"
+
+    # ── Photo ─────────────────────────────────────────────
+
+    Photo:
+      type: object
+      properties:
+        photo_id:
+          type: integer
+        photo_url:
+          type: string
+          example: "https://example.com/photos/1.jpg"
+
+    # ── MenuItem ──────────────────────────────────────────
+
+    MenuItem:
+      type: object
+      properties:
+        menu_item_id:
+          type: integer
+        name:
+          type: string
+          example: "Паста Карбонара"
+        description:
+          type: string
+          example: "Классическая итальянская паста со сливочным соусом"
+        price:
+          type: number
+          format: float
+          example: 650.00
+        category:
+          type: string
+          example: "Основные блюда"
+
+    # ── Table ─────────────────────────────────────────────
+
+    Table:
+      type: object
+      properties:
+        table_id:
+          type: integer
+        table_number:
+          type: integer
+          example: 7
+        capacity:
+          type: integer
+          description: Максимальное количество гостей
+          example: 4
+        status:
+          type: string
+          enum: [available, reserved]
+          example: "available"
+
+    # ── Reservation ───────────────────────────────────────
+
+    CreateReservationRequest:
+      type: object
+      required: [table_id, reservation_date, reservation_time, guests_count]
+      properties:
+        table_id:
+          type: integer
+        reservation_date:
+          type: string
+          format: date
+          example: "2026-04-15"
+        reservation_time:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          example: "19:00"
+        guests_count:
+          type: integer
+          minimum: 1
+          example: 2
+
+    UpdateReservationRequest:
+      type: object
+      properties:
+        reservation_date:
+          type: string
+          format: date
+        reservation_time:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+        guests_count:
+          type: integer
+          minimum: 1
+
+    Reservation:
+      type: object
+      properties:
+        reservation_id:
+          type: integer
+          example: 101
+        user_id:
+          type: integer
+          example: 1
+        table:
+          $ref: '#/components/schemas/Table'
+        restaurant:
+          $ref: '#/components/schemas/Restaurant'
+        reservation_date:
+          type: string
+          format: date
+          example: "2026-04-15"
+        reservation_time:
+          type: string
+          example: "19:00"
+        guests_count:
+          type: integer
+          example: 2
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+          example: "confirmed"
+        created_at:
+          type: string
+          format: date-time
+
+    ReservationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reservation'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ── Review ────────────────────────────────────────────
+
+    CreateReviewRequest:
+      type: object
+      required: [restaurant_id, rating]
+      properties:
+        restaurant_id:
+          type: integer
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          maxLength: 1000
+          example: "Отличный ресторан, вкусная еда и приятный персонал!"
+
+    UpdateReviewRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 1000
+
+    Review:
+      type: object
+      properties:
+        review_id:
+          type: integer
+        user:
+          $ref: '#/components/schemas/User'
+        restaurant_id:
+          type: integer
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ReviewListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        total:
+          type: integer
+        average_rating:
+          type: number
+          format: float
+          example: 4.5
+        page:
+          type: integer
+        limit:
+          type: integer

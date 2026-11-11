@@ -1,0 +1,87 @@
+# gateway — stateless-под: состояние вынесено в PostgreSQL/RabbitMQ (см. ДЗ7)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels: { app: gateway, app.kubernetes.io/component: edge }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: gateway }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }   # обновление без простоя
+  template:
+    metadata:
+      labels: { app: gateway, app.kubernetes.io/component: edge }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: /metrics
+    spec:
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:       # на нескольких узлах реплики разойдутся по разным узлам
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: gateway }
+      containers:
+        - name: app
+          image: rb-gateway            # реальный реестр и тег подставляет kustomize (images:)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: PORT, value: "3000" }
+            - { name: SERVICE_NAME, value: api-gateway }
+            - { name: AUTH_URL, value: "http://auth-service:8081" }
+            - { name: CATALOG_URL, value: "http://catalog-service:8082" }
+            - { name: RESERVATION_URL, value: "http://reservation-service:8083" }
+            - { name: REVIEW_URL, value: "http://review-service:8084" }
+            - { name: NOTIFICATION_URL, value: "http://notification-service:8085" }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+          startupProbe:                # до 120 с: при холодном старте ждём PostgreSQL и RabbitMQ
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # пауза перед SIGTERM: Ingress и Endpoints успевают убрать под из балансировки,
+              # поэтому во время rolling update запросы не уходят на останавливающийся под (ДЗ8)
+              sleep: { seconds: 5 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels: { app: gateway }
+spec:
+  selector: { app: gateway }
+  ports:
+    - { name: http, port: 3000, targetPort: http }
