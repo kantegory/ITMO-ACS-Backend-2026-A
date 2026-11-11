@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ! ${SSH_ORIGINAL_COMMAND:-} =~ ^deploy\ ([0-9a-f]{40})$ ]]; then
+  printf 'Only deploy <40-character commit SHA> is allowed\n' >&2
+  exit 64
+fi
+revision=${BASH_REMATCH[1]}
+exec 9>/run/lock/rent-lab4.lock
+flock -w 600 9
+root_dir=/opt/rent-lab4
+repo_dir=$root_dir/repository
+labs_path='БР1.2/Губанов Егор/labs'
+git -C "$repo_dir" fetch --quiet origin lab3
+head_revision=$(git -C "$repo_dir" rev-parse refs/remotes/origin/lab3)
+if [[ "$revision" != "$head_revision" ]]; then
+  printf 'The requested commit is not the current lab3 branch head\n' >&2
+  exit 65
+fi
+release_dir=$root_dir/releases/$revision
+mkdir -p "$release_dir"
+git -C "$repo_dir" archive "$revision" -- "$labs_path/lab2" "$labs_path/lab3" "$labs_path/lab4" | tar -x -C "$release_dir"
+export APP_VERSION=$revision
+bash "$release_dir/$labs_path/lab4/deploy.sh"
+install -m 0644 "$release_dir/$labs_path/lab4/nginx.conf" /etc/nginx/sites-available/rent-lab4
+ln -sfn /etc/nginx/sites-available/rent-lab4 /etc/nginx/sites-enabled/rent-lab4
+nginx -t
+systemctl reload nginx
+install -d -m 0755 /var/lib/rent-lab4
+printf '{"revision":"%s","branch":"lab3","deployed_at":"%s"}\n' "$revision" "$(date -u +%FT%TZ)" > /var/lib/rent-lab4/deployment.json
+ln -sfn "$release_dir/$labs_path/lab4" "$root_dir/current"
+bash "$release_dir/$labs_path/lab4/smoke.sh" http://127.0.0.1:8081
+printf 'Deployed %s\n' "$revision"

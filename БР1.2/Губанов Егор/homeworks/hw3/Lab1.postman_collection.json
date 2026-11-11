@@ -1,0 +1,1544 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Lab1 rent API — постманы для своих",
+    "description": "ДЗ3 — один прогон подряд. Потом «Разогрев» (me, refresh). Потом «Остальной API» — только если ДЗ3 уже отработал и переменные живые.\nbaseUrl по дефолту localhost:3000, если у себя другой порт — поправь в Variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "ДЗ3 — один проход",
+      "item": [
+        {
+          "name": "Типы: GET",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const arr = pm.response.json();",
+                  "pm.test('типы не пустые', function () {",
+                  "  pm.expect(arr).to.be.an('array');",
+                  "  pm.expect(arr.length).to.be.at.least(1);",
+                  "});",
+                  "pm.collectionVariables.set('typeId', arr[0].id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/property-types/",
+            "description": "достаём typeId для POST объекта"
+          },
+          "response": []
+        },
+        {
+          "name": "Рега owner",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('ownerEmail', 'owner_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10) + '@pm.test');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('в ответе access + user', function () {",
+                  "  pm.expect(j.access_token).to.be.a('string');",
+                  "  pm.expect(j.user).to.have.property('id');",
+                  "});",
+                  "pm.collectionVariables.set('ownerToken', j.access_token);",
+                  "pm.collectionVariables.set('ownerId', j.user.id);",
+                  "pm.collectionVariables.set('ownerRefreshToken', j.refresh_token || '');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"Secret12\",\n  \"first_name\": \"Иван\",\n  \"last_name\": \"Владелец\",\n  \"role\": \"OWNER\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register",
+            "description": "рандомный email в prerequest, кладём токены"
+          },
+          "response": []
+        },
+        {
+          "name": "Рега tenant",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('tenantEmail', 'tenant_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10) + '@pm.test');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('tenantToken', j.access_token);",
+                  "pm.collectionVariables.set('tenantId', j.user.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"Secret12\",\n  \"first_name\": \"Пётр\",\n  \"last_name\": \"Арендатор\",\n  \"role\": \"TENANT\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register",
+            "description": "токен tenant для чата"
+          },
+          "response": []
+        },
+        {
+          "name": "POST объекта (owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('owner_id = нашему юзеру', function () {",
+                  "  pm.expect(j.id).to.be.a('string');",
+                  "  pm.expect(j.owner_id).to.eql(pm.collectionVariables.get('ownerId'));",
+                  "});",
+                  "pm.collectionVariables.set('propertyId', j.id);",
+                  "pm.collectionVariables.set('scenarioCity', j.city);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type_id\": \"{{typeId}}\",\n  \"title\": \"Квартира для демо\",\n  \"city\": \"Санкт-Петербург\",\n  \"address\": \"Невский пр., 1\",\n  \"description\": \"тестовый объект под фильтры\",\n  \"price\": 50000,\n  \"is_published\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/properties/",
+            "description": "хата в СПб, дальше по ней фильтруем"
+          },
+          "response": []
+        },
+        {
+          "name": "Листинг без токена",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('items + total', function () {",
+                  "  pm.expect(j).to.have.property('items');",
+                  "  pm.expect(j).to.have.property('total');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/properties/?page=1&page_size=20",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Фильтр: город + тип + цена",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('форма листинга properties', function () {",
+                  "  pm.expect(j, 'ожидали {items,total}').to.have.keys('items', 'total');",
+                  "  pm.expect(j.items).to.be.an('array');",
+                  "});",
+                  "if (!j || !Array.isArray(j.items)) { return; }",
+                  "pm.test('листинг не пустой', function () {",
+                  "  pm.expect(j.items.length).to.be.at.least(1);",
+                  "});",
+                  "const items = j.items;",
+                  "const ownId = pm.collectionVariables.get('propertyId');",
+                  "const picked = items.find(function (x) { return x.id === ownId; });",
+                  "pm.test('наша хата в выдаче фильтра', function () {",
+                  "  pm.expect(picked, 'нашу хату не видно — глянь фильтр / page_size').to.be.ok;",
+                  "});",
+                  "if (picked) {",
+                  "  pm.collectionVariables.set('pickedPropertyId', picked.id);",
+                  "  pm.collectionVariables.set('pickedOwnerId', picked.owner_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/properties/?city={{scenarioCity}}&type_id={{typeId}}&min_price=45000&max_price=55000&page=1&page_size=100",
+            "description": "должна попасть наша хата, иначе дальше сыпется"
+          },
+          "response": []
+        },
+        {
+          "name": "GET карточки по id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('id как в picked', function () {",
+                  "  pm.expect(j.id).to.eql(pm.collectionVariables.get('pickedPropertyId'));",
+                  "});",
+                  "pm.test('owner в json', function () {",
+                  "  pm.expect(j.owner).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/properties/{{pickedPropertyId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Чат: первый пинг (tenant)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('sender tenant, receiver owner', function () {",
+                  "  pm.expect(j.sender_id).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "  pm.expect(j.receiver_id).to.eql(pm.collectionVariables.get('pickedOwnerId'));",
+                  "});",
+                  "pm.collectionVariables.set('messageId', j.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": \"{{pickedOwnerId}}\",\n  \"property_id\": \"{{pickedPropertyId}}\",\n  \"content\": \"Здравствуйте! Наткнулся на вашу квартиру на Невском — она ещё актуальна? Можно коротко по условиям?\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/messages/",
+            "description": "messageId — для PATCH read в конце"
+          },
+          "response": []
+        },
+        {
+          "name": "Чат: ответ owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j.sender_id).to.eql(pm.collectionVariables.get('pickedOwnerId'));",
+                  "pm.expect(j.receiver_id).to.eql(pm.collectionVariables.get('tenantId'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": \"{{tenantId}}\",\n  \"property_id\": \"{{pickedPropertyId}}\",\n  \"content\": \"Добрый день! Да, всё в силе, спасибо что написали. Расскажите, на какие даты вы смотрите — подберём время для показа.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/messages/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Чат: tenant про даты/цену",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": \"{{pickedOwnerId}}\",\n  \"property_id\": \"{{pickedPropertyId}}\",\n  \"content\": \"Отлично. Ориентируюсь на ближайшие две недели, по выходным удобнее. Цена окончательная или есть небольшой торг?\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/messages/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Чат: owner про цену",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": \"{{tenantId}}\",\n  \"property_id\": \"{{pickedPropertyId}}\",\n  \"content\": \"По выходным без проблем. По цене ориентир как в объявлении, но если готовы быстро заехать — можем обсудить небольшую скидку уже на месте после просмотра.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/messages/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Чат: tenant, смотр",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": \"{{pickedOwnerId}}\",\n  \"property_id\": \"{{pickedPropertyId}}\",\n  \"content\": \"Звучит разумно. Давайте тогда назначим просмотр — в субботу после 15:00 вам ок? Напишите адрес и как лучше связаться в день встречи.\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/messages/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Чат: owner, финал",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_id\": \"{{tenantId}}\",\n  \"property_id\": \"{{pickedPropertyId}}\",\n  \"content\": \"Суббота после 15:00 — отлично. Адрес как в карточке объекта; за час до встречи напишу здесь же, если вдруг задержусь. До связи!\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/messages/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Листинг сообщений по хате",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('форма листинга messages', function () {",
+                  "  pm.expect(j, 'ожидали {items,total}').to.have.keys('items', 'total');",
+                  "  pm.expect(j.items).to.be.an('array');",
+                  "});",
+                  "pm.test('тред >= 6 штук', function () {",
+                  "  pm.expect(j.total).to.be.at.least(6);",
+                  "});",
+                  "pm.test('первое сообщение на месте + текст про Невск/скидку', function () {",
+                  "  const mid = pm.collectionVariables.get('messageId');",
+                  "  pm.expect(j.items.some(function (m) { return m.id === mid; })).to.be.true;",
+                  "  const all = j.items.map(function (m) { return m.content; }).join(' ');",
+                  "  pm.expect(all).to.include('Невск');",
+                  "  pm.expect(all).to.include('скидк');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/messages/?property_id={{pickedPropertyId}}&page=1&page_size=20&order=asc",
+            "description": "order=asc, проверяем что тред не пустой"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH read (owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('прочитано true', function () {",
+                  "  pm.expect(j.is_read).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/messages/{{messageId}}/read",
+            "description": "прочитано по первому сообщению tenant"
+          },
+          "response": []
+        }
+      ],
+      "description": "Run folder целиком. Фильтр должен вернуть свою хату — иначе чат/read развалятся."
+    },
+    {
+      "name": "Разогрев",
+      "item": [
+        {
+          "name": "me как OWNER",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j.role).to.eql('OWNER');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/me/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "login owner → новый refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('ownerToken', j.access_token);",
+                  "pm.collectionVariables.set('ownerRefreshToken', j.refresh_token || '');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"Secret12\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "description": "без этого refresh часто 401 после дропа БД"
+          },
+          "response": []
+        },
+        {
+          "name": "refresh по refresh_token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j.access_token).to.be.a('string');",
+                  "pm.collectionVariables.set('ownerToken', j.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{ownerRefreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/refresh",
+            "description": "обновляем access в переменных"
+          },
+          "response": []
+        },
+        {
+          "name": "history как tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j).to.have.keys('messages', 'deals');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/history/",
+            "description": ""
+          },
+          "response": []
+        }
+      ],
+      "description": "После ДЗ3. login перед refresh не выкидывай — иначе refresh снова 401."
+    },
+    {
+      "name": "Остальной API",
+      "description": "Только после ДЗ3 (нужны токены, propertyId, pickedPropertyId, messageId).",
+      "item": [
+        {
+          "name": "login owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('ownerToken', j.access_token);",
+                  "pm.collectionVariables.set('ownerRefreshToken', j.refresh_token || '');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"Secret12\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "description": "после logout внизу — снова норм токены"
+          },
+          "response": []
+        },
+        {
+          "name": "login tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('tenantToken', j.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"Secret12\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "description": "обновляем tenantToken"
+          },
+          "response": []
+        },
+        {
+          "name": "request-reset пароля",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().ok).to.be.true;"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenantEmail}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/password/request-reset",
+            "description": "живой токен в логах сервера"
+          },
+          "response": []
+        },
+        {
+          "name": "reset с фейковым токеном → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// левый reset_token → 401",
+                  "pm.test('401', function () { pm.response.to.have.status(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reset_token\": \"00000000-0000-0000-0000-000000000000\",\n  \"new_password\": \"Secret99\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/password/reset",
+            "description": "дымовой тест, ок если 401"
+          },
+          "response": []
+        },
+        {
+          "name": "me как TENANT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().role).to.eql('TENANT');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/me/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST фото к объекту",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j.property_id).to.eql(pm.collectionVariables.get('propertyId'));",
+                  "pm.collectionVariables.set('photoId', j.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"photo_url\": \"https://example.com/photo-e2e.jpg\",\n  \"is_main\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/properties/{{propertyId}}/photos",
+            "description": "photoId в переменные"
+          },
+          "response": []
+        },
+        {
+          "name": "POST условия",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('conditionId', j.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Без домашних животных (E2E)\",\n  \"sort_order\": 0\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/properties/{{propertyId}}/conditions",
+            "description": "conditionId"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT объекта",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j.title).to.include('обновлено');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Квартира для демо (обновлено)\",\n  \"price\": 51000\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/properties/{{propertyId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST сделки",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const s = new Date();",
+                  "s.setUTCDate(s.getUTCDate() + 2);",
+                  "const e = new Date(s);",
+                  "e.setUTCDate(e.getUTCDate() + 5);",
+                  "pm.collectionVariables.set('dealStart', s.toISOString());",
+                  "pm.collectionVariables.set('dealEnd', e.toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j.status).to.eql('PENDING');",
+                  "pm.expect(j.property_id).to.eql(pm.collectionVariables.get('propertyId'));",
+                  "pm.collectionVariables.set('dealId', j.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": \"{{propertyId}}\",\n  \"start_date\": \"{{dealStart}}\",\n  \"end_date\": \"{{dealEnd}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/deals/",
+            "description": "даты в prerequest"
+          },
+          "response": []
+        },
+        {
+          "name": "GET сделки",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('dealId'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/deals/{{dealId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH сделки → ACTIVE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().status).to.eql('ACTIVE');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/deals/{{dealId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "me/renting",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.expect(j).to.have.keys('items', 'total');",
+                  "const did = pm.collectionVariables.get('dealId');",
+                  "const ok = j.items.some(function (d) { return d.id === did; });",
+                  "pm.test('сделка в renting', function () { pm.expect(ok).to.be.true; });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/me/renting",
+            "description": "наша сделка в списке"
+          },
+          "response": []
+        },
+        {
+          "name": "me/owning",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('форма me/owning', function () {",
+                  "  pm.expect(j, 'ожидали {items,total}').to.have.keys('items', 'total');",
+                  "  pm.expect(j.items).to.be.an('array');",
+                  "});",
+                  "pm.expect(j.items.length).to.be.at.least(1);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/me/owning",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "me/owning/deals",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('форма me/owning/deals', function () {",
+                  "  pm.expect(j, 'ожидали {items,total}').to.have.keys('items', 'total');",
+                  "  pm.expect(j.items).to.be.an('array');",
+                  "});",
+                  "pm.expect(j.items.some(function (d) { return d.id === pm.collectionVariables.get('dealId'); })).to.be.true;"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/me/owning/deals",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "history как owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json()).to.have.keys('messages', 'deals');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/history/",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Листинг сообщений (owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('форма листинга messages', function () {",
+                  "  pm.expect(j, 'ожидали {items,total}').to.have.keys('items', 'total');",
+                  "  pm.expect(j.items).to.be.an('array');",
+                  "});",
+                  "const mid = pm.collectionVariables.get('messageId');",
+                  "pm.expect(j.items.some(function (m) { return m.id === mid; })).to.be.true;"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/messages/?property_id={{pickedPropertyId}}&page=1&page_size=20",
+            "description": "должен видеть тред по хате"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH сделки → COMPLETED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// глянули ответ",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().status).to.eql('COMPLETED');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/deals/{{dealId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE условия",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// 204, тела нет",
+                  "pm.test('204', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/conditions/{{conditionId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE фото",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// 204, тела нет",
+                  "pm.test('204', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/photos/{{photoId}}",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "logout owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// 204, тела нет",
+                  "pm.test('204', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/auth/logout",
+            "description": "рвёт refresh в БД"
+          },
+          "response": []
+        },
+        {
+          "name": "me без Authorization → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// без токена — 401 ок",
+                  "pm.test('401', function () { pm.response.to.have.status(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/me/",
+            "description": "дымовой негатив"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
