@@ -1,0 +1,316 @@
+\documentclass[a4paper,14pt]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[left=30mm,right=15mm,top=20mm,bottom=20mm]{geometry}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{float}
+
+\onehalfspacing
+\setlength{\parindent}{1.25cm}
+
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0,0.5,0}
+\definecolor{codepurple}{rgb}{0.5,0,0.5}
+
+\lstdefinestyle{json}{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  captionpos=b,
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{codepurple},
+  stringstyle=\color{codegreen},
+  frame=single,
+  rulecolor=\color{gray},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  tabsize=2,
+}
+
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+\begin{document}
+
+% ===== ТИТУЛЬНЫЙ ЛИСТ =====
+\begin{titlepage}
+  \begin{center}
+    \textbf{Министерство науки и высшего образования Российской Федерации}\\[0.3cm]
+    \textbf{Федеральное государственное автономное образовательное учреждение\\
+    высшего образования}\\[0.3cm]
+    \textbf{«НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО»}\\[0.5cm]
+    \hrule
+    \vspace{0.3cm}
+    Факультет программной инженерии и компьютерной техники\\[0.2cm]
+    Образовательная программа «Разработка программного обеспечения»\\[2cm]
+
+    \large\textbf{ОТЧЁТ}\\[0.3cm]
+    \textbf{по домашнему заданию №3}\\[0.3cm]
+    \textbf{по дисциплине «Бэкенд-разработка»}\\[0.5cm]
+    \normalsize Тема: \textbf{Тестирование API средствами Postman}\\[3cm]
+
+    \begin{flushright}
+      \begin{tabular}{ll}
+        Выполнил: & Иванов Виктор\\
+        Группа:   & БР1.1\\
+        Вариант:  & Система бронирования столиков\\
+                  & в ресторанах\\[0.5cm]
+        Проверил: & \\
+      \end{tabular}
+    \end{flushright}
+
+    \vfill
+    Санкт-Петербург, 2025
+  \end{center}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ===== 1. ЦЕЛЬ =====
+\section{Цель работы}
+
+Целью данного домашнего задания является реализация тестирования REST API приложения
+бронирования столиков в ресторанах средствами Postman. В рамках работы необходимо:
+
+\begin{itemize}[leftmargin=2cm]
+  \item разработать комплексный сценарий тестирования по основному процессу приложения;
+  \item реализовать автоматические тесты внутри Postman с помощью скриптов на JavaScript;
+  \item обеспечить автоматическую передачу данных (токен, идентификаторы) между запросами;
+  \item охватить как позитивные, так и негативные тестовые случаи.
+\end{itemize}
+
+% ===== 2. ЗАДАНИЕ =====
+\section{Задание}
+
+\begin{itemize}[leftmargin=2cm]
+  \item Реализовать тестирование API средствами Postman.
+  \item Написать тесты внутри Postman.
+  \item Представить один комплексный сценарий по основному процессу приложения.
+\end{itemize}
+
+Основной сценарий для системы бронирования столиков:
+
+\[
+\textit{регистрация} \;\to\; \textit{вход} \;\to\; \textit{список ресторанов} \;\to\;
+\textit{фильтрация} \;\to\; \textit{просмотр ресторана}
+\]
+\[
+\;\to\; \textit{проверка доступности} \;\to\; \textit{бронирование} \;\to\;
+\textit{отзыв} \;\to\; \textit{отмена брони}
+\]
+
+% ===== 3. РЕАЛИЗОВАННЫЙ API =====
+\section{Реализованный API}
+
+В качестве тестируемого сервиса выступает REST API, разработанный в рамках лабораторной
+работы №1. Стек технологий:
+
+\begin{itemize}[leftmargin=2cm]
+  \item \textbf{Runtime:} Node.js
+  \item \textbf{Framework:} Express.js
+  \item \textbf{ORM:} TypeORM
+  \item \textbf{База данных:} SQLite
+  \item \textbf{Аутентификация:} JWT (Bearer токен)
+  \item \textbf{Документация:} Swagger UI (\texttt{/api-docs})
+\end{itemize}
+
+API запущен локально по адресу \texttt{http://localhost:3001}.
+Базовый префикс всех эндпоинтов: \texttt{/api/v1}.
+
+\subsection{Реализованные эндпоинты}
+
+\begin{table}[H]
+\centering
+\caption{Эндпоинты REST API}
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Метод} & \textbf{Путь} & \textbf{Описание} \\
+\midrule
+POST   & /auth/register                       & Регистрация пользователя \\
+POST   & /auth/login                          & Вход, получение JWT \\
+GET    & /users/me                            & Профиль пользователя \\
+PATCH  & /users/me                            & Обновление профиля \\
+PUT    & /users/me/password                   & Смена пароля \\
+GET    & /restaurants                         & Список ресторанов \\
+GET    & /restaurants/\{id\}                  & Детали ресторана \\
+GET    & /restaurants/\{id\}/tables           & Столики ресторана \\
+GET    & /restaurants/\{id\}/availability     & Доступность столиков \\
+GET    & /restaurants/\{id\}/reviews          & Отзывы о ресторане \\
+POST   & /restaurants/\{id\}/reviews          & Добавить отзыв \\
+GET    & /bookings                            & Список броней пользователя \\
+POST   & /bookings                            & Создать бронирование \\
+GET    & /bookings/\{id\}                     & Детали бронирования \\
+DELETE & /bookings/\{id\}                     & Отменить бронирование \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ===== 4. ТЕСТОВЫЙ СЦЕНАРИЙ =====
+\section{Тестовый сценарий}
+
+\subsection{Структура коллекции}
+
+Postman-коллекция \textbf{«Restaurant Booking API»} содержит 18 запросов,
+сгруппированных в один сквозной сценарий. Для автоматической передачи данных между
+шагами используются переменные коллекции:
+
+\begin{table}[H]
+\centering
+\caption{Переменные коллекции}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textbf{Переменная} & \textbf{Назначение} \\
+\midrule
+\texttt{base\_url}      & Базовый адрес API (\texttt{http://localhost:3001/api/v1}) \\
+\texttt{access\_token}  & JWT токен, сохраняется после регистрации/логина \\
+\texttt{restaurant\_id} & ID первого ресторана из списка \\
+\texttt{table\_id}      & ID первого столика выбранного ресторана \\
+\texttt{booking\_id}    & ID созданного бронирования \\
+\texttt{test\_email}    & Уникальный email (генерируется в pre-request скрипте) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Шаги сценария}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Регистрация нового пользователя} — \texttt{POST /auth/register}.\\
+    Pre-request скрипт генерирует уникальный email на основе timestamp.
+    Токен сохраняется в \texttt{access\_token}.
+
+  \item \textbf{Вход в систему} — \texttt{POST /auth/login}.\\
+    Проверка что логин возвращает валидный JWT.
+
+  \item \textbf{Профиль пользователя} — \texttt{GET /users/me}.\\
+    Проверка авторизации через Bearer токен.
+
+  \item \textbf{Список ресторанов} — \texttt{GET /restaurants}.\\
+    Сохранение \texttt{restaurant\_id} из первого элемента ответа.
+
+  \item \textbf{Фильтрация ресторанов} — \texttt{GET /restaurants?cuisine\_type=русская}.\\
+    Проверка что все возвращённые рестораны соответствуют фильтру.
+
+  \item \textbf{Детали ресторана} — \texttt{GET /restaurants/\{restaurant\_id\}}.\\
+    Проверка полноты данных и наличия счётчиков отзывов.
+
+  \item \textbf{Список столиков} — \texttt{GET /restaurants/\{id\}/tables}.\\
+    Сохранение \texttt{table\_id} для создания бронирования.
+
+  \item \textbf{Проверка доступности} — \texttt{GET /restaurants/\{id\}/availability}.\\
+    Запрос с параметрами \texttt{date}, \texttt{time}, \texttt{guests}.
+
+  \item \textbf{Создание бронирования} — \texttt{POST /bookings}.\\
+    Сохранение \texttt{booking\_id}. Проверка статуса \texttt{confirmed}.
+
+  \item \textbf{Детали бронирования} — \texttt{GET /bookings/\{booking\_id\}}.\\
+    Проверка вложенных данных ресторана и столика.
+
+  \item \textbf{Список бронирований} — \texttt{GET /bookings?status=confirmed}.\\
+    Проверка фильтрации по статусу.
+
+  \item \textbf{Добавление отзыва} — \texttt{POST /restaurants/\{id\}/reviews}.\\
+    Оценка 5, комментарий. Проверка данных автора в ответе.
+
+  \item \textbf{Просмотр отзывов} — \texttt{GET /restaurants/\{id\}/reviews}.\\
+    Проверка что отзыв появился в списке.
+
+  \item \textbf{Отмена бронирования} — \texttt{DELETE /bookings/\{booking\_id\}}.\\
+    Ожидаемый статус \texttt{204 No Content}.
+
+  \item \textbf{Повторная отмена (негативный тест)} — \texttt{DELETE /bookings/\{booking\_id\}}.\\
+    Ожидается \texttt{409 Conflict} с кодом \texttt{cannot\_cancel\_booking}.
+
+  \item \textbf{Запрос без токена (негативный тест)} — \texttt{GET /users/me}.\\
+    Ожидается \texttt{401 Unauthorized}.
+
+  \item \textbf{Неверный пароль (негативный тест)} — \texttt{POST /auth/login}.\\
+    Ожидается \texttt{401} с кодом \texttt{invalid\_credentials}.
+
+  \item \textbf{Несуществующий ресторан (негативный тест)} — \texttt{GET /restaurants/00000000-...}.\\
+    Ожидается \texttt{404 Not Found}.
+\end{enumerate}
+
+\subsection{Пример теста}
+
+Ниже приведён пример тестового скрипта для запроса «Создание бронирования»:
+
+\begin{lstlisting}[style=json, caption={Тест для POST /bookings}]
+pm.test('Статус 201 - бронирование создано', function () {
+    pm.response.to.have.status(201);
+});
+
+pm.test('Статус бронирования = confirmed', function () {
+    pm.expect(pm.response.json().status).to.equal('confirmed');
+});
+
+pm.test('Бронирование включает данные ресторана и столика', function () {
+    var json = pm.response.json();
+    pm.expect(json).to.have.property('restaurant');
+    pm.expect(json).to.have.property('table');
+});
+
+// Сохраняем booking_id для следующих шагов
+var json = pm.response.json();
+if (json.id) {
+    pm.collectionVariables.set('booking_id', json.id);
+}
+\end{lstlisting}
+
+% ===== 5. РЕЗУЛЬТАТЫ =====
+\section{Результаты тестирования}
+
+Коллекция запущена через Collection Runner Postman (Run collection).
+
+\begin{table}[H]
+\centering
+\caption{Итоги прогона коллекции}
+\begin{tabular}{lr}
+\toprule
+\textbf{Показатель} & \textbf{Значение} \\
+\midrule
+Всего запросов       & 18 \\
+Всего тестов         & 55 \\
+Passed               & \textbf{55} \\
+Failed               & 0 \\
+Errors               & 0 \\
+Skipped              & 0 \\
+Среднее время ответа & 17 мс \\
+Общая длительность   & 827 мс \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Все 55 проверок прошли успешно. Как позитивные сценарии (регистрация, бронирование,
+отзыв), так и негативные (401, 404, 409) возвращают ожидаемые коды и тела ответов.
+
+% ===== 6. ВЫВОД =====
+\section{Вывод}
+
+В ходе выполнения домашнего задания был реализован комплексный сценарий тестирования
+REST API системы бронирования столиков в ресторанах средствами Postman. Сценарий
+покрывает полный жизненный цикл основного бизнес-процесса: от регистрации пользователя
+до создания и отмены бронирования.
+
+Ключевые результаты:
+\begin{itemize}[leftmargin=2cm]
+  \item разработана Postman-коллекция из 18 запросов с 55 автоматическими проверками;
+  \item реализована автоматическая передача токенов и идентификаторов между шагами
+        через переменные коллекции;
+  \item все тесты успешно пройдены (\textbf{55/55 Passed, 0 Failed});
+  \item покрыты негативные сценарии: попытка доступа без токена (401),
+        повторная отмена брони (409), запрос несуществующего ресурса (404).
+\end{itemize}
+
+\end{document}

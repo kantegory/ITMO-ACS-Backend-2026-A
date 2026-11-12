@@ -1,0 +1,85 @@
+\documentclass[a4paper,14pt]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[left=30mm,right=15mm,top=20mm,bottom=20mm]{geometry}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage{hyperref}
+
+\onehalfspacing
+\setlength{\parindent}{1.25cm}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+\begin{document}
+
+\begin{titlepage}
+  \begin{center}
+    \textbf{Министерство науки и высшего образования Российской Федерации}\\[0.3cm]
+    \textbf{Федеральное государственное автономное образовательное учреждение\\
+    высшего образования}\\[0.3cm]
+    \textbf{«НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО»}\\[0.5cm]
+    \hrule
+    \vspace{0.3cm}
+    Факультет программной инженерии и компьютерной техники\\[0.2cm]
+    Образовательная программа «Разработка программного обеспечения»\\[2cm]
+
+    \large\textbf{ОТЧЁТ}\\[0.3cm]
+    \textbf{по лабораторной работе №2 и домашнему заданию №5}\\[0.3cm]
+    \textbf{по дисциплине «Бэкенд-разработка»}\\[0.5cm]
+    \normalsize Тема: \textbf{Микросервисная архитектура, очереди сообщений}\\[3cm]
+
+    \begin{flushright}
+      \begin{tabular}{ll}
+        Выполнил: & Иванов Виктор\\
+        Группа:   & БР1.1\\
+        Вариант:  & Система бронирования столиков\\
+                  & в ресторанах\\[0.5cm]
+        Проверил: & \\
+      \end{tabular}
+    \end{flushright}
+
+    \vfill
+    Санкт-Петербург, 2026
+  \end{center}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Цель работы}
+
+Разделить монолитное приложение \texttt{lab1} на микросервисы с отдельными базами данных (принцип \textit{database-per-service}), описать межсервисные контракты в формате OpenAPI, реализовать асинхронное взаимодействие через RabbitMQ по образцу учебного репозитория.
+
+\section{Выполненные задачи}
+
+\subsection{ЛР2: микросервисы}
+
+\begin{itemize}
+  \item \textbf{user-service} (порт 4001): регистрация, аутентификация, JWT; внутренний метод \texttt{GET /internal/users/:id}.
+  \item \textbf{restaurant-service} (порт 4002): каталог ресторанов и столиков; внутренний метод \texttt{GET /internal/tables/:tableId}; консюмер очереди RabbitMQ.
+  \item \textbf{booking-service} (порт 4003): CRUD бронирований для владельца; перед созданием --- HTTP-вызовы к user и restaurant; проверка конфликтов по дате/времени в своей БД.
+  \item \textbf{notification-service}: отдельный процесс, своя БД, запись логов по событиям из очереди.
+\end{itemize}
+
+Файлы SQLite: \texttt{data/user.sqlite}, \texttt{data/restaurant.sqlite}, \texttt{data/booking.sqlite}, \texttt{data/notification.sqlite}.
+
+\subsection{ДЗ5: RabbitMQ}
+
+Использован Docker-образ \texttt{rabbitmq:3.13-management-alpine}. После успешного создания брони \textbf{booking-service} публикует JSON в fanout-exchange \texttt{booking_events}. Подписчики: \textbf{restaurant-service} (таблица \texttt{booking_event_log}) и \textbf{notification-service} (таблица \texttt{notification_log}).
+
+\section{Артефакты в репозитории}
+
+\begin{itemize}
+  \item \texttt{docs/design.md} --- технический дизайн и план миграции с монолита (соответствие ДЗ4).
+  \item \texttt{openapi-inter-service.yaml} --- спецификация внутренних HTTP API.
+  \item \texttt{README.md} --- порядок запуска и пример запроса.
+  \item \texttt{docker-compose.yml} --- брокер сообщений.
+\end{itemize}
+
+\section{Выводы}
+
+Монолитное API разбито на независимые сервисы с изолированными БД. Синхронная координация при создании брони выполняется через защищённые внутренние эндпоинты; уведомление смежных контекстов --- через очереди RabbitMQ, что снижает связность и позволяет масштабировать обработку событий отдельно от HTTP-потока.
+
+\end{document}

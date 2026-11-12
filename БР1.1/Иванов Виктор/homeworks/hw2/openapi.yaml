@@ -1,0 +1,1200 @@
+openapi: 3.0.3
+info:
+  title: restaurant booking api
+  description: |
+    rest api для приложения бронирования столиков в ресторанах.
+
+    ## аутентификация
+    большинство эндпоинтов требуют jwt токен в заголовке authorization:
+    ```
+    authorization: bearer <token>
+    ```
+
+    ## rate limiting
+    все эндпоинты ограничены 100 запросами в минуту на ip адрес.
+  version: 1.0.0
+  contact:
+    name: api support
+    email: support@restaurant-booking.ru
+
+servers:
+  - url: https://api.restaurant-booking.ru/api/v1
+    description: production server
+  - url: https://staging-api.restaurant-booking.ru/api/v1
+    description: staging server
+  - url: http://localhost:8000/api/v1
+    description: local development server
+
+tags:
+  - name: auth
+    description: аутентификация и регистрация
+  - name: users
+    description: управление профилем пользователя
+  - name: restaurants
+    description: работа с ресторанами
+  - name: bookings
+    description: бронирование столиков
+  - name: reviews
+    description: отзывы о ресторанах
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - auth
+      summary: регистрация нового пользователя
+      description: создаёт нового пользователя в системе
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: пользователь с таким email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: "user_already_exists"
+                  message: "пользователь с email test@example.com уже зарегистрирован"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags:
+        - auth
+      summary: вход в систему
+      description: аутентификация пользователя и получение jwt токена
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: "invalid_credentials"
+                  message: "неверный email или пароль"
+
+  /users/me:
+    get:
+      tags:
+        - users
+      summary: получить профиль текущего пользователя
+      description: возвращает данные авторизованного пользователя
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags:
+        - users
+      summary: обновить профиль
+      description: обновляет данные текущего пользователя
+      operationId: updateCurrentUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: профиль успешно обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/me/password:
+    put:
+      tags:
+        - users
+      summary: изменить пароль
+      description: изменяет пароль текущего пользователя
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: пароль успешно изменён
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: неверный текущий пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: "invalid_current_password"
+                  message: "неверный текущий пароль"
+
+  /restaurants:
+    get:
+      tags:
+        - restaurants
+      summary: поиск ресторанов
+      description: возвращает список ресторанов с возможностью фильтрации и пагинации
+      operationId: searchRestaurants
+      parameters:
+        - name: search
+          in: query
+          description: поиск по названию ресторана
+          schema:
+            type: string
+          example: "пушкин"
+        - name: cuisine_type
+          in: query
+          description: фильтр по типу кухни
+          schema:
+            type: string
+          example: "итальянская"
+        - name: price_range
+          in: query
+          description: фильтр по ценовому диапазону (1-4)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+          example: 2
+        - name: min_rating
+          in: query
+          description: минимальный рейтинг
+          schema:
+            type: number
+            minimum: 0
+            maximum: 5
+          example: 4.0
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sort
+          in: query
+          description: сортировка результатов
+          schema:
+            type: string
+            enum: [rating_desc, rating_asc, name_asc, name_desc, price_asc, price_desc]
+            default: rating_desc
+      responses:
+        '200':
+          description: список ресторанов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /restaurants/{restaurantId}:
+    get:
+      tags:
+        - restaurants
+      summary: получить информацию о ресторане
+      description: возвращает детальную информацию о конкретном ресторане
+      operationId: getRestaurant
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: информация о ресторане
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{restaurantId}/menu:
+    get:
+      tags:
+        - restaurants
+      summary: получить меню ресторана
+      description: возвращает список позиций меню ресторана
+      operationId: getRestaurantMenu
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: category
+          in: query
+          description: фильтр по категории блюд
+          schema:
+            type: string
+          example: "основные блюда"
+      responses:
+        '200':
+          description: меню ресторана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MenuItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{restaurantId}/photos:
+    get:
+      tags:
+        - restaurants
+      summary: получить фотографии ресторана
+      description: возвращает список фотографий ресторана
+      operationId: getRestaurantPhotos
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: фотографии ресторана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RestaurantPhoto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{restaurantId}/tables:
+    get:
+      tags:
+        - restaurants
+      summary: получить список столиков
+      description: возвращает список всех столиков ресторана
+      operationId: getRestaurantTables
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: список столиков
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Table'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /restaurants/{restaurantId}/availability:
+    get:
+      tags:
+        - restaurants
+      summary: проверить доступность столиков
+      description: возвращает список доступных столиков на указанную дату и время
+      operationId: checkAvailability
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: date
+          in: query
+          required: true
+          description: дата бронирования (yyyy-mm-dd)
+          schema:
+            type: string
+            format: date
+          example: "2025-04-15"
+        - name: time
+          in: query
+          required: true
+          description: время бронирования (hh:mm)
+          schema:
+            type: string
+            pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+          example: "19:00"
+        - name: guests
+          in: query
+          required: true
+          description: количество гостей
+          schema:
+            type: integer
+            minimum: 1
+          example: 4
+      responses:
+        '200':
+          description: список доступных столиков
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    description: есть ли доступные столики
+                  tables:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Table'
+                    description: список доступных столиков
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings:
+    get:
+      tags:
+        - bookings
+      summary: получить список бронирований
+      description: возвращает список бронирований текущего пользователя
+      operationId: getUserBookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: фильтр по статусу бронирования
+          schema:
+            type: string
+            enum: [pending, confirmed, completed, cancelled]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: список бронирований
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - bookings
+      summary: создать бронирование
+      description: создаёт новое бронирование столика
+      operationId: createBooking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: бронирование успешно создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: ресторан или столик не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: столик недоступен на указанное время
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: "table_not_available"
+                  message: "столик №5 недоступен на 2025-04-15 в 19:00"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /bookings/{bookingId}:
+    get:
+      tags:
+        - bookings
+      summary: получить бронирование
+      description: возвращает детальную информацию о бронировании
+      operationId: getBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: информация о бронировании
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: нет доступа к этому бронированию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - bookings
+      summary: отменить бронирование
+      description: отменяет бронирование (изменяет статус на cancelled)
+      operationId: cancelBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '204':
+          description: бронирование успешно отменено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: нет доступа к этому бронированию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: бронирование нельзя отменить (уже завершено или отменено)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: "cannot_cancel_booking"
+                  message: "нельзя отменить бронирование со статусом 'completed'"
+
+  /restaurants/{restaurantId}/reviews:
+    get:
+      tags:
+        - reviews
+      summary: получить отзывы о ресторане
+      description: возвращает список отзывов о ресторане
+      operationId: getRestaurantReviews
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: min_rating
+          in: query
+          description: минимальный рейтинг отзыва
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+      responses:
+        '200':
+          description: список отзывов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - reviews
+      summary: создать отзыв
+      description: создаёт новый отзыв о ресторане
+      operationId: createReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: отзыв успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: пользователь уже оставил отзыв для этого ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: "review_already_exists"
+                  message: "вы уже оставили отзыв для этого ресторана"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: jwt
+      description: jwt токен в формате `bearer <token>`
+
+  parameters:
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      description: id ресторана
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"
+
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      description: id бронирования
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174001"
+
+    Page:
+      name: page
+      in: query
+      description: номер страницы (начиная с 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    PageSize:
+      name: page_size
+      in: query
+      description: количество элементов на странице
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - first_name
+        - last_name
+        - phone
+      properties:
+        email:
+          type: string
+          format: email
+          description: email пользователя (уникальный)
+          example: "ivan.petrov@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: пароль (минимум 8 символов)
+          example: "SecurePass123!"
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: имя
+          example: "Иван"
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: фамилия
+          example: "Петров"
+        phone:
+          type: string
+          pattern: '^\+7\d{10}$'
+          description: номер телефона в формате +7XXXXXXXXXX
+          example: "+79161234567"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "ivan.petrov@example.com"
+        password:
+          type: string
+          format: password
+          example: "SecurePass123!"
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: jwt токен для аутентификации
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          enum: [bearer]
+          example: "bearer"
+        expires_in:
+          type: integer
+          description: время жизни токена в секундах
+          example: 86400
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        email:
+          type: string
+          format: email
+          example: "ivan.petrov@example.com"
+        first_name:
+          type: string
+          example: "Иван"
+        last_name:
+          type: string
+          example: "Петров"
+        phone:
+          type: string
+          example: "+79161234567"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-01-20T14:45:00Z"
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: "Иван"
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: "Петров"
+        phone:
+          type: string
+          pattern: '^\+7\d{10}$'
+          example: "+79161234567"
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          format: password
+          description: текущий пароль
+          example: "OldPass123!"
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          description: новый пароль (минимум 8 символов)
+          example: "NewSecurePass456!"
+
+    Restaurant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "ресторан пушкин"
+        description:
+          type: string
+          example: "изысканная русская кухня в историческом центре москвы"
+        address:
+          type: string
+          example: "москва, тверской бульвар, 26а"
+        phone:
+          type: string
+          example: "+74957397000"
+        cuisine_type:
+          type: string
+          example: "русская"
+        price_range:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: ценовой диапазон (1 - дёшево, 4 - дорого)
+          example: 3
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          description: средний рейтинг (0-5)
+          example: 4.7
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    RestaurantDetail:
+      allOf:
+        - $ref: '#/components/schemas/Restaurant'
+        - type: object
+          properties:
+            reviews_count:
+              type: integer
+              description: количество отзывов
+              example: 342
+            photos_count:
+              type: integer
+              description: количество фотографий
+              example: 28
+            menu_items_count:
+              type: integer
+              description: количество позиций в меню
+              example: 156
+
+    RestaurantList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Restaurant'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        restaurant_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        name:
+          type: string
+          example: "борщ по-украински"
+        description:
+          type: string
+          example: "традиционный борщ с говядиной, подаётся со сметаной и пампушками"
+        price:
+          type: number
+          format: decimal
+          description: цена в рублях
+          example: 650.00
+        category:
+          type: string
+          example: "первые блюда"
+
+    RestaurantPhoto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        restaurant_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        photo_url:
+          type: string
+          format: uri
+          description: url фотографии
+          example: "https://cdn.restaurant-booking.ru/photos/pushkin_hall_1.jpg"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00Z"
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        restaurant_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        table_number:
+          type: string
+          description: номер столика
+          example: "5"
+        capacity:
+          type: integer
+          minimum: 1
+          description: вместимость (количество мест)
+          example: 4
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - restaurant_id
+        - table_id
+        - booking_date
+        - booking_time
+        - guests_count
+      properties:
+        restaurant_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        table_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        booking_date:
+          type: string
+          format: date
+          description: дата бронирования (yyyy-mm-dd)
+          example: "2025-04-15"
+        booking_time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+          description: время бронирования (hh:mm)
+          example: "19:00"
+        guests_count:
+          type: integer
+          minimum: 1
+          description: количество гостей
+          example: 4
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        restaurant_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174002"
+        table_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174003"
+        booking_date:
+          type: string
+          format: date
+          example: "2025-04-15"
+        booking_time:
+          type: string
+          example: "19:00"
+        guests_count:
+          type: integer
+          example: 4
+        status:
+          type: string
+          enum: [pending, confirmed, completed, cancelled]
+          description: |
+            статус бронирования:
+            - pending: ожидает подтверждения
+            - confirmed: подтверждено
+            - completed: завершено
+            - cancelled: отменено
+          example: "confirmed"
+        restaurant:
+          $ref: '#/components/schemas/Restaurant'
+        table:
+          $ref: '#/components/schemas/Table'
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-04-01T12:00:00Z"
+
+    BookingList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CreateReviewRequest:
+      type: object
+      required:
+        - rating
+        - comment
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: оценка от 1 до 5
+          example: 5
+        comment:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          description: текст отзыва (10-1000 символов)
+          example: "отличный ресторан! прекрасная кухня и обслуживание. обязательно вернёмся ещё раз."
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        restaurant_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174002"
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: "отличный ресторан! прекрасная кухня и обслуживание."
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            first_name:
+              type: string
+              example: "Иван"
+            last_name:
+              type: string
+              example: "Петров"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-04-02T15:30:00Z"
+
+    ReviewList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: текущая страница
+          example: 1
+        page_size:
+          type: integer
+          description: количество элементов на странице
+          example: 20
+        total_items:
+          type: integer
+          description: общее количество элементов
+          example: 156
+        total_pages:
+          type: integer
+          description: общее количество страниц
+          example: 8
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: код ошибки
+              example: "validation_error"
+            message:
+              type: string
+              description: описание ошибки
+              example: "произошла ошибка валидации"
+            details:
+              type: object
+              description: дополнительные детали ошибки
+              additionalProperties: true
+
+    ValidationError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - details
+          properties:
+            code:
+              type: string
+              enum: [validation_error]
+              example: "validation_error"
+            message:
+              type: string
+              example: "ошибка валидации входных данных"
+            details:
+              type: object
+              description: поля с ошибками валидации
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+              example:
+                email:
+                  - "некорректный формат email"
+                password:
+                  - "пароль должен содержать минимум 8 символов"
+
+  responses:
+    BadRequest:
+      description: некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "bad_request"
+              message: "некорректный формат запроса"
+
+    Unauthorized:
+      description: требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "unauthorized"
+              message: "требуется авторизация. предоставьте валидный jwt токен"
+
+    NotFound:
+      description: ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "not_found"
+              message: "запрашиваемый ресурс не найден"
+
+    ValidationError:
+      description: ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
