@@ -1,0 +1,35 @@
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: lab6-email
+    receivers:
+      - uid: lab6-email-receiver
+        type: email
+        disableResolveMessage: false
+        settings:
+          addresses: $ALERT_EMAIL
+          singleEmail: true
+          subject: '[it-garage LR6] {{ .Status }} {{ range .Alerts }}{{ .Labels.service }} {{ end }}'
+          message: |
+            {{ range .Alerts }}
+            {{ if eq .Status "resolved" }}
+            Сервис {{ .Labels.service }} снова доступен.
+            {{ else }}
+            Сервис {{ .Labels.service }} недоступен.
+            {{ .Annotations.description }}
+            {{ end }}
+            Сервер: it-garage
+            Состояние оповещения: {{ .Status }}
+            {{ end }}
+
+policies:
+  - orgId: 1
+    receiver: lab6-email
+    group_by: [alertname, service]
+    group_wait: 10s
+    group_interval: 30s
+    repeat_interval: 4h
+    routes:
+      - receiver: lab6-email
+        object_matchers:
+          - [lab, "=", lab6]

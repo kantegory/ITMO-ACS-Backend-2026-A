@@ -1,0 +1,134 @@
+name: lab6-monitoring
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-common: &common
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  grafana:
+    <<: *common
+    image: grafana/grafana:13.3.1
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/it-garage.json
+      GF_SERVER_ROOT_URL: http://localhost:13000/
+      GF_SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com:587}
+      GF_SMTP_USER: ${SMTP_USER:-}
+      GF_SMTP_PASSWORD__FILE: /run/secrets/smtp_password
+      GF_SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-monitoring@example.invalid}
+      GF_SMTP_FROM_NAME: it-garage monitoring
+      GF_SMTP_STARTTLS_POLICY: MandatoryStartTLS
+      GF_SMTP_SKIP_VERIFY: "false"
+      ALERT_EMAIL: ${ALERT_EMAIL:?Run scripts/prepare.py first}
+    secrets:
+      - grafana_admin_password
+      - smtp_password
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [monitoring]
+
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v3.16.0
+    mem_limit: 512m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=2GB
+      - --web.listen-address=0.0.0.0:9090
+    ports:
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [monitoring]
+
+  node-exporter:
+    <<: *common
+    image: prom/node-exporter:v1.12.1
+    mem_limit: 64m
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=${DOCKER_BRIDGE_IP:?Run scripts/prepare.py first}:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($$|/)
+    volumes:
+      - /:/host:ro,rslave
+
+  blackbox:
+    <<: *common
+    image: prom/blackbox-exporter:v0.29.1
+    mem_limit: 96m
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks: [monitoring, application]
+
+  loki:
+    <<: *common
+    image: grafana/loki:3.7.9
+    mem_limit: 512m
+    command: ["-config.file=/etc/loki/loki.yml"]
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    networks: [monitoring]
+
+  alloy:
+    <<: *common
+    image: grafana/alloy:v1.21.3
+    mem_limit: 256m
+    user: "0:0"
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    networks: [monitoring]
+
+networks:
+  monitoring:
+  application:
+    external: true
+    name: lab4_default
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  loki-data:
+  alloy-data:
+
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
+  smtp_password:
+    file: ./secrets/smtp_password
