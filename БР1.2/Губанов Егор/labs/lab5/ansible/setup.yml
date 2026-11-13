@@ -1,0 +1,76 @@
+- name: Подготовка сервера Debian
+  hosts: backend
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Проверить операционную систему
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - ansible_facts['distribution_major_version'] in ['12', '13']
+          - ansible_facts['architecture'] in ['aarch64', 'x86_64']
+        fail_msg: Нужен Debian 12 или 13 для ARM64 или AMD64.
+
+    - name: Установить основные зависимости и nginx
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Создать каталог ключей репозиториев
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Скачать ключ Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        owner: root
+        group: root
+        mode: '0644'
+        force: false
+      register: docker_key
+
+    - name: Подключить репозиторий Docker
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.sources
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          Types: deb
+          URIs: https://download.docker.com/linux/debian
+          Suites: {{ ansible_facts['distribution_release'] }}
+          Components: stable
+          Architectures: {{ {'aarch64': 'arm64', 'x86_64': 'amd64'}[ansible_facts['architecture']] }}
+          Signed-By: /etc/apt/keyrings/docker.asc
+      register: docker_repository
+
+    - name: Установить Docker и плагины
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: "{{ docker_repository.changed or docker_key.changed }}"
+
+    - name: Запустить Docker и nginx и включить автозапуск
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - docker
+        - nginx

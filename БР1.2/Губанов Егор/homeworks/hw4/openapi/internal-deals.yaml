@@ -1,0 +1,119 @@
+openapi: 3.0.3
+info:
+  title: Deals Service — Internal API
+  version: 1.0.0
+servers:
+  - url: http://deals:3003
+security:
+  - InternalKey: []
+paths:
+  /internal/v1/users/{userId}/deals:
+    get:
+      summary: Сделки пользователя для history (арендатор или владелец объектов)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DealOut'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /internal/v1/owners/{ownerId}/active-deals:
+    get:
+      summary: Активные сделки по объектам владельца (PENDING, ACTIVE)
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [by_property]
+                properties:
+                  by_property:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/DealOut'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Key
+  schemas:
+    DealOut:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        property_id:
+          type: string
+        tenant_id:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, ACTIVE, COMPLETED]
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        total_price:
+          type: number
+        property:
+          type: object
+          description: Кратко о property, если подтянули из catalog
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+  responses:
+    Unauthorized:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServerError:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
