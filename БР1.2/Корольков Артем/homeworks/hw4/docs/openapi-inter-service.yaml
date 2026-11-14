@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking — Inter-Service API
+  version: 1.0.0
+  description: |
+    Внутренние REST-эндпоинты для синхронного межсервисного взаимодействия.
+    Доступ только по заголовку `X-Service-Key`.
+servers:
+  - url: http://localhost:3001
+    description: Auth Service (internal)
+  - url: http://localhost:3002
+    description: Restaurant Service (internal)
+  - url: http://localhost:3003
+    description: Reservation Service (internal)
+tags:
+  - name: AuthInternal
+  - name: RestaurantInternal
+components:
+  securitySchemes:
+    serviceKey:
+      type: apiKey
+      in: header
+      name: X-Service-Key
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    UserInternal:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+    VerifyTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+    VerifyTokenResponse:
+      type: object
+      properties:
+        valid: { type: boolean }
+        user:
+          $ref: '#/components/schemas/UserInternal'
+        error: { type: string }
+    RestaurantInternal:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        city: { type: string }
+        cuisine: { type: string }
+        average_check: { type: integer }
+    RestaurantBatchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantInternal'
+paths:
+  /internal/users/{id}:
+    get:
+      tags: [AuthInternal]
+      servers: [{ url: http://localhost:3001 }]
+      summary: Получить пользователя по ID
+      security: [{ serviceKey: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInternal'
+        '403':
+          description: Неверный service key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /internal/auth/verify:
+    post:
+      tags: [AuthInternal]
+      servers: [{ url: http://localhost:3001 }]
+      summary: Проверить JWT и вернуть профиль
+      security: [{ serviceKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyTokenRequest'
+      responses:
+        '200':
+          description: Токен валиден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyTokenResponse'
+        '400':
+          description: token не передан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Токен невалиден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyTokenResponse' }
+        '403':
+          description: Неверный service key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Пользователь из токена не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyTokenResponse' }
+  /internal/restaurants/{id}:
+    get:
+      tags: [RestaurantInternal]
+      servers: [{ url: http://localhost:3002 }]
+      summary: Получить ресторан по ID (для валидации брони)
+      security: [{ serviceKey: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Ресторан найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantInternal'
+        '403':
+          description: Неверный service key
+        '404':
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /internal/restaurants/batch:
+    get:
+      tags: [RestaurantInternal]
+      servers: [{ url: http://localhost:3002 }]
+      summary: Пакетное получение ресторанов
+      security: [{ serviceKey: [] }]
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema: { type: string, example: '1,2,3' }
+      responses:
+        '200':
+          description: Список ресторанов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantBatchResponse'
+        '400':
+          description: ids не передан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Неверный service key

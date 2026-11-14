@@ -1,0 +1,137 @@
+---
+- name: Настройка виртуальной машины и запуск приложения
+  hosts: vm
+  become: true
+  vars:
+    compose_file: "{{ playbook_dir }}/../lab3/docker-compose.yml"
+
+  tasks:
+    - name: Установить необходимые пакеты
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - git
+          - python3
+          - docker.io
+          - docker-buildx
+          - docker-compose-v2
+          - nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Включить Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Создать каталог окружения
+      ansible.builtin.file:
+        path: /etc/restaurant-lab4
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Создать каталог данных
+      ansible.builtin.file:
+        path: /var/lib/restaurant-lab4/data
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Создать файл окружения при первом запуске
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ playbook_dir }}/files/create_env.py"
+        creates: /etc/restaurant-lab4/app.env
+      no_log: true
+
+    - name: Установить права файла окружения
+      ansible.builtin.file:
+        path: /etc/restaurant-lab4/app.env
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Установить конфигурацию nginx
+      ansible.builtin.copy:
+        src: files/nginx.conf
+        dest: /etc/nginx/sites-available/restaurant-lab5
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Перезагрузить nginx
+
+    - name: Отключить стандартный сайт nginx
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Перезагрузить nginx
+
+    - name: Включить сайт приложения
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/restaurant-lab5
+        dest: /etc/nginx/sites-enabled/restaurant-lab5
+        state: link
+      notify: Перезагрузить nginx
+
+    - name: Проверить настройки nginx
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Запустить nginx
+      ansible.builtin.systemd:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Применить настройки nginx
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить конфигурацию Docker Compose
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - "{{ compose_file }}"
+          - config
+          - --quiet
+      changed_when: false
+
+    - name: Собрать и запустить сервисы
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --parallel
+          - '1'
+          - -f
+          - "{{ compose_file }}"
+          - up
+          - -d
+          - --build
+          - --wait
+          - --wait-timeout
+          - '300'
+      changed_when: true
+
+    - name: Проверить доступность приложения через nginx
+      ansible.builtin.uri:
+        url: http://127.0.0.1/health
+        status_code: 200
+      register: health
+      retries: 10
+      delay: 3
+      until: health.status == 200
+
+  handlers:
+    - name: Перезагрузить nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

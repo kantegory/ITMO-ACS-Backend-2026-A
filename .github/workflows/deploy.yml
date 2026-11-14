@@ -1,0 +1,122 @@
+name: Развёртывание приложения
+
+on:
+  push:
+    branches: [lab4]
+    paths:
+      - 'БР1.2/Корольков Артем/labs/lab3/**'
+      - 'БР1.2/Корольков Артем/labs/lab4/**'
+      - 'БР1.2/Корольков Артем/homeworks/hw6/**'
+      - '!**/*.pdf'
+      - '!**/*.docx'
+      - '!**/evidence/**'
+      - '.github/workflows/deploy.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restaurant-lab4-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Проверка конфигурации и сборка
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          lab3_dir='БР1.2/Корольков Артем/labs/lab3'
+          deploy_script='БР1.2/Корольков Артем/homeworks/hw6/deploy.sh'
+          compose_file="$lab3_dir/docker-compose.yml"
+
+          export APP_ENV_FILE="$RUNNER_TEMP/restaurant-validation.env"
+          umask 077
+
+          cat > "$APP_ENV_FILE" <<'ENV'
+          JWT_SECRET=validation-only
+          SERVICE_KEY=validation-only
+          RABBITMQ_PASSWORD=validation-only
+          RABBITMQ_DEFAULT_USER=restaurant
+          RABBITMQ_DEFAULT_PASS=validation-only
+          RABBITMQ_URL=amqp://restaurant:validation-only@rabbitmq:5672
+          RABBITMQ_ENABLED=true
+          AUTH_SERVICE_URL=http://auth-service:3001
+          RESTAURANT_SERVICE_URL=http://restaurant-service:3002
+          RESERVATION_SERVICE_URL=http://reservation-service:3003
+          ENV
+
+          bash -n "$deploy_script"
+
+          docker compose -p restaurant-lab4 \
+            -f "$compose_file" config --quiet
+
+          docker compose --parallel 1 -p restaurant-lab4 \
+            -f "$compose_file" build
+
+  deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/lab4'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Развёртывание и проверка версии
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?Не задан DEPLOY_HOST}"
+          : "${DEPLOY_PORT:?Не задан DEPLOY_PORT}"
+          : "${DEPLOY_USER:?Не задан DEPLOY_USER}"
+          : "${DEPLOY_KEY:?Не задан DEPLOY_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Не задан DEPLOY_KNOWN_HOSTS}"
+
+          install -d -m 0700 "$HOME/.ssh"
+          umask 077
+
+          printf '%s\n' "$DEPLOY_KEY" |
+            tr -d '\r' > "$HOME/.ssh/restaurant_lab4_ci"
+
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" |
+            tr -d '\r' > "$HOME/.ssh/known_hosts"
+
+          ssh \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 \
+            -i "$HOME/.ssh/restaurant_lab4_ci" \
+            -p "$DEPLOY_PORT" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy $GITHUB_SHA"
+
+          curl --fail --silent --show-error \
+            --retry 5 --retry-delay 3 --max-time 20 \
+            "http://$DEPLOY_HOST/deployment.json" \
+            -o "$RUNNER_TEMP/deployment.json"
+
+          python3 - "$RUNNER_TEMP/deployment.json" "$GITHUB_SHA" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              deployment = json.load(stream)
+
+          assert deployment["revision"] == sys.argv[2], deployment
+          print("Server runs commit", deployment["revision"])
+          PY

@@ -1,0 +1,148 @@
+name: restaurant-lab4
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: restaurant-lab4-rabbitmq
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
+    volumes:
+      - /var/lib/restaurant-lab4/data:/app/services/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  restaurant-service:
+    build:
+      context: .
+      dockerfile: services/restaurant-service/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
+    volumes:
+      - /var/lib/restaurant-lab4/data:/app/services/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  reservation-service:
+    build:
+      context: .
+      dockerfile: services/reservation-service/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
+    volumes:
+      - /var/lib/restaurant-lab4/data:/app/services/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      restaurant-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-/etc/restaurant-lab4/app.env}
+    ports:
+      - "127.0.0.1:3010:3010"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      restaurant-service:
+        condition: service_healthy
+      reservation-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  default:
+    name: restaurant-lab4
+
+volumes:
+  rabbit_data:
