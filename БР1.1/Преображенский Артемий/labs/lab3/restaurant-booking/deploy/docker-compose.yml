@@ -1,0 +1,193 @@
+name: restaurant-booking
+x-defaults:
+  restart: unless-stopped
+  logging: &id001
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+services:
+  auth-db:
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: auth_db
+    volumes:
+    - auth-dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  catalog-db:
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: catalog_db
+    volumes:
+    - catalog-dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  booking-db:
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: booking_db
+    volumes:
+    - booking-dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  rabbitmq:
+    restart: unless-stopped
+    logging: *id001
+    image: rabbitmq:4.3.1-management@sha256:8734b9e9cd03d12b2e1d973415fc4c5c941c5eca351b4bd63f721782b1bf7c8b
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-booking}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    volumes:
+    - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+      - CMD
+      - rabbitmq-diagnostics
+      - -q
+      - ping
+      interval: 10s
+      timeout: 5s
+      retries: 20
+  auth-service:
+    restart: unless-stopped
+    logging: *id001
+    image: restaurant-booking-auth:${APP_REVISION:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: auth-service
+        APP_REVISION: ${APP_REVISION:-local}
+    environment:
+      AUTH_DB_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@auth-db:5432/auth_db?sslmode=disable
+      AUTH_HTTP_ADDR: :8081
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXPIRES: 24h
+      RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-booking}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    ports:
+    - 127.0.0.1:8081:8081
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-db:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null http://127.0.0.1:8081/ready
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+  catalog-service:
+    restart: unless-stopped
+    logging: *id001
+    image: restaurant-booking-catalog:${APP_REVISION:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: catalog-service
+        APP_REVISION: ${APP_REVISION:-local}
+    environment:
+      CATALOG_DB_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@catalog-db:5432/catalog_db?sslmode=disable
+      CATALOG_HTTP_ADDR: :8082
+      JWT_SECRET: ${JWT_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USERNAME:-booking}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    ports:
+    - 127.0.0.1:8082:8082
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      catalog-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null http://127.0.0.1:8082/ready
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+  booking-service:
+    restart: unless-stopped
+    logging: *id001
+    image: restaurant-booking-booking:${APP_REVISION:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: booking-service
+        APP_REVISION: ${APP_REVISION:-local}
+    environment:
+      BOOKING_DB_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@booking-db:5432/booking_db?sslmode=disable
+      BOOKING_HTTP_ADDR: :8083
+      JWT_SECRET: ${JWT_SECRET}
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+    ports:
+    - 127.0.0.1:8083:8083
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      booking-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null http://127.0.0.1:8083/ready
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+volumes:
+  rabbitmq-data:
+    name: restaurant_booking_rabbitmq
+  auth-dbdata:
+    name: restaurant_booking_auth_dbdata
+  catalog-dbdata:
+    name: restaurant_booking_catalog_dbdata
+  booking-dbdata:
+    name: restaurant_booking_booking_dbdata
