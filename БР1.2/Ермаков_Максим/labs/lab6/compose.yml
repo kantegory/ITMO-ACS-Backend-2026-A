@@ -115,6 +115,32 @@ services:
       - alloy-data:/var/lib/alloy/data
     networks: [monitoring]
 
+  log-mailer:
+    <<: *common
+    image: python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+    mem_limit: 96m
+    user: "472:472"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["python", "-u", "/app/log_mailer.py"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com:587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-monitoring@example.invalid}
+      ALERT_EMAIL: ${ALERT_EMAIL:?Run scripts/prepare.py first}
+    secrets: [smtp_password]
+    volumes:
+      - ./scripts/log_mailer.py:/app/log_mailer.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/health', timeout=2).read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks: [monitoring]
+
 networks:
   monitoring:
   application:
