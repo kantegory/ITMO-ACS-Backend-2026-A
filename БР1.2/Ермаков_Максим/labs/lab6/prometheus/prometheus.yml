@@ -1,0 +1,62 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    server: it-garage
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: vm
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+        labels:
+          server: it-garage
+
+  - job_name: blackbox
+    static_configs:
+      - targets: ["blackbox:9115"]
+
+  - job_name: microservices_health
+    metrics_path: /probe
+    scrape_timeout: 8s
+    params:
+      module: [http_health]
+    static_configs:
+      - targets: ["http://api-gateway:8200/health"]
+        labels: {service: api-gateway}
+      - targets: ["http://identity-service:8201/health"]
+        labels: {service: identity-service}
+      - targets: ["http://catalog-service:8202/health"]
+        labels: {service: catalog-service}
+      - targets: ["http://menu-service:8203/health"]
+        labels: {service: menu-service}
+      - targets: ["http://reservation-service:8204/health"]
+        labels: {service: reservation-service}
+      - targets: ["http://review-service:8205/health"]
+        labels: {service: review-service}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: public_gateway
+    metrics_path: /probe
+    scrape_timeout: 8s
+    params:
+      module: [http_health]
+    static_configs:
+      - targets: ["http://31.77.133.132/health"]
+        labels: {service: nginx-gateway}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
