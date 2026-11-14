@@ -1,0 +1,53 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=7d
+    ports: [ "9090:9090" ]
+    networks: [ rental-network ]
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command: --path.rootfs=/host
+    pid: host
+    volumes: [ "/:/host:ro" ]
+    networks: [ rental-network ]
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    privileged: true
+    volumes: [ "/:/rootfs:ro", "/var/run:/var/run:ro", "/sys:/sys:ro", "/var/lib/docker:/var/lib/docker:ro" ]
+    networks: [ rental-network ]
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    volumes: [ "./monitoring/prometheus/blackbox.yml:/etc/blackbox_exporter/config.yml:ro" ]
+    networks: [ rental-network ]
+  loki:
+    image: grafana/loki:3.1.1
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes: [ "./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro", "loki_data:/loki" ]
+    networks: [ rental-network ]
+  promtail:
+    image: grafana/promtail:3.1.1
+    command: -config.file=/etc/promtail/config.yml
+    volumes: [ "./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro", "/var/run/docker.sock:/var/run/docker.sock:ro", "/var/lib/docker/containers:/var/lib/docker/containers:ro" ]
+    networks: [ rental-network ]
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports: [ "3000:3000" ]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes: [ "grafana_data:/var/lib/grafana", "./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro", "./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro" ]
+    depends_on: [ prometheus, loki ]
+    networks: [ rental-network ]
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+networks:
+  rental-network:
+    external: true
+    name: rental-network

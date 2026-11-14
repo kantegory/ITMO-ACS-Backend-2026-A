@@ -40,6 +40,9 @@ class App {
 
     private configureApp(): express.Application {
         let app = express();
+        app.get('/health', (_req, res) => {
+            res.status(200).json({ status: 'ok' });
+        });
 
         // middlewares section
         app.use(cors());
