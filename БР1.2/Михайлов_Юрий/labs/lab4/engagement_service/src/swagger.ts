@@ -37,7 +37,7 @@ export function useSwagger(
                 version: '1.0.0',
             },
             servers: [
-                { url: '/api/engagement' },
+                { url: '/engagement' },
             ],
         });
 

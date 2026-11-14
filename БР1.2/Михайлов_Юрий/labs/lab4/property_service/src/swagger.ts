@@ -36,7 +36,7 @@ export function useSwagger(
                 description: 'API documentation for house rental laboratory project',
                 version: '1.0.0',
             },
-            servers: [{ url: '/api/property' }]
+            servers: [{ url: '/property' }]
         });
 
         app.get('/docs-json', (req, res) => {
