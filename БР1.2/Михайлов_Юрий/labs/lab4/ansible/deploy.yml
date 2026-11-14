@@ -1,0 +1,70 @@
+---
+- name: Настройка сервера и деплой микросервисов
+  hosts: app_servers
+  become: true
+
+  tasks:
+    # Установка системных пакетов
+    - name: Обновление кэша пакетов и установка базовых утилит
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - git
+          - ufw
+        state: present
+        update_cache: yes
+
+    - name: Установка Docker и Docker Compose (Debian 13)
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+
+    # Настройка окружения
+    - name: Запуск службы Docker и добавление в автозагрузку
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Добавление пользователя в группу docker
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        groups: docker
+        append: yes
+
+    - name: Настройка фаервола UFW (разрешаем SSH и порт Gateway)
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "{{ gateway_port }}"
+
+    - name: Включение фаервола UFW
+      community.general.ufw:
+        state: enabled
+        policy: deny
+
+    - name: Генерация файлов .env для каждого микросервиса
+      ansible.builtin.copy:
+        dest: "{{ project_dir }}/{{ item.key }}"
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0600'
+        content: |
+          {% for env_key, env_val in item.value.items() %}
+          {{ env_key }}={{ env_val }}
+          {% endfor %}
+      loop: "{{ service_envs | dict2items }}"
+      no_log: true
+
+    # Запуск сервисов
+    - name: Сборка образов и запуск контейнеров через Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+        build: always
