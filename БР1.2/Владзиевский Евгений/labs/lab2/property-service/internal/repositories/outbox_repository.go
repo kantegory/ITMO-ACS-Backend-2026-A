@@ -14,8 +14,8 @@ func NewOutboxRepository() *OutboxRepository {
 	return &OutboxRepository{}
 }
 
-func (r *OutboxRepository) Create(db *gorm.DB, event *models.OutboxEvent) error {
-	return db.Create(event).Error
+func (r *OutboxRepository) Create(event *models.OutboxEvent) error {
+	return database.DB.Create(event).Error
 }
 
 func (r *OutboxRepository) FindPending() ([]models.OutboxEvent, error) {

@@ -172,5 +172,5 @@ func publishPaymentEvent(outboxRepo *repositories.OutboxRepository, rentalID uin
 		Status:        "pending",
 	}
 
-	_ = outboxRepo.Create(nil, event)
+	_ = outboxRepo.Create(event)
 }

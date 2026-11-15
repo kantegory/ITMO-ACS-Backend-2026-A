@@ -112,7 +112,7 @@ func publishUserEvent(outboxRepo *repositories.OutboxRepository, userID uint, ev
 		Status:        "pending",
 	}
 
-	if err := outboxRepo.Create(nil, event); err != nil {
+	if err := outboxRepo.Create(event); err != nil {
 		// Log but don't fail the registration
 	}
 }

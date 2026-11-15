@@ -258,11 +258,18 @@ func (s *RentalService) SagaPayOrchestrate(rentalID uint, tenantID uint, payment
 		return nil, fmt.Errorf("payment failed: %w", paymentErr)
 	}
 
+	_ = s.repo.UpdateStatus(rentalID, "paid")
+	publishOutboxEvent(s.outboxRepo, "rental", rentalID, "rental.status_changed", map[string]interface{}{
+		"id":         rentalID,
+		"status":     "paid",
+		"new_status": "paid",
+	})
+
 	rental, _ = s.repo.FindByID(rentalID)
 
 	return &PayResult{
-		Rental:       rental,
-		Transaction:  transaction,
+		Rental:      rental,
+		Transaction: transaction,
 	}, nil
 }
 
@@ -286,5 +293,5 @@ func publishOutboxEvent(outboxRepo *repositories.OutboxRepository, aggregateType
 		Status:        "pending",
 	}
 
-	_ = outboxRepo.Create(nil, event)
+	_ = outboxRepo.Create(event)
 }
