@@ -1,0 +1,117 @@
+# Платежи и транзакции.
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: rental
+  labels:
+    app: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8084
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: rental
+  labels:
+    app: payment-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0        # обновление без простоя
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: payment-service
+          image: rental/payment-service:latest
+          # образы собираются на узле и импортируются в containerd,
+          # внешний registry в учебном стенде не используется
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8084
+              name: http
+          env:
+            - name: SERVER_PORT
+              value: "8084"
+            - name: DB_HOST
+              value: payment-db
+            - name: DB_USER
+              value: payment
+            - name: DB_NAME
+              value: payment_db
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: PAYMENT_DB_PASSWORD
+            - name: SERVER_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: SERVER_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: DB_PORT
+            - name: DB_SSLMODE
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: DB_SSLMODE
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: KAFKA_BROKERS
+            - name: BOOKING_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: BOOKING_SERVICE_URL
+            - name: SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: SERVICE_TOKEN
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi

@@ -1,0 +1,33 @@
+# Grafana (ЛР6) работает в Docker на самом узле, а не в кластере.
+# Сервис без селектора + EndpointSlice с адресом узла позволяют
+# маршрутизировать на неё трафик через тот же Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-external
+  namespace: rental
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: grafana-external-1
+  namespace: rental
+  labels:
+    kubernetes.io/service-name: grafana-external
+addressType: IPv4
+ports:
+  - name: http
+    port: 3000
+    protocol: TCP
+endpoints:
+  - addresses:
+      - "192.168.1.245"
+    conditions:
+      ready: true

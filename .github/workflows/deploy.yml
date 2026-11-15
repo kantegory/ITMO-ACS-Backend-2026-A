@@ -1,0 +1,123 @@
+# ДЗ6: автоматическое развёртывание бэкенд-приложения на удалённый сервер.
+#
+# Пайплайн выполняется на self-hosted runner'е, установленном на самом сервере
+# (192.168.1.245): сервер находится в локальной сети, поэтому облачные раннеры
+# GitHub до него не достучались бы. Runner сам опрашивает GitHub по исходящему
+# соединению, входящий доступ и белый IP не нужны.
+
+name: Deploy rental-app
+
+on:
+  push:
+    branches: [lab-4]
+    paths:
+      - 'БР1.2/Владзиевский Евгений/labs/lab2/**'
+      - 'БР1.2/Владзиевский Евгений/labs/lab4/deploy/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# Два деплоя одновременно не запускаем, очередь не схлопываем
+concurrency:
+  group: deploy-rental-app
+  cancel-in-progress: false
+
+env:
+  APP_DIR: /opt/rental-app
+  SRC_DIR: БР1.2/Владзиевский Евгений/labs/lab2
+  DEPLOY_DIR: БР1.2/Владзиевский Евгений/labs/lab4/deploy
+  COMPOSE: sudo docker compose -f docker-compose.prod.yml --env-file .env
+
+jobs:
+  deploy:
+    name: Сборка и развёртывание
+    runs-on: [self-hosted, rental-server]
+    timeout-minutes: 30
+
+    steps:
+      - name: Получение кода
+        uses: actions/checkout@v4
+
+      - name: Проверка окружения сервера
+        run: |
+          docker --version
+          sudo docker compose version
+          nginx -v
+
+      - name: Синхронизация исходников в ${{ env.APP_DIR }}
+        run: |
+          sudo mkdir -p "$APP_DIR"
+          sudo chown "$USER":"$USER" "$APP_DIR"
+          rsync -a --delete \
+            --exclude '.git' --exclude '.env' --exclude 'test/' \
+            "$SRC_DIR/" "$APP_DIR/"
+
+      - name: Копирование production-конфигурации
+        run: |
+          cp "$DEPLOY_DIR/docker-compose.prod.yml" "$APP_DIR/"
+          cp "$DEPLOY_DIR/.env.example" "$APP_DIR/"
+
+      - name: Генерация секретов при первом развёртывании
+        run: |
+          cd "$APP_DIR"
+          if [ -f .env ]; then
+            echo "Файл .env уже существует, секреты сохраняются"
+            exit 0
+          fi
+          {
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+            echo "SERVICE_TOKEN=$(openssl rand -hex 32)"
+            echo "AUTH_DB_USER=auth";           echo "AUTH_DB_PASSWORD=$(openssl rand -hex 16)";      echo "AUTH_DB_NAME=auth_db"
+            echo "PROPERTY_DB_USER=property";   echo "PROPERTY_DB_PASSWORD=$(openssl rand -hex 16)";  echo "PROPERTY_DB_NAME=property_catalog_db"
+            echo "BOOKING_DB_USER=booking";     echo "BOOKING_DB_PASSWORD=$(openssl rand -hex 16)";   echo "BOOKING_DB_NAME=booking_db"
+            echo "PAYMENT_DB_USER=payment";     echo "PAYMENT_DB_PASSWORD=$(openssl rand -hex 16)";   echo "PAYMENT_DB_NAME=payment_db"
+            echo "MESSAGING_DB_USER=messaging"; echo "MESSAGING_DB_PASSWORD=$(openssl rand -hex 16)"; echo "MESSAGING_DB_NAME=messaging_db"
+          } > .env
+          chmod 600 .env
+          echo "Файл .env создан"
+
+      - name: Сборка образов
+        run: |
+          cd "$APP_DIR"
+          $COMPOSE build
+
+      - name: Запуск стека
+        run: |
+          cd "$APP_DIR"
+          $COMPOSE up -d --remove-orphans
+
+      - name: Обновление конфигурации nginx
+        run: |
+          sudo cp "$DEPLOY_DIR/nginx/rental-api.conf" /etc/nginx/sites-available/rental-api.conf
+          sudo ln -sf /etc/nginx/sites-available/rental-api.conf /etc/nginx/sites-enabled/rental-api.conf
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+      - name: Smoke-тест через nginx
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/health || true)
+            if [ "$code" = "200" ]; then
+              echo "health: 200 (попытка $i)"
+              break
+            fi
+            echo "health: $code, ждём... ($i/30)"
+            sleep 5
+          done
+          [ "$code" = "200" ] || { echo "::error::Приложение не отвечает на /health"; exit 1; }
+
+          auth=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/v1/users/me)
+          echo "запрос без токена: $auth"
+          [ "$auth" = "401" ] || { echo "::error::Ожидался 401 без токена, получен $auth"; exit 1; }
+
+      - name: Состояние контейнеров
+        if: always()
+        run: |
+          cd "$APP_DIR"
+          $COMPOSE ps
+
+      - name: Логи сервисов при ошибке
+        if: failure()
+        run: |
+          cd "$APP_DIR"
+          $COMPOSE logs --tail 50
