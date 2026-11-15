@@ -1,0 +1,31 @@
+---
+# ЛР5: полная настройка сервера приложения одним плейбуком.
+#
+# Запуск:
+#   ansible-playbook site.yml --ask-pass --ask-become-pass
+# Проверка без изменений:
+#   ansible-playbook site.yml --check --diff --ask-pass
+
+- name: Настройка сервера и развёртывание rental-приложения
+  hosts: rental_servers
+  gather_facts: true
+
+  pre_tasks:
+    - name: Проверить, что ОС поддерживается ролями
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Ubuntu'
+          - ansible_distribution_major_version | int >= 22
+        fail_msg: >-
+          Роли рассчитаны на Ubuntu 22.04+, обнаружено
+          {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+  roles:
+    - role: common
+      tags: [common, packages]
+    - role: docker
+      tags: [docker]
+    - role: nginx
+      tags: [nginx, proxy]
+    - role: app
+      tags: [app, deploy]
