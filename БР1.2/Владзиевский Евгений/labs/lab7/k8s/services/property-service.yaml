@@ -1,0 +1,139 @@
+# Каталог объектов недвижимости и загрузка фотографий.
+apiVersion: v1
+kind: Service
+metadata:
+  name: property-service
+  namespace: rental
+  labels:
+    app: property-service
+spec:
+  selector:
+    app: property-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: property-service
+  namespace: rental
+  labels:
+    app: property-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0        # обновление без простоя
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: property-service
+  template:
+    metadata:
+      labels:
+        app: property-service
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: property-service
+          image: rental/property-service:latest
+          # образы собираются на узле и импортируются в containerd,
+          # внешний registry в учебном стенде не используется
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+              name: http
+          env:
+            - name: SERVER_PORT
+              value: "8082"
+            - name: DB_HOST
+              value: property-db
+            - name: DB_USER
+              value: property
+            - name: DB_NAME
+              value: property_catalog_db
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: PROPERTY_DB_PASSWORD
+            - name: SERVER_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: SERVER_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: DB_PORT
+            - name: DB_SSLMODE
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: DB_SSLMODE
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: KAFKA_BROKERS
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: AUTH_SERVICE_URL
+            - name: UPLOAD_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: UPLOAD_DIR
+            - name: MAX_UPLOAD_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: MAX_UPLOAD_SIZE
+            - name: ALLOWED_IMAGE_TYPES
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: ALLOWED_IMAGE_TYPES
+            - name: SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: SERVICE_TOKEN
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          volumeMounts:
+            - name: storage
+              mountPath: /app/storage
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: property-storage

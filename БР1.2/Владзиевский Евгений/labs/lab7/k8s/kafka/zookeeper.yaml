@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper
+  namespace: rental
+spec:
+  selector:
+    app: zookeeper
+  ports:
+    - name: client
+      port: 2181
+      targetPort: 2181
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: zookeeper
+  namespace: rental
+spec:
+  serviceName: zookeeper
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+        app.kubernetes.io/component: messaging
+    spec:
+      # Kubernetes по умолчанию добавляет в под переменные вида
+      # KAFKA_PORT=tcp://10.43.0.1:9092 для каждого сервиса namespace.
+      # Entrypoint образов Confluent принимает KAFKA_PORT за устаревшую
+      # настройку брокера и падает при старте, поэтому связи отключены.
+      enableServiceLinks: false
+      # Образы Confluent работают под uid 1000, а том local-path
+      # создаётся от root: fsGroup передаёт каталог группе контейнера
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: zookeeper
+          image: confluentinc/cp-zookeeper:7.6.1
+          ports:
+            - containerPort: 2181
+          env:
+            - name: ZOOKEEPER_CLIENT_PORT
+              value: "2181"
+            - name: ZOOKEEPER_TICK_TIME
+              value: "2000"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx256m -Xms128m"
+          readinessProbe:
+            tcpSocket:
+              port: 2181
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/zookeeper/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,0 +1,31 @@
+# Единая точка входа в кластер. Traefik идёт в комплекте с k3s и слушает
+# порты 80/443 узла — он заменил собой nginx из ЛР4.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rental-ingress
+  namespace: rental
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          # Grafana из стека мониторинга ЛР6: она осталась в Docker на узле,
+          # поэтому маршрут ведёт на внешний сервис (см. monitoring/)
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana-external
+                port:
+                  number: 3000
+          # всё остальное обслуживает API Gateway
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080

@@ -1,0 +1,132 @@
+# Сообщения между арендатором и владельцем.
+apiVersion: v1
+kind: Service
+metadata:
+  name: messaging-service
+  namespace: rental
+  labels:
+    app: messaging-service
+spec:
+  selector:
+    app: messaging-service
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-service
+  namespace: rental
+  labels:
+    app: messaging-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0        # обновление без простоя
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: messaging-service
+  template:
+    metadata:
+      labels:
+        app: messaging-service
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: messaging-service
+          image: rental/messaging-service:latest
+          # образы собираются на узле и импортируются в containerd,
+          # внешний registry в учебном стенде не используется
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8085
+              name: http
+          env:
+            - name: SERVER_PORT
+              value: "8085"
+            - name: DB_HOST
+              value: messaging-db
+            - name: DB_USER
+              value: messaging
+            - name: DB_NAME
+              value: messaging_db
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: MESSAGING_DB_PASSWORD
+            - name: SERVER_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: SERVER_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: DB_PORT
+            - name: DB_SSLMODE
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: DB_SSLMODE
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: KAFKA_BROKERS
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: AUTH_SERVICE_URL
+            - name: BOOKING_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: BOOKING_SERVICE_URL
+            - name: PROPERTY_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: PROPERTY_SERVICE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: JWT_SECRET
+            - name: SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: SERVICE_TOKEN
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
