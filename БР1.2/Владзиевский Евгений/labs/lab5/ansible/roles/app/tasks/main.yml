@@ -1,0 +1,80 @@
+---
+# Доставка исходников, конфигурации и запуск стека микросервисов
+
+- name: Упаковать исходники приложения на управляющей машине
+  community.general.archive:
+    path: "{{ app_src_dir }}/"
+    dest: "{{ lookup('env', 'TMPDIR') | default('/tmp/', true) }}rental-app-src.tar.gz"
+    format: gz
+    exclude_path:
+      - "{{ app_src_dir }}/test"
+      - "{{ app_src_dir }}/.env"
+    force_archive: true
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Распаковать исходники в {{ app_dir }}
+  ansible.builtin.unarchive:
+    src: "{{ lookup('env', 'TMPDIR') | default('/tmp/', true) }}rental-app-src.tar.gz"
+    dest: "{{ app_dir }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+  become: true
+  notify: Пересобрать и перезапустить стек
+
+- name: Разместить production-конфигурацию compose
+  ansible.builtin.copy:
+    src: "{{ app_deploy_dir }}/{{ compose_file }}"
+    dest: "{{ app_dir }}/{{ compose_file }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0644"
+  become: true
+  notify: Пересобрать и перезапустить стек
+
+- name: Создать файл окружения с секретами (только при первом запуске)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+    # Секреты генерируются один раз: перезапись сломала бы доступ к БД
+    force: false
+  become: true
+
+- name: Собрать образы и поднять стек
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    files:
+      - "{{ compose_file }}"
+    env_files:
+      - .env
+    state: present
+    build: policy
+    remove_orphans: true
+  become: true
+  register: compose_result
+
+- name: Дождаться готовности приложения через обратный прокси
+  ansible.builtin.uri:
+    url: "http://{{ nginx_upstream_host }}/health"
+    status_code: 200
+  register: health
+  retries: 30
+  delay: 5
+  until: health.status == 200
+  changed_when: false
+
+- name: Проверить, что защищённый эндпоинт требует авторизации
+  ansible.builtin.uri:
+    url: "http://{{ nginx_upstream_host }}/api/v1/users/me"
+    status_code: 401
+  changed_when: false
+
+- name: Показать итог
+  ansible.builtin.debug:
+    msg: >-
+      Контейнеров запущено: {{ compose_result.containers | default([]) | length }},
+      health-check: {{ health.json.status | default('n/a') }}

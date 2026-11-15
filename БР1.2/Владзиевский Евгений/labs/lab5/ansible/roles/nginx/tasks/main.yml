@@ -1,0 +1,47 @@
+---
+# nginx в режиме обратного прокси перед API Gateway
+
+- name: Установить nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+  become: true
+
+- name: Развернуть конфигурацию сайта
+  ansible.builtin.template:
+    src: rental-api.conf.j2
+    dest: "/etc/nginx/sites-available/{{ nginx_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Перезагрузить nginx
+
+- name: Включить сайт
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ nginx_site_name }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ nginx_site_name }}.conf"
+    state: link
+  become: true
+  notify: Перезагрузить nginx
+
+- name: Отключить сайт по умолчанию
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  become: true
+  notify: Перезагрузить nginx
+
+# Конфиг сайта нельзя проверить отдельным файлом (это не полный конфиг nginx),
+# поэтому синтаксис проверяется целиком до того, как обработчик сделает reload
+- name: Проверить синтаксис конфигурации nginx
+  ansible.builtin.command: nginx -t
+  become: true
+  changed_when: false
+
+- name: Включить и запустить службу nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+  become: true
