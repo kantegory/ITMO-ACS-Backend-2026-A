@@ -1,0 +1,1370 @@
+openapi: 3.0.0
+info:
+  title: Rental Property API
+  version: 1.0.0
+  description: API для сервиса аренды недвижимости (аналог Airbnb)
+servers:
+  - url: https://api.rentals.com/v1
+    description: Production server
+
+paths:
+  # ---------- AUTH ----------
+  /auth/register:
+    post:
+      summary: Регистрация нового пользователя
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                full_name: { type: string, maxLength: 100 }
+                phone: { type: string, pattern: '^\+?[0-9]{10,15}$' }
+                role: { type: string, enum: [tenant, owner], default: tenant }
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400':
+          description: Некорректные данные или email уже существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/login:
+    post:
+      summary: Аутентификация
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  user: { $ref: '#/components/schemas/UserResponse' }
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------- USERS ----------
+  /users/me:
+    get:
+      summary: Получить профиль текущего пользователя
+      tags: [Users]
+      security: [BearerAuth: []]
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    put:
+      summary: Обновить профиль
+      tags: [Users]
+      security: [BearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name: { type: string }
+                phone: { type: string }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/{id}/role:
+    patch:
+      summary: Изменить роль пользователя (только admin)
+      tags: [Users]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [tenant, owner, admin] }
+      responses:
+        '200':
+          description: Роль обновлена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400':
+          description: Некорректная роль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Доступ запрещён (не admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------- PROPERTY TYPES (админ) ----------
+  /property-types:
+    get:
+      summary: Список всех типов недвижимости
+      tags: [PropertyTypes]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyType'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Создать тип (admin)
+      tags: [PropertyTypes]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 50 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyType'
+        '400':
+          description: Некорректное имя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Тип недвижимости уже существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+
+  /amenities:
+    get:
+      summary: Список удобств 
+      tags: [Amenities]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Amenity'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Создать удобство (admin)
+      tags: [Amenities]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 100 }
+                icon: { type: string }
+                description: { type: string }
+      responses:
+        '201':
+          description: Удобство создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Amenity'
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      summary: Удалить удобство (admin)
+      tags: [Amenities]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '501':
+          description: Не реализовано
+
+  # ---------- PROPERTIES ----------
+  /properties:
+    get:
+      summary: Поиск объектов с фильтрацией
+      tags: [Properties]
+      parameters:
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: type_id
+          in: query
+          schema: { type: integer }
+        - name: min_price
+          in: query
+          schema: { type: number }
+        - name: max_price
+          in: query
+          schema: { type: number }
+        - name: start_date
+          in: query
+          schema: { type: string, format: date }
+        - name: end_date
+          in: query
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Список объектов (только active)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PropertyListItem' }
+        '400':
+          description: Неверные параметры фильтрации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Создать объект (только owner или admin)
+      tags: [Properties]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PropertyInput' }
+      responses:
+        '201':
+          description: Объект создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PropertyDetail' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Пользователь не владелец и не admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /properties/{id}:
+    get:
+      summary: Детальная информация об объекте
+      tags: [Properties]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PropertyDetail' }
+        '400':
+          description: Неверный ID объекта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    put:
+      summary: Полное обновление объекта (владелец или admin)
+      tags: [Properties]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PropertyInput' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PropertyDetail' }
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Не владелец объекта и не admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      summary: Удалить объект (владелец или admin)
+      tags: [Properties]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Не владелец объекта и не admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /properties/{id}/status:
+    patch:
+      summary: Изменить статус (active/archived)
+      tags: [Properties]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, archived] }
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { type: string }
+        '400':
+          description: Некорректный статус
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Не владелец объекта и не admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------- PROPERTY IMAGES ----------
+  /properties/{propertyId}/images:
+    post:
+      summary: Загрузить изображение (multipart/form-data)
+      tags: [PropertyImages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                is_main:
+                  type: boolean
+      responses:
+        '201':
+          description: Изображение добавлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImageResponse' }
+        '400':
+          description: Неверный формат файла или размер
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Не владелец объекта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    get:
+      summary: Список всех изображений объекта
+      tags: [PropertyImages]
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ImageResponse' }
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /property-images/{imageId}:
+    delete:
+      summary: Удалить изображение (владелец объекта)
+      tags: [PropertyImages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Не владелец объекта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Изображение не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      summary: Сделать главным
+      tags: [PropertyImages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+      responses:
+        '200':
+          description: Главное фото обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImageResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Не владелец объекта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Изображение не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------- RENTALS ----------
+  /rentals:
+    get:
+      summary: Список бронирований текущего пользователя
+      tags: [Rentals]
+      security: [BearerAuth: []]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, confirmed, paid, cancelled, finished] }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: offset
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RentalResponse' }
+        '400':
+          description: Неверный статус или параметры пагинации
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    post:
+      summary: Создать бронирование (арендатор)
+      tags: [Rentals]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [property_id, start_date, end_date]
+              properties:
+                property_id: { type: integer }
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date }
+      responses:
+        '201':
+          description: Бронирование создано (статус pending)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RentalResponse' }
+        '400':
+          description: Некорректные даты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Нельзя бронировать свой объект
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект не найден или не активен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Объект уже забронирован на указанные даты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /rentals/{id}:
+    get:
+      summary: Детали бронирования
+      tags: [Rentals]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RentalResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Нет доступа к этому бронированию
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    patch:
+      summary: Изменить статус бронирования
+      tags: [Rentals]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, cancelled, finished]
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RentalResponse' }
+        '400':
+          description: Некорректный статус
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Нет прав на изменение статуса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Недопустимый переход статуса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /rentals/{id}/pay:
+    post:
+      summary: Оплатить бронирование
+      tags: [Rentals]
+      security: [BearerAuth: []]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_method]
+              properties:
+                payment_method: { type: string, example: "credit_card" }
+                idempotency_key: { type: string }
+      responses:
+        '200':
+          description: Платёж проведён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rental: { $ref: '#/components/schemas/RentalResponse' }
+                  transaction: { $ref: '#/components/schemas/TransactionResponse' }
+        '400':
+          description: Бронирование не подтверждено или уже оплачено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Только арендатор может оплатить
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Повторный запрос с тем же idempotency_key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Ошибка платёжного шлюза
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------- MESSAGES ----------
+  /messages:
+    post:
+      summary: Отправить сообщение
+      tags: [Messages]
+      security: [BearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiver_id, property_id, message_text]
+              properties:
+                receiver_id: { type: integer }
+                property_id: { type: integer }
+                message_text: { type: string, maxLength: 2000 }
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: Пустое сообщение или слишком длинное
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Отправитель не участвует в аренде этого объекта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Получатель или объект не найдены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /messages/conversations:
+    get:
+      summary: Список диалогов текущего пользователя
+      tags: [Messages]
+      security: [BearerAuth: []]
+      responses:
+        '200':
+          description: Список чатов с последним сообщением
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    property_id: { type: integer }
+                    property_title: { type: string }
+                    other_user_id: { type: integer }
+                    other_user_name: { type: string }
+                    last_message: { type: string }
+                    last_sent_at: { type: string, format: date-time }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /messages/property/{propertyId}/user/{userId}:
+    get:
+      summary: История переписки по объекту с конкретным пользователем
+      tags: [Messages]
+      security: [BearerAuth: []]
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Массив сообщений
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MessageResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Текущий пользователь не участвует в диалоге
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Объект или пользователь не найдены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------- TRANSACTIONS ----------
+  /transactions:
+    get:
+      summary: История платежей текущего пользователя
+      tags: [Transactions]
+      security: [BearerAuth: []]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TransactionResponse' }
+        '401':
+          description: Неавторизован
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    PropertyType:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+
+    Amenity:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        icon: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+
+    UserResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        full_name: { type: string }
+        phone: { type: string }
+        role: { type: string, enum: [tenant, owner, admin] }
+        created_at: { type: string, format: date-time }
+
+    PropertyInput:
+      type: object
+      required: [type_id, title, price_per_day, city, address]
+      properties:
+        type_id: { type: integer }
+        title: { type: string, maxLength: 255 }
+        description: { type: string }
+        price_per_day: { type: number, minimum: 0.01 }
+        city: { type: string, maxLength: 100 }
+        address: { type: string }
+        latitude: { type: number, format: float, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: float, minimum: -180, maximum: 180 }
+
+    PropertyListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        city: { type: string }
+        price_per_day: { type: number }
+        main_image_url: { type: string, nullable: true }
+        type_name: { type: string }
+
+    PropertyDetail:
+      allOf:
+        - $ref: '#/components/schemas/PropertyListItem'
+        - type: object
+          properties:
+            description: { type: string }
+            address: { type: string }
+            latitude: { type: number }
+            longitude: { type: number }
+            owner: { $ref: '#/components/schemas/UserResponse' }
+            images:
+              type: array
+              items: { $ref: '#/components/schemas/ImageResponse' }
+            status: { type: string, enum: [active, archived] }
+            created_at: { type: string, format: date-time }
+
+    ImageResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        image_url: { type: string }
+        is_main: { type: boolean }
+
+    RentalResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        property:
+          type: object
+          properties:
+            id: { type: integer }
+            title: { type: string }
+            city: { type: string }
+            price_per_day: { type: number }
+        tenant:
+          $ref: '#/components/schemas/UserResponse'
+        owner:
+          $ref: '#/components/schemas/UserResponse'
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        total_price: { type: number }
+        status: { type: string, enum: [pending, confirmed, paid, cancelled, finished] }
+        created_at: { type: string, format: date-time }
+
+    MessageResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        sender_id: { type: integer }
+        receiver_id: { type: integer }
+        property_id: { type: integer }
+        message_text: { type: string }
+        sent_at: { type: string, format: date-time }
+
+    TransactionResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        rental_id: { type: integer }
+        amount: { type: number }
+        payment_method: { type: string }
+        status: { type: string, enum: [success, failed, pending] }
+        created_at: { type: string, format: date-time }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true

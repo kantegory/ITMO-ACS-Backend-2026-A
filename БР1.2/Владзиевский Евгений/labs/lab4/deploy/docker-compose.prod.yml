@@ -1,0 +1,287 @@
+# Production-конфигурация стека для развёртывания на удалённом сервере (ЛР4).
+# Отличия от lab2/docker-compose.yml:
+#   * наружу не публикуется ни один порт, кроме 127.0.0.1:8080 (API Gateway),
+#     доступ извне идёт только через nginx в режиме обратного прокси;
+#   * у всех сервисов restart: unless-stopped (автозапуск после перезагрузки);
+#   * секреты (JWT_SECRET, SERVICE_TOKEN) и пароли БД берутся из файла .env.
+
+services:
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUTH_DB_USER}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME}
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  property-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PROPERTY_DB_USER}
+      POSTGRES_PASSWORD: ${PROPERTY_DB_PASSWORD}
+      POSTGRES_DB: ${PROPERTY_DB_NAME}
+    volumes:
+      - property_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PROPERTY_DB_USER} -d ${PROPERTY_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  booking-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${BOOKING_DB_USER}
+      POSTGRES_PASSWORD: ${BOOKING_DB_PASSWORD}
+      POSTGRES_DB: ${BOOKING_DB_NAME}
+    volumes:
+      - booking_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BOOKING_DB_USER} -d ${BOOKING_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  payment-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PAYMENT_DB_USER}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      POSTGRES_DB: ${PAYMENT_DB_NAME}
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENT_DB_USER} -d ${PAYMENT_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  messaging-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MESSAGING_DB_USER}
+      POSTGRES_PASSWORD: ${MESSAGING_DB_PASSWORD}
+      POSTGRES_DB: ${MESSAGING_DB_NAME}
+    volumes:
+      - messaging_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MESSAGING_DB_USER} -d ${MESSAGING_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms128m"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_USER: ${AUTH_DB_USER}
+      DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      DB_NAME: ${AUTH_DB_NAME}
+      DB_SSLMODE: disable
+      SERVER_PORT: 8081
+      SERVER_HOST: 0.0.0.0
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRE: 24h
+      JWT_REFRESH_EXPIRE: 168h
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  property-service:
+    build:
+      context: ./property-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: property-db
+      DB_PORT: 5432
+      DB_USER: ${PROPERTY_DB_USER}
+      DB_PASSWORD: ${PROPERTY_DB_PASSWORD}
+      DB_NAME: ${PROPERTY_DB_NAME}
+      DB_SSLMODE: disable
+      SERVER_PORT: 8082
+      SERVER_HOST: 0.0.0.0
+      AUTH_SERVICE_URL: http://auth-service:8081
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      UPLOAD_DIR: ./storage
+      MAX_UPLOAD_SIZE: "10485760"
+      ALLOWED_IMAGE_TYPES: "image/jpeg,image/png,image/gif"
+      KAFKA_BROKERS: kafka:9092
+    volumes:
+      - property_storage:/app/storage
+    depends_on:
+      property-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: booking-db
+      DB_PORT: 5432
+      DB_USER: ${BOOKING_DB_USER}
+      DB_PASSWORD: ${BOOKING_DB_PASSWORD}
+      DB_NAME: ${BOOKING_DB_NAME}
+      DB_SSLMODE: disable
+      SERVER_PORT: 8083
+      SERVER_HOST: 0.0.0.0
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PROPERTY_SERVICE_URL: http://property-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: payment-db
+      DB_PORT: 5432
+      DB_USER: ${PAYMENT_DB_USER}
+      DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      DB_NAME: ${PAYMENT_DB_NAME}
+      DB_SSLMODE: disable
+      SERVER_PORT: 8084
+      SERVER_HOST: 0.0.0.0
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      booking-service:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  messaging-service:
+    build:
+      context: ./messaging-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: messaging-db
+      DB_PORT: 5432
+      DB_USER: ${MESSAGING_DB_USER}
+      DB_PASSWORD: ${MESSAGING_DB_PASSWORD}
+      DB_NAME: ${MESSAGING_DB_NAME}
+      DB_SSLMODE: disable
+      SERVER_PORT: 8085
+      SERVER_HOST: 0.0.0.0
+      JWT_SECRET: ${JWT_SECRET}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      PROPERTY_SERVICE_URL: http://property-service:8082
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      messaging-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      SERVER_HOST: 0.0.0.0
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PROPERTY_SERVICE_URL: http://property-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      MESSAGING_SERVICE_URL: http://messaging-service:8085
+      JWT_SECRET: ${JWT_SECRET}
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+    # Порт слушается только на loopback: наружу приложение смотрит через nginx.
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - auth-service
+      - property-service
+      - booking-service
+      - payment-service
+      - messaging-service
+
+volumes:
+  auth_db_data:
+  property_db_data:
+  booking_db_data:
+  payment_db_data:
+  messaging_db_data:
+  property_storage:
+  kafka_data:
+  zookeeper_data:
+  zookeeper_log:
