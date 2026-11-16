@@ -1,0 +1,23 @@
+# nginx как обратный прокси для job-search-api.
+# __LISTEN_PORT__ и __COMMIT__ подставляет deploy.sh
+# (порт: 80 на обычном VPS, 8080 на VM Railway; коммит: версия, которая сейчас развёрнута).
+server {
+    listen __LISTEN_PORT__ default_server;
+    listen [::]:__LISTEN_PORT__ default_server;
+    server_name _;
+
+    client_max_body_size 5m;
+
+    # По этому заголовку видно, какой коммит сейчас развёрнут
+    add_header X-Deployed-Commit "__COMMIT__" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}

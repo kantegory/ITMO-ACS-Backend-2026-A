@@ -1,0 +1,71 @@
+name: CI/CD - автодеплой job-search-api
+
+# Автодеплой запускается при каждом push в ветку feat/hw6
+# (или вручную: вкладка Actions -> Run workflow).
+on:
+  push:
+    branches: [feat/hw6]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Два деплоя одновременно не запускаем
+concurrency:
+  group: deploy-railway-vm
+  cancel-in-progress: false
+
+env:
+  APP_DIR: "БР1.1/Саид Наваф/labs/lab4"
+
+jobs:
+  test:
+    name: Проверка кода (go vet + go build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "БР1.1/Саид Наваф/labs/lab4/go.mod"
+      - name: go vet
+        working-directory: ${{ env.APP_DIR }}
+        run: go vet ./...
+      - name: go build
+        working-directory: ${{ env.APP_DIR }}
+        run: go build ./...
+
+  deploy:
+    name: Деплой на сервер (self-hosted runner на VM)
+    needs: test
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      # секреты хранятся на сервере, вне репозитория и вне рабочей папки runner
+      ENV_FILE: /etc/job-search/.env
+      NGINX_LISTEN_PORT: "8080"
+      PUBLIC_URL: https://app-3658039a6377ba2f.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка и запуск (docker compose + nginx)
+        working-directory: ${{ env.APP_DIR }}
+        run: bash deploy/deploy.sh
+
+      - name: Проверка API через nginx на сервере
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8080/api/v1/categories > /dev/null; then
+              echo "API отвечает"; exit 0
+            fi
+            echo "Ждём запуск API ($i/20)..."; sleep 3
+          done
+          echo "API не ответил"; exit 1
+
+      - name: Проверка публичного адреса
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS -D - -o /dev/null "$PUBLIC_URL/api/v1/categories" | grep -i -E "^HTTP|^x-deployed-commit"; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Публичный адрес не ответил"; exit 1
