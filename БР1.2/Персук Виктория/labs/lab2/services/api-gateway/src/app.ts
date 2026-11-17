@@ -14,29 +14,37 @@ const PORT = parseInt(env.APP_PORT || '3000');
 const app = express();
 app.use(cors());
 
-const proxy = (target: string) =>
-    createProxyMiddleware({
-        target,
-        changeOrigin: true,
-        on: {
-            proxyReq: (proxyReq, req) => {
-                proxyReq.path = (req as any).originalUrl;
-            },
-        },
-    });
+app.use(createProxyMiddleware({
+    target: AUTH_SERVICE_URL,
+    changeOrigin: true,
+    pathFilter: ['/api/v1/auth/**', '/api/v1/users/**'],
+}));
 
-app.use('/api/v1/auth', proxy(AUTH_SERVICE_URL));
-app.use('/api/v1/users', proxy(AUTH_SERVICE_URL));
-app.use('/api/v1/cuisines', proxy(RESTAURANT_SERVICE_URL));
-app.use('/api/v1/photos', proxy(RESTAURANT_SERVICE_URL));
-app.use('/api/v1/restaurants', proxy(RESTAURANT_SERVICE_URL));
-app.use('/api/v1/tables', proxy(RESERVATION_SERVICE_URL));
-app.use('/api/v1/reservations', proxy(RESERVATION_SERVICE_URL));
-app.use('/api/v1/menus', proxy(MENU_SERVICE_URL));
-app.use('/api/v1/menu-items', proxy(MENU_SERVICE_URL));
-app.use('/api/v1/reviews', proxy(REVIEW_SERVICE_URL));
+app.use(createProxyMiddleware({
+    target: RESTAURANT_SERVICE_URL,
+    changeOrigin: true,
+    pathFilter: ['/api/v1/restaurants/**', '/api/v1/cuisines/**', '/api/v1/photos/**'],
+}));
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.use(createProxyMiddleware({
+    target: RESERVATION_SERVICE_URL,
+    changeOrigin: true,
+    pathFilter: ['/api/v1/tables/**', '/api/v1/reservations/**'],
+}));
+
+app.use(createProxyMiddleware({
+    target: MENU_SERVICE_URL,
+    changeOrigin: true,
+    pathFilter: ['/api/v1/menus/**', '/api/v1/menu-items/**'],
+}));
+
+app.use(createProxyMiddleware({
+    target: REVIEW_SERVICE_URL,
+    changeOrigin: true,
+    pathFilter: ['/api/v1/reviews/**'],
+}));
+
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: 'autodeploy' }));
 
 app.listen(PORT, () => {
     console.log(`API Gateway running on port ${PORT}`);
