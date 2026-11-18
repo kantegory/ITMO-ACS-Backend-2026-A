@@ -1,0 +1,168 @@
+---
+- name: Развернуть FitnessAPI на сервере
+  hosts: backend
+  become: true
+  gather_facts: false
+  serial: 1
+
+  vars:
+    fitness_project_src: "{{ playbook_dir }}/../.."
+    fitness_app_dir: /opt/fitnessapi
+    fitness_source_directories:
+      - blog-service
+      - common-lib
+      - docker
+      - gradle
+      - media-service
+      - progress-service
+      - training-service
+      - user-service
+    fitness_source_files:
+      - .dockerignore
+      - build.gradle
+      - Dockerfile
+      - gradlew
+      - settings.gradle
+      - docker-compose.yml
+      - nginx.conf
+
+  tasks:
+    - name: Проверить переменные приложения
+      ansible.builtin.assert:
+        that:
+          - fitness_db_username is defined
+          - fitness_db_password is defined
+          - fitness_jwt_secret is defined
+          - fitness_refresh_pepper is defined
+          - fitness_rabbitmq_username is defined
+          - fitness_rabbitmq_password is defined
+          - fitness_db_password | length >= 16
+          - fitness_jwt_secret | length >= 32
+          - fitness_refresh_pepper | length >= 16
+        fail_msg: Скопируй group_vars/backend/vault.yml.example в vault.yml, задай секреты и зашифруй его через ansible-vault.
+
+    - name: Создать каталог приложения
+      ansible.builtin.file:
+        path: "{{ fitness_app_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Скопировать исходники сервисов
+      ansible.builtin.copy:
+        src: "{{ fitness_project_src }}/{{ item }}/"
+        dest: "{{ fitness_app_dir }}/{{ item }}/"
+        owner: root
+        group: root
+        mode: preserve
+      loop: "{{ fitness_source_directories }}"
+
+    - name: Скопировать файлы сборки и конфигурации
+      ansible.builtin.copy:
+        src: "{{ fitness_project_src }}/{{ item }}"
+        dest: "{{ fitness_app_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop: "{{ fitness_source_files }}"
+
+    - name: Сделать Gradle wrapper исполняемым
+      ansible.builtin.file:
+        path: "{{ fitness_app_dir }}/gradlew"
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Создать защищённый файл окружения
+      ansible.builtin.template:
+        src: ../templates/fitness.env.j2
+        dest: "{{ fitness_app_dir }}/.env"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+
+    - name: Проверить конфигурацию Docker Compose
+      ansible.builtin.command:
+        argv: [docker, compose, --project-name, fitnessapi, config, --quiet]
+        chdir: "{{ fitness_app_dir }}"
+      changed_when: false
+
+    - name: Собрать и запустить FitnessAPI
+      community.docker.docker_compose_v2:
+        project_src: "{{ fitness_app_dir }}"
+        project_name: fitnessapi
+        files:
+          - docker-compose.yml
+        state: present
+        build: always
+        pull: missing
+        recreate: auto
+        remove_orphans: false
+        remove_volumes: false
+        wait: true
+        wait_timeout: 1200
+      environment:
+        COMPOSE_PARALLEL_LIMIT: '1'
+      no_log: true
+
+    - name: Установить конфигурацию Nginx
+      ansible.builtin.copy:
+        remote_src: true
+        src: "{{ fitness_app_dir }}/nginx.conf"
+        dest: /etc/nginx/sites-available/fitnessapi
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Перезагрузить Nginx
+
+    - name: Включить сайт FitnessAPI в Nginx
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/fitnessapi
+        dest: /etc/nginx/sites-enabled/fitnessapi
+        state: link
+      notify: Перезагрузить Nginx
+
+    - name: Отключить стандартный сайт Nginx
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Перезагрузить Nginx
+
+    - name: Проверить конфигурацию Nginx
+      ansible.builtin.command:
+        argv: [nginx, -t]
+      changed_when: false
+
+    - name: Применить конфигурацию Nginx
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить Swagger UI
+      ansible.builtin.uri:
+        url: http://127.0.0.1/api/v1/swagger-ui/index.html
+        status_code: 200
+        use_proxy: false
+      register: fitness_swagger_check
+      until: fitness_swagger_check.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Показать состояние контейнеров
+      ansible.builtin.command:
+        argv: [docker, compose, --project-name, fitnessapi, ps]
+        chdir: "{{ fitness_app_dir }}"
+      register: fitness_compose_status
+      changed_when: false
+
+    - name: Вывести адрес приложения и контейнеры
+      ansible.builtin.debug:
+        msg:
+          - "Swagger UI: http://{{ ansible_host | default(inventory_hostname) }}/api/v1/swagger-ui/index.html"
+          - "{{ fitness_compose_status.stdout_lines }}"
+
+  handlers:
+    - name: Перезагрузить Nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
