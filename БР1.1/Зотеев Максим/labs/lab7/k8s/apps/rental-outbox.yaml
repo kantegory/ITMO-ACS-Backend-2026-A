@@ -1,0 +1,109 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rental-outbox
+  namespace: rental-lab7
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rental-outbox
+  template:
+    metadata:
+      labels:
+        app: rental-outbox
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+      - name: install
+        image: node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+        workingDir: "/app"
+        command:
+        - sh
+        - "-ec"
+        - tar -xzf /bundle/application.tgz -C /app && npm ci --omit=dev --ignore-scripts --no-fund --no-audit
+        env:
+        - name: NPM_CONFIG_CACHE
+          value: "/tmp/npm-cache"
+        volumeMounts:
+        - name: app
+          mountPath: "/app"
+          readOnly: false
+        - name: bundle
+          mountPath: "/bundle"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 512Mi
+      containers:
+      - name: rental-outbox
+        image: node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+        workingDir: "/app"
+        command:
+        - node
+        - "/app/services/rental-service/outbox/relay.cjs"
+        envFrom:
+        - configMapRef:
+            name: database
+        - secretRef:
+            name: db-rental
+        - secretRef:
+            name: broker-client
+        env:
+        - name: DB_CA_FILE
+          value: "/ca/pg-ca.pem"
+        - name: NODE_EXTRA_CA_CERTS
+          value: "/ca/rabbit-ca.pem"
+        - name: DB_SYNCHRONIZE
+          value: 'false'
+        volumeMounts:
+        - name: app
+          mountPath: "/app"
+          readOnly: true
+        - name: ca
+          mountPath: "/ca"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 600m
+            memory: 300Mi
+      volumes:
+      - name: app
+        emptyDir: {}
+      - name: bundle
+        configMap:
+          name: application
+      - name: ca
+        configMap:
+          name: ca
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: rental-outbox
+            topologyKey: kubernetes.io/hostname
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rental-outbox
+  namespace: rental-lab7
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: rental-outbox

@@ -1,0 +1,426 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: rental-lab7
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dns-and-package-download
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - identity-service
+      - property-service
+      - rental-service
+      - messaging-service
+      - api-gateway
+      - initialize
+      - rental-outbox
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 169.254.0.0/16
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-services
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - identity-service
+      - property-service
+      - rental-service
+      - messaging-service
+      - rental-outbox
+      - initialize
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 100.64.0.0/10
+    ports:
+    - protocol: TCP
+      port: ${DB_PORT}
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - rabbit
+    ports:
+    - protocol: TCP
+      port: 5671
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-bootstrap
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - pg-roles
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 100.64.0.0/10
+    ports:
+    - protocol: TCP
+      port: ${DB_PORT}
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbit
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - rabbit
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - identity-service
+          - property-service
+          - rental-service
+          - messaging-service
+          - initialize
+          - rental-outbox
+    ports:
+    - protocol: TCP
+      port: 5671
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - rabbit
+    ports:
+    - protocol: TCP
+      port: 4369
+    - protocol: TCP
+      port: 25672
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - prometheus
+    ports:
+    - protocol: TCP
+      port: 15692
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - rabbit
+    ports:
+    - protocol: TCP
+      port: 4369
+    - protocol: TCP
+      port: 25672
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - api-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - identity-service
+          - property-service
+          - rental-service
+          - messaging-service
+    ports:
+    - protocol: TCP
+      port: 3001
+    - protocol: TCP
+      port: 3002
+    - protocol: TCP
+      port: 3003
+    - protocol: TCP
+      port: 3004
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: identity-service
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - identity-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - api-gateway
+          - rental-service
+          - messaging-service
+          - blackbox
+    ports:
+    - protocol: TCP
+      port: 3001
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: property-service
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - property-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - api-gateway
+          - rental-service
+          - blackbox
+    ports:
+    - protocol: TCP
+      port: 3002
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rental-service
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - rental-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - api-gateway
+          - messaging-service
+          - blackbox
+    ports:
+    - protocol: TCP
+      port: 3003
+  egress:
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - identity-service
+    ports:
+    - protocol: TCP
+      port: 3001
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - property-service
+    ports:
+    - protocol: TCP
+      port: 3002
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: messaging-service
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - messaging-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - api-gateway
+          - blackbox
+    ports:
+    - protocol: TCP
+      port: 3004
+  egress:
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - identity-service
+    ports:
+    - protocol: TCP
+      port: 3001
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - rental-service
+    ports:
+    - protocol: TCP
+      port: 3003

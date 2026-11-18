@@ -1,3 +1,4 @@
+import { restartOnBrokerDisconnect } from "@rental/shared";
 import amqplib, { Channel, ChannelModel, ConsumeMessage } from "amqplib";
 import { config } from "../config";
 import { AppDataSource } from "../data-source";
@@ -25,7 +26,7 @@ const SYSTEM_TEXT: Record<string, (e: RentalEvent) => string> = {
   "rental.cancelled": () => "Сделка отменена.",
 };
 
-const handleEvent = async (routingKey: string, raw: string) => {
+const handleEvent = async (routingKey: string, raw: string, eventId?: string) => {
   const tpl = SYSTEM_TEXT[routingKey];
   if (!tpl) return;
   let payload: RentalEvent;
@@ -36,14 +37,13 @@ const handleEvent = async (routingKey: string, raw: string) => {
     return;
   }
   const repo = AppDataSource.getRepository(Message);
-  await repo.save(
-    repo.create({
-      rentalId: payload.rental_id,
-      senderId: null,
-      kind: "system",
-      body: tpl(payload),
-    })
-  );
+  await repo.createQueryBuilder().insert().values({
+    rentalId: payload.rental_id,
+    senderId: null,
+    kind: "system",
+    body: tpl(payload),
+    eventId: eventId ?? null,
+  }).orIgnore().execute();
 };
 
 export const connectRabbit = async () => {
@@ -51,19 +51,23 @@ export const connectRabbit = async () => {
     try {
       connection = await amqplib.connect(config.rabbitmqUrl);
       channel = await connection.createChannel();
+      restartOnBrokerDisconnect(connection, channel);
       await channel.assertExchange(EXCHANGE, "topic", { durable: true });
       await channel.assertQueue(QUEUE, { durable: true });
       await channel.bindQueue(QUEUE, EXCHANGE, "rental.*");
 
+      await channel.prefetch(8);
       await channel.consume(QUEUE, async (msg: ConsumeMessage | null) => {
         if (!msg) return;
         try {
-          await handleEvent(msg.fields.routingKey, msg.content.toString());
+          await handleEvent(msg.fields.routingKey, msg.content.toString(), msg.properties.messageId);
           channel!.ack(msg);
         } catch (e) {
           console.error("Ошибка обработки сообщения:", e);
-          // Безопасно не зацикливаем: отбрасываем сообщение.
-          channel!.nack(msg, false, false);
+          const attempts = Number(msg.properties.headers?.["x-delivery-count"] ?? 0);
+          const retry = process.env.RABBIT_QUORUM === "true" && attempts < 3;
+          if (retry) await new Promise((resolve) => setTimeout(resolve, 500 * (attempts + 1)));
+          channel!.nack(msg, false, retry);
         }
       });
 

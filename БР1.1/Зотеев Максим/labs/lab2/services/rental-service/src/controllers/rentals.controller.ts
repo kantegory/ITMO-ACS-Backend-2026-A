@@ -51,22 +51,22 @@ export const createRental = async (req: Request, res: Response) => {
     endDate: end_date ?? null,
     status: "active",
   });
-  await rentalsRepo().save(rental);
-
-  try {
-    await propertyClient.updateAvailability(propertyId, {
-      is_available: false,
-      expected_available: true,
-      reason: "rental_created",
-      rental_id: String(rental.id),
-    });
-  } catch (e) {
-    await rentalsRepo().remove(rental);
-    if (e instanceof HttpError && e.status === 409) {
-      throw conflict("Объект уже арендуется кем-то другим", "property_taken");
+  await AppDataSource.transaction(async (manager) => {
+    await manager.save(rental);
+    try {
+      await propertyClient.updateAvailability(propertyId, {
+        is_available: false,
+        expected_available: true,
+        reason: "rental_created",
+        rental_id: String(rental.id),
+      });
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 409) {
+        throw conflict("Объект уже арендуется кем-то другим", "property_taken");
+      }
+      throw error;
     }
-    throw e;
-  }
+  });
 
   publishEvent("rental.created", {
     rental_id: String(rental.id),

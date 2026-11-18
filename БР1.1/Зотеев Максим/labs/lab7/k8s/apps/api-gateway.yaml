@@ -1,0 +1,141 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: rental-lab7
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+      - name: install
+        image: node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+        workingDir: "/app"
+        command:
+        - sh
+        - "-ec"
+        - tar -xzf /bundle/application.tgz -C /app && npm ci --omit=dev --ignore-scripts --no-fund --no-audit
+        env:
+        - name: NPM_CONFIG_CACHE
+          value: "/tmp/npm-cache"
+        volumeMounts:
+        - name: app
+          mountPath: "/app"
+          readOnly: false
+        - name: bundle
+          mountPath: "/bundle"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 512Mi
+      containers:
+      - name: api-gateway
+        image: node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+        workingDir: "/app"
+        command:
+        - node
+        - "/app/services/api-gateway/dist/index.js"
+        envFrom: []
+        env:
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity-service:3001
+        - name: PROPERTY_SERVICE_URL
+          value: http://property-service:3002
+        - name: RENTAL_SERVICE_URL
+          value: http://rental-service:3003
+        - name: MESSAGING_SERVICE_URL
+          value: http://messaging-service:3004
+        volumeMounts:
+        - name: app
+          mountPath: "/app"
+          readOnly: true
+        - name: ca
+          mountPath: "/ca"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 600m
+            memory: 300Mi
+        ports:
+        - name: http
+          containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+        startupProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          failureThreshold: 45
+      volumes:
+      - name: app
+        emptyDir: {}
+      - name: bundle
+        configMap:
+          name: application
+      - name: ca
+        configMap:
+          name: ca
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: api-gateway
+            topologyKey: kubernetes.io/hostname
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway
+  namespace: rental-lab7
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: rental-lab7
+spec:
+  selector:
+    app: api-gateway
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http

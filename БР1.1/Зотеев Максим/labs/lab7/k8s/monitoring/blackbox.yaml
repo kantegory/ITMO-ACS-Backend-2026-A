@@ -1,0 +1,114 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox
+  namespace: rental-lab7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blackbox
+  template:
+    metadata:
+      labels:
+        app: blackbox
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: blackbox
+        image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
+        ports:
+        - containerPort: 9115
+        volumeMounts: []
+        readinessProbe:
+          tcpSocket:
+            port: 9115
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 35m
+            memory: 64Mi
+          limits:
+            cpu: 600m
+            memory: 384Mi
+      volumes: []
+      securityContext:
+        fsGroup: 65534
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox
+  namespace: rental-lab7
+spec:
+  selector:
+    app: blackbox
+  ports:
+  - port: 9115
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: blackbox
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - blackbox
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - prometheus
+    ports:
+    - protocol: TCP
+      port: 9115
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - identity-service
+          - property-service
+          - rental-service
+          - messaging-service
+          - api-gateway
+    ports:
+    - protocol: TCP
+      port: 3001
+    - protocol: TCP
+      port: 3002
+    - protocol: TCP
+      port: 3003
+    - protocol: TCP
+      port: 3004
+    - protocol: TCP
+      port: 8080

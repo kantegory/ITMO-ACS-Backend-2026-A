@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { databaseOptions } from "@rental/shared";
 import { DataSource } from "typeorm";
 import { config } from "./config";
 import { PropertyType } from "./entities/PropertyType";
@@ -14,7 +15,7 @@ export const AppDataSource = new DataSource({
   username: config.db.user,
   password: config.db.password,
   database: config.db.name,
-  synchronize: true,
+  ...databaseOptions(),
   logging: false,
   entities: [PropertyType, Location, Property, PropertyPhoto, Amenity],
 });

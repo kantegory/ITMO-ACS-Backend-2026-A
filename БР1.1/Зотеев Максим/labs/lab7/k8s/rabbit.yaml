@@ -1,0 +1,117 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rental-lab7-delete
+provisioner: storage.csi.upcloud.com
+parameters: {tier: standard}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: rabbit-config, namespace: rental-lab7}
+data:
+  rabbitmq.conf: |
+    cluster_formation.peer_discovery_backend = classic_config
+    cluster_formation.classic_config.nodes.1 = rabbit@rabbit-0.rabbit-peer.rental-lab7.svc.cluster.local
+    cluster_formation.classic_config.nodes.2 = rabbit@rabbit-1.rabbit-peer.rental-lab7.svc.cluster.local
+    cluster_formation.classic_config.nodes.3 = rabbit@rabbit-2.rabbit-peer.rental-lab7.svc.cluster.local
+    default_queue_type = quorum
+    listeners.tcp = none
+    listeners.ssl.default = 5671
+    ssl_options.certfile = /tls/tls.crt
+    ssl_options.keyfile = /tls/tls.key
+    ssl_options.cacertfile = /tls/ca.crt
+    ssl_options.verify = verify_none
+    ssl_options.fail_if_no_peer_cert = false
+    vm_memory_high_watermark.absolute = 420MiB
+    disk_free_limit.absolute = 250MB
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus].
+---
+apiVersion: v1
+kind: Service
+metadata: {name: rabbit-peer, namespace: rental-lab7}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: rabbit}
+  ports:
+    - {name: epmd, port: 4369}
+    - {name: dist, port: 25672}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: rabbit, namespace: rental-lab7}
+spec:
+  selector: {app: rabbit}
+  ports:
+    - {name: amqps, port: 5671}
+    - {name: metrics, port: 15692}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: rabbit, namespace: rental-lab7}
+spec:
+  serviceName: rabbit-peer
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector: {matchLabels: {app: rabbit}}
+  template:
+    metadata: {labels: {app: rabbit}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsUser: 999, runAsGroup: 999, fsGroup: 999}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app: rabbit}}
+      initContainers:
+        - name: cookie
+          image: &image rabbitmq:4.2-management@sha256:7fa20d0d23d63ed90499bbf62e24af48ec4ae5eb22d173f3db96e3f85b26884a
+          command: [sh, -ec, 'umask 077; install -m 400 /cookie/value /var/lib/rabbitmq/.erlang.cookie']
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/rabbitmq}
+            - {name: cookie, mountPath: /cookie, readOnly: true}
+      containers:
+        - name: rabbit
+          image: *image
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: RABBITMQ_USE_LONGNAME, value: "true"}
+            - {name: RABBITMQ_NODENAME, value: 'rabbit@$(POD_NAME).rabbit-peer.rental-lab7.svc.cluster.local'}
+            - {name: RABBITMQ_DEFAULT_USER, value: rental}
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: {secretKeyRef: {name: rabbit-password, key: password}}
+            - {name: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS, value: '+S 2:2'}
+          startupProbe:
+            tcpSocket: {port: 5671}
+            periodSeconds: 5
+            failureThreshold: 72
+          readinessProbe: {tcpSocket: {port: 5671}, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: 5671}, periodSeconds: 15, failureThreshold: 5}
+          resources:
+            requests: {cpu: 150m, memory: 320Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/rabbitmq}
+            - {name: config, mountPath: /etc/rabbitmq/conf.d/90-rental.conf, subPath: rabbitmq.conf, readOnly: true}
+            - {name: config, mountPath: /etc/rabbitmq/enabled_plugins, subPath: enabled_plugins, readOnly: true}
+            - {name: tls, mountPath: /tls, readOnly: true}
+      volumes:
+        - {name: config, configMap: {name: rabbit-config}}
+        - {name: tls, secret: {secretName: rabbit-tls, defaultMode: 0440}}
+        - {name: cookie, secret: {secretName: rabbit-cookie, defaultMode: 0440}}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: rental-lab7-delete
+        resources: {requests: {storage: 10Gi}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: rabbit, namespace: rental-lab7}
+spec: {minAvailable: 2, selector: {matchLabels: {app: rabbit}}}

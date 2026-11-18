@@ -19,6 +19,9 @@ export class Message {
   @Column({ type: "varchar", length: 16, default: "user" })
   kind: MessageKind;
 
+  @Column({ name: "event_id", type: "uuid", nullable: true, unique: true })
+  eventId: string | null;
+
   @Column({ type: "text" })
   body: string;
 

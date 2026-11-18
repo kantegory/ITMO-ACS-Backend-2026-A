@@ -1,0 +1,129 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: rental-lab7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: grafana
+        image: grafana/grafana:12.3.0@sha256:70d9599b186ce287be0d2c5ba9a78acb2e86c1a68c9c41449454d0fc3eeb84e8
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - name: grafana-settings
+          mountPath: "/etc/grafana/provisioning/datasources/sources.yaml"
+          subPath: sources.yaml
+          readOnly: true
+        - name: grafana-settings
+          mountPath: "/etc/grafana/provisioning/dashboards/providers.yaml"
+          subPath: providers.yaml
+          readOnly: true
+        - name: grafana-settings
+          mountPath: "/dashboards/rental.json"
+          subPath: rental.json
+          readOnly: true
+        - name: storage
+          mountPath: "/var/lib/grafana"
+        readinessProbe:
+          tcpSocket:
+            port: 3000
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 35m
+            memory: 64Mi
+          limits:
+            cpu: 600m
+            memory: 384Mi
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-auth
+              key: password
+        - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+          value: 'false'
+      volumes:
+      - name: grafana-settings
+        configMap:
+          name: grafana-settings
+      - name: storage
+        emptyDir: {}
+      securityContext:
+        fsGroup: 65534
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: rental-lab7
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - grafana
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - prometheus
+    ports:
+    - protocol: TCP
+      port: 9090
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - loki
+    ports:
+    - protocol: TCP
+      port: 3100

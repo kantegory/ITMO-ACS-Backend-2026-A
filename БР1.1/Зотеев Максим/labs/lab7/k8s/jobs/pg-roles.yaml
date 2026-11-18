@@ -1,0 +1,60 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-roles
+  namespace: rental-lab7
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app: pg-roles
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: roles
+        image: postgres:16-alpine@sha256:81e77a4833487b8132fe4b00bedd39dc3f74b8641e387f19312a48f7de218c2e
+        command:
+        - sh
+        - "/scripts/postgres-roles.sh"
+        volumeMounts:
+        - name: scripts
+          mountPath: "/scripts"
+          readOnly: true
+        - name: ca
+          mountPath: "/ca"
+          readOnly: true
+        - name: roles
+          mountPath: "/roles"
+          readOnly: true
+        envFrom:
+        - secretRef:
+            name: pg-bootstrap
+        env:
+        - name: PGHOST
+          valueFrom:
+            configMapKeyRef:
+              name: database
+              key: DB_HOST
+        - name: PGPORT
+          valueFrom:
+            configMapKeyRef:
+              name: database
+              key: DB_PORT
+        - name: PGSSLMODE
+          value: verify-full
+        - name: PGSSLROOTCERT
+          value: "/ca/pg-ca.pem"
+      volumes:
+      - name: roles
+        secret:
+          secretName: pg-roles
+      - name: ca
+        configMap:
+          name: ca
+      - name: scripts
+        configMap:
+          name: cloud-scripts
+      restartPolicy: Never

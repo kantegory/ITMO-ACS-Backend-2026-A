@@ -1,3 +1,4 @@
+import { restartOnBrokerDisconnect } from "@rental/shared";
 import amqplib, { Channel, ChannelModel } from "amqplib";
 import { config } from "./config";
 
@@ -11,6 +12,7 @@ export const connectRabbit = async () => {
     try {
       connection = await amqplib.connect(config.rabbitmqUrl);
       channel = await connection.createChannel();
+      restartOnBrokerDisconnect(connection, channel);
       await channel.assertExchange(EXCHANGE, "topic", { durable: true });
       console.log("RabbitMQ connected");
       return;
