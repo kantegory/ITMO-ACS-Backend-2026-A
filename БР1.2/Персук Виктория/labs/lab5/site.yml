@@ -1,0 +1,25 @@
+- name: Configure application servers
+  hosts: app_servers
+  become: true
+
+  pre_tasks:
+  - name: Sync system clock before apt
+    ansible.builtin.shell: timedatectl set-ntp true && systemctl restart systemd-timesyncd && sleep 5
+    changed_when: false
+
+  roles:
+    - common
+    - docker
+    - nginx
+    - app
+
+  post_tasks:
+    - name: Check application through Nginx
+      ansible.builtin.uri:
+        url: http://localhost/health
+        return_content: true
+      register: health
+
+    - name: Show health response
+      ansible.builtin.debug:
+        var: health.json
