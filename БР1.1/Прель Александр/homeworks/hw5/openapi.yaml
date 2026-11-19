@@ -1,0 +1,158 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking - дополнение ДЗ5
+  version: 1.0.0
+  description: >-
+    Уведомления доступны через Gateway только при MESSAGING_ENABLED=true.
+    Остальные публичные методы описаны в ../hw2/dz2.yaml.
+servers:
+  - url: http://127.0.0.1:8084
+    description: Фактический локальный Gateway ДЗ5; порт задаётся конфигурацией
+paths:
+  /notifications/me:
+    get:
+      summary: Получить уведомления текущего пользователя
+      description: >-
+        Сортировка occurredAt DESC, receivedAt DESC, eventId ASC.
+        Доставка асинхронна: сразу после создания брони список может быть пуст.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: Только уведомления владельца JWT, включая пустой список
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  pagination:
+                    type: object
+                    required: [page, limit, totalItems, totalPages]
+                    properties:
+                      page: { type: integer, minimum: 1 }
+                      limit: { type: integer, minimum: 1, maximum: 100 }
+                      totalItems: { type: integer, minimum: 0 }
+                      totalPages: { type: integer, minimum: 0 }
+              example:
+                items:
+                  - eventId: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                    userId: 2
+                    reservationId: 1
+                    type: reservation.created
+                    message: Бронирование №1 в La Piazza создано.
+                    occurredAt: '2032-01-01T12:00:00.000Z'
+                    receivedAt: '2032-01-01T12:00:00.150Z'
+                pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 }
+        '400': { $ref: '#/components/responses/InvalidPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+        '504': { $ref: '#/components/responses/Timeout' }
+  /ready:
+    get:
+      summary: Готовность Gateway, четырёх сервисов и AMQP-соединений
+      responses:
+        '200':
+          description: Все сервисы и соединения с RabbitMQ доступны
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+        '503':
+          description: Хотя бы один сервис или соединение с RabbitMQ недоступно
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+  /internal/messaging/status:
+    servers:
+      - url: http://127.0.0.1:8087
+        description: Только Bookings напрямую; Gateway этот путь не публикует
+    get:
+      summary: Диагностика журнала отправки Bookings
+      security:
+        - serviceKey: []
+      responses:
+        '200':
+          description: Наличие worker, соединение с брокером и число неопубликованных записей
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, brokerConnected, pending]
+                properties:
+                  enabled: { type: boolean }
+                  brokerConnected: { type: boolean }
+                  pending: { type: integer, minimum: 0 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    serviceKey: { type: apiKey, in: header, name: X-Service-Key }
+  schemas:
+    Notification:
+      type: object
+      required: [eventId, userId, reservationId, type, message, occurredAt, receivedAt]
+      properties:
+        eventId: { type: string, pattern: '^[a-f0-9]{32}$' }
+        userId: { type: integer, minimum: 1 }
+        reservationId: { type: integer, minimum: 1 }
+        type: { type: string, enum: [reservation.created, reservation.cancelled] }
+        message: { type: string }
+        occurredAt: { type: string, format: date-time }
+        receivedAt: { type: string, format: date-time }
+    Readiness:
+      type: object
+      required: [status, services]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        services:
+          type: object
+          required: [accounts, catalog, bookings, notifications]
+          additionalProperties: { type: string, enum: [ok, unavailable] }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+  responses:
+    InvalidPage:
+      description: Некорректная пагинация, BAD_REQUEST
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Нет действительного JWT или сервисного ключа, UNAUTHORIZED
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Accounts или Notifications недоступен, SERVICE_UNAVAILABLE
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Timeout:
+      description: Истёк межсервисный HTTP-таймаут, GATEWAY_TIMEOUT
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: Непредвиденная ошибка, INTERNAL_SERVER_ERROR
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
