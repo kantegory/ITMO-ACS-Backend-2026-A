@@ -1,0 +1,1550 @@
+openapi: 3.0.1
+info:
+  title: ITMO ACS Backend API
+  description: |
+    Микросервисная платформа для аренды жилья.
+    
+    ## Архитектура
+    - **API Gateway** - единая точка входа (порт 8080)
+    - **Auth Service** - аутентификация и пользователи
+    - **Property Service** - управление объявлениями
+    - **Booking Service** - бронирования
+    - **Payment Service** - платежи
+    - **Chat Service** - чаты
+    - **Reviews Service** - отзывы и рейтинги
+    
+    ## Аутентификация
+    Используется JWT Bearer токен. После логина/регистрации вы получаете `accessToken`.
+    Добавьте его в заголовок: `Authorization: Bearer <token>`
+  version: 1.0.0
+  contact:
+    name: ITMO ACS Backend Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный Gateway (development)
+  - url: https://api.itmo-acs.ru/api/v1
+    description: Production сервер
+
+tags:
+  - name: Authentication
+    description: Регистрация, логин, работа с JWT
+  - name: Users
+    description: Управление профилем пользователя
+  - name: Properties
+    description: Объявления (поиск, фильтры, создание, редактирование)
+  - name: Bookings
+    description: Бронирование жилья
+  - name: Payments
+    description: Оплата бронирований
+  - name: Chats
+    description: Обмен сообщениями между пользователями
+  - name: Reviews
+    description: Отзывы и рейтинг объявлений
+  - name: Admin
+    description: Административные функции
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Вставьте ваш JWT токен в формате "Bearer <token>"
+
+  schemas:
+    # ========== COMMON ==========
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Property not found"
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 404
+
+    PageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+        totalPages:
+          type: integer
+        totalElements:
+          type: integer
+        size:
+          type: integer
+        number:
+          type: integer
+        last:
+          type: boolean
+        first:
+          type: boolean
+        empty:
+          type: boolean
+
+    # ========== AUTH SCHEMAS ==========
+    AuthRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "john_doe"
+        password:
+          type: string
+          format: password
+          minLength: 6
+          example: "securePass123"
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token (15 минут)
+          example: "eyJhbGciOiJIUzUxMiJ9..."
+        refreshToken:
+          type: string
+          description: JWT refresh token (7 дней)
+          example: "eyJhbGciOiJIUzUxMiJ9..."
+
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 6
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+
+    LogoutRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+
+    # ========== USER SCHEMAS ==========
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        role:
+          type: string
+          enum: [USER, ADMIN]
+        isRenter:
+          type: boolean
+        isLandlord:
+          type: boolean
+        username:
+          type: string
+        email:
+          type: string
+        phoneNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        patronymic:
+          type: string
+
+    UserShortResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+        phoneNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        patronymic:
+          type: string
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        patronymic:
+          type: string
+        phoneNumber:
+          type: string
+          pattern: '^\+?[0-9. ()-]{7,25}$'
+        email:
+          type: string
+          format: email
+
+    # ========== PROPERTY SCHEMAS ==========
+    PropertyResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+        square:
+          type: number
+          format: float
+        type:
+          type: string
+        country:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        street:
+          type: string
+        postalCode:
+          type: string
+        nearestSubway:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        available:
+          type: boolean
+        mainImage:
+          type: string
+          format: uri
+        owner:
+          $ref: '#/components/schemas/UserShortResponse'
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageResponse'
+        amenities:
+          type: array
+          items:
+            type: string
+        avgRating:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+
+    CreatePropertyRequest:
+      type: object
+      required:
+        - title
+        - price
+        - square
+        - type
+        - country
+        - region
+        - city
+        - street
+        - postalCode
+        - mainImage
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+          minimum: 0
+        square:
+          type: number
+          format: float
+          minimum: 0
+        type:
+          type: string
+        country:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        street:
+          type: string
+        postalCode:
+          type: string
+        nearestSubway:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        available:
+          type: boolean
+        mainImage:
+          type: string
+          format: uri
+        amenities:
+          type: array
+          items:
+            type: string
+        imageUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    UpdatePropertyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+        square:
+          type: number
+          format: float
+        type:
+          type: string
+        country:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        street:
+          type: string
+        postalCode:
+          type: string
+        nearestSubway:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        available:
+          type: boolean
+        mainImage:
+          type: string
+        amenities:
+          type: array
+          items:
+            type: string
+
+    PropertyFilterRequest:
+      type: object
+      properties:
+        available:
+          type: boolean
+          default: true
+        type:
+          type: string
+        country:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        nearestSubway:
+          type: string
+        minPrice:
+          type: number
+          format: float
+        maxPrice:
+          type: number
+          format: float
+        minSquare:
+          type: number
+          format: float
+        maxSquare:
+          type: number
+          format: float
+        keyword:
+          type: string
+
+    ImageResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+
+    UpdatePropertyImage:
+      type: object
+      properties:
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    # ========== BOOKING SCHEMAS ==========
+    BookingResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        renterId:
+          type: integer
+          format: int64
+        propertyId:
+          type: integer
+          format: int64
+        paymentInfo:
+          $ref: '#/components/schemas/PaymentResponse'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CANCELLED, COMPLETED, REJECTED]
+        totalPrice:
+          type: number
+          format: double
+        guestsCount:
+          type: integer
+        details:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    BookingCreateRequest:
+      type: object
+      required:
+        - startDate
+        - endDate
+        - totalPrice
+        - guestsCount
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        totalPrice:
+          type: number
+          format: double
+        guestsCount:
+          type: integer
+          minimum: 1
+        details:
+          type: string
+
+    # ========== PAYMENT SCHEMAS ==========
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          format: double
+        payedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, REJECTED, APPROVED]
+
+    # ========== CHAT SCHEMAS ==========
+    ChatResponse:
+      type: object
+      properties:
+        chatId:
+          type: integer
+          format: int64
+        otherUserId:
+          type: integer
+          format: int64
+        otherUserName:
+          type: string
+        lastMessage:
+          type: string
+        lastMessageTime:
+          type: string
+          format: date-time
+
+    ChatCreateRequest:
+      type: object
+      required:
+        - user_toChat
+      properties:
+        user_toChat:
+          type: integer
+          format: int64
+          description: ID пользователя, с которым хотите начать чат
+
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        senderId:
+          type: integer
+          format: int64
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SendMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    # ========== REVIEW SCHEMAS ==========
+    ReviewResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        propertyId:
+          type: integer
+          format: int64
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewCreateRequest:
+      type: object
+      required:
+        - rating
+        - comment
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 1
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ==================== AUTH SERVICE ====================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Регистрация нового пользователя
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Ошибка валидации или пользователь уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Вход в систему
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные учетные данные
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Обновление access token
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Новый access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '401':
+          description: Невалидный refresh token
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Выход из системы
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          description: Успешный выход
+
+  # ==================== USER SERVICE ====================
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Получить свой профиль
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Не авторизован
+
+    patch:
+      tags:
+        - Users
+      summary: Обновить свой профиль
+      operationId: updateCurrentUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Ошибка валидации
+        '409':
+          description: Email уже существует
+
+  /users/me/{user_id}:
+    get:
+      tags:
+        - Users
+      summary: Получить публичную информацию о пользователе
+      operationId: getUserById
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserShortResponse'
+        '404':
+          description: Пользователь не найден
+
+  # ==================== PROPERTY SERVICE ====================
+  /properties:
+    get:
+      tags:
+        - Properties
+      summary: Получить список всех объявлений
+      operationId: getAllProperties
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageResponse'
+
+    post:
+      tags:
+        - Properties
+      summary: Создать новое объявление (только для арендодателей)
+      operationId: createProperty
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyRequest'
+      responses:
+        '201':
+          description: Объявление создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyResponse'
+        '403':
+          description: Только арендодатели могут создавать объявления
+
+  /properties/filter:
+    get:
+      tags:
+        - Properties
+      summary: Фильтрация объявлений
+      operationId: filterProperties
+      security: []
+      parameters:
+        - name: available
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: city
+          in: query
+          schema:
+            type: string
+        - name: nearestSubway
+          in: query
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: float
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: float
+        - name: minSquare
+          in: query
+          schema:
+            type: number
+            format: float
+        - name: maxSquare
+          in: query
+          schema:
+            type: number
+            format: float
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageResponse'
+
+  /properties/{id}:
+    get:
+      tags:
+        - Properties
+      summary: Получить объявление по ID
+      operationId: getPropertyById
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyResponse'
+        '404':
+          description: Объявление не найдено
+
+    put:
+      tags:
+        - Properties
+      summary: Обновить объявление (только владелец)
+      operationId: updateProperty
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyRequest'
+      responses:
+        '200':
+          description: Объявление обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyResponse'
+        '403':
+          description: Не владелец объявления
+
+    delete:
+      tags:
+        - Properties
+      summary: Удалить объявление (только владелец или админ)
+      operationId: deleteProperty
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Объявление удалено
+        '403':
+          description: Не владелец
+
+  /properties/{id}/images:
+    put:
+      tags:
+        - Properties
+      summary: Добавить изображения к объявлению
+      operationId: uploadImage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyImage'
+      responses:
+        '200':
+          description: Изображения добавлены
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ImageResponse'
+
+  /properties/{propertyId}/images/{imageId}:
+    delete:
+      tags:
+        - Properties
+      summary: Удалить изображение из объявления
+      operationId: deleteImage
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Изображение удалено
+
+  /properties/{property_id}/is_exists:
+    get:
+      tags:
+        - Properties
+      summary: Проверить существование объявления (внутренний эндпоинт)
+      operationId: isPropertyExists
+      parameters:
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Существует или нет
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /properties/{property_id}/owner:
+    get:
+      tags:
+        - Properties
+      summary: Получить ID владельца объявления (внутренний эндпоинт)
+      operationId: getOwnerId
+      parameters:
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: ID владельца
+          content:
+            application/json:
+              schema:
+                type: integer
+                format: int64
+
+  # ==================== BOOKING SERVICE ====================
+  /properties/{propertyId}/bookings:
+    get:
+      tags:
+        - Bookings
+      summary: Получить все бронирования объявления (только владелец)
+      operationId: getAllBookings
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageResponse'
+        '403':
+          description: Только владелец
+
+    post:
+      tags:
+        - Bookings
+      summary: Создать бронирование (только арендатор)
+      operationId: createBooking
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+      responses:
+        '200':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Только арендаторы
+        '409':
+          description: Даты заняты
+
+  /properties/{propertyId}/bookings/{id}:
+    get:
+      tags:
+        - Bookings
+      summary: Получить детали бронирования
+      operationId: getBooking
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Не участник бронирования
+        '404':
+          description: Бронирование не найдено
+
+  /properties/{propertyId}/bookings/{id}/cancel:
+    patch:
+      tags:
+        - Bookings
+      summary: Отменить бронирование (только арендатор)
+      operationId: cancelBooking
+      parameters:
+        - name: propertyId
+          in: path
+          required: false
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование отменено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Только арендатор
+
+  /properties/{propertyId}/bookings/{id}/confirm:
+    patch:
+      tags:
+        - Bookings
+      summary: Подтвердить бронирование (только владелец)
+      operationId: confirmBooking
+      parameters:
+        - name: propertyId
+          in: path
+          required: false
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование подтверждено, создан платёж
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Только владелец
+
+  /properties/{propertyId}/bookings/{id}/reject:
+    patch:
+      tags:
+        - Bookings
+      summary: Отклонить бронирование (только владелец)
+      operationId: rejectBooking
+      parameters:
+        - name: propertyId
+          in: path
+          required: false
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование отклонено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Только владелец
+
+  /properties/{propertyId}/bookings/{id}/complete:
+    patch:
+      tags:
+        - Bookings
+      summary: Завершить бронирование (только владелец, после даты окончания)
+      operationId: completeBooking
+      parameters:
+        - name: propertyId
+          in: path
+          required: false
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование завершено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '403':
+          description: Нельзя завершить раньше даты окончания
+
+  # ==================== PAYMENT SERVICE ====================
+  /properties/{propertyId}/bookings/{bookingId}/payments:
+    post:
+      tags:
+        - Payments
+      summary: Создать платёж для бронирования (внутренний эндпоинт)
+      operationId: createPayment
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Платёж создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+
+  /properties/{propertyId}/bookings/{bookingId}/payments/{id}:
+    get:
+      tags:
+        - Payments
+      summary: Получить информацию о платеже
+      operationId: getPayment
+      parameters:
+        - name: propertyId
+          in: path
+          required: false
+          schema:
+            type: integer
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '403':
+          description: Не участник бронирования
+
+  /properties/{propertyId}/bookings/{bookingId}/payments/{id}/pay:
+    post:
+      tags:
+        - Payments
+      summary: Оплатить бронирование (только арендатор)
+      operationId: payPayment
+      parameters:
+        - name: propertyId
+          in: path
+          required: false
+          schema:
+            type: integer
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Оплата прошла успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '403':
+          description: Только арендатор
+
+  # ==================== CHAT SERVICE ====================
+  /chats:
+    get:
+      tags:
+        - Chats
+      summary: Получить список чатов пользователя
+      operationId: getChats
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageResponse'
+
+  /chats/new:
+    post:
+      tags:
+        - Chats
+      summary: Создать новый чат
+      operationId: createChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCreateRequest'
+      responses:
+        '200':
+          description: Чат создан или уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Нельзя создать чат с самим собой
+        '404':
+          description: Пользователь не найден
+
+  /chats/{chatId}:
+    get:
+      tags:
+        - Chats
+      summary: Получить сообщения в чате
+      operationId: getMessages
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageResponse'
+        '403':
+          description: Не участник чата
+
+    post:
+      tags:
+        - Chats
+      summary: Отправить сообщение в чат
+      operationId: sendMessage
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '403':
+          description: Не участник чата
+
+  # ==================== REVIEWS SERVICE ====================
+  /properties/{propertyId}/reviews:
+    get:
+      tags:
+        - Reviews
+      summary: Получить все отзывы об объявлении
+      operationId: getAllReviews
+      security: []
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageResponse'
+
+    post:
+      tags:
+        - Reviews
+      summary: Оставить отзыв (только после завершённого бронирования)
+      operationId: createReview
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+      responses:
+        '200':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '403':
+          description: Только после завершённого бронирования
+
+  /properties/{propertyId}/reviews/{id}:
+    delete:
+      tags:
+        - Reviews
+      summary: Удалить отзыв (только автор или админ)
+      operationId: deleteReview
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Отзыв удалён
+        '403':
+          description: Не автор или не админ
