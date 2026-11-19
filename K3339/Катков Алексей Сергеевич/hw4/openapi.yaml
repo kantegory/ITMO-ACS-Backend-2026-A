@@ -1,0 +1,525 @@
+openapi: 3.0.3
+info:
+  title: Recipe Microservices Internal API
+  description: |
+    Спецификация эндпоинтов для межсервисного взаимодействия
+    в микросервисной архитектуре сервиса обмена рецептами.
+  version: 1.0.0
+
+servers:
+  - url: http://api-gateway.local/api
+    description: API Gateway
+  - url: http://auth-service.local
+    description: Auth/User Service
+  - url: http://recipe-service.local
+    description: Recipe Service
+  - url: http://social-service.local
+    description: Social Service
+
+tags:
+  - name: Auth Service
+    description: Пользователи, авторизация и профили
+  - name: Recipe Service
+    description: Рецепты, ингредиенты, типы блюд и шаги приготовления
+  - name: Social Service
+    description: Комментарии, лайки и сохраненные рецепты
+  - name: Internal API
+    description: Внутренние эндпоинты для взаимодействия между микросервисами
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Service-JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Resource not found
+
+    UserShort:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: deraxus
+        firstName:
+          type: string
+          example: Алексей
+        lastName:
+          type: string
+          example: Катков
+        avatarUrl:
+          type: string
+          nullable: true
+          example: https://example.com/avatar.png
+
+    RecipeShort:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        title:
+          type: string
+          example: Pasta
+        authorId:
+          type: integer
+          example: 1
+
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        username:
+          type: string
+          example: deraxus
+        email:
+          type: string
+          example: deraxus32@gmail.com
+        password:
+          type: string
+          example: password123
+        firstName:
+          type: string
+          example: Алексей
+        lastName:
+          type: string
+          example: Катков
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          example: deraxus32@gmail.com
+        password:
+          type: string
+          example: password123
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: jwt.token.value
+        user:
+          $ref: '#/components/schemas/UserShort'
+
+    CreateRecipeRequest:
+      type: object
+      required:
+        - title
+        - difficulty
+        - authorId
+      properties:
+        title:
+          type: string
+          example: Pasta
+        description:
+          type: string
+          example: Cheese pasta
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+          example: easy
+        cookingTime:
+          type: integer
+          example: 20
+        servings:
+          type: integer
+          example: 2
+        authorId:
+          type: integer
+          example: 1
+        ingredientIds:
+          type: array
+          items:
+            type: integer
+          example: [1, 2]
+        dishTypeIds:
+          type: array
+          items:
+            type: integer
+          example: [1]
+
+    CreateCommentRequest:
+      type: object
+      required:
+        - text
+        - recipeId
+      properties:
+        text:
+          type: string
+          example: Отличный рецепт
+        recipeId:
+          type: integer
+          example: 5
+
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 10
+        text:
+          type: string
+          example: Отличный рецепт
+        userId:
+          type: integer
+          example: 1
+        recipeId:
+          type: integer
+          example: 5
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Auth Service
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Ошибка регистрации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth Service
+      summary: Авторизация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me:
+    get:
+      tags:
+        - Auth Service
+      summary: Получение профиля текущего пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Данные пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserShort'
+        '401':
+          description: Пользователь не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/users/{id}:
+    get:
+      tags:
+        - Internal API
+      summary: Получение краткой информации о пользователе для других сервисов
+      description: Используется Recipe Service и Social Service для проверки существования пользователя и получения данных автора.
+      security:
+        - serviceAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserShort'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /recipes:
+    get:
+      tags:
+        - Recipe Service
+      summary: Получение списка рецептов
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+          example: pasta
+        - name: difficulty
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [easy, medium, hard]
+      responses:
+        '200':
+          description: Список рецептов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecipeShort'
+
+    post:
+      tags:
+        - Recipe Service
+      summary: Создание рецепта
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecipeRequest'
+      responses:
+        '201':
+          description: Рецепт создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeShort'
+        '400':
+          description: Ошибка создания рецепта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /internal/recipes/{id}:
+    get:
+      tags:
+        - Internal API
+      summary: Получение краткой информации о рецепте для других сервисов
+      description: Используется Social Service перед созданием комментария, лайка или сохранения рецепта.
+      security:
+        - serviceAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '200':
+          description: Рецепт найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeShort'
+        '404':
+          description: Рецепт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /comments:
+    get:
+      tags:
+        - Social Service
+      summary: Получение комментариев к рецепту
+      parameters:
+        - name: recipeId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '200':
+          description: Список комментариев
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CommentResponse'
+
+    post:
+      tags:
+        - Social Service
+      summary: Создание комментария от имени текущего пользователя
+      description: userId не передается в body, пользователь определяется по JWT токену.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Комментарий создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        '401':
+          description: Пользователь не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Рецепт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /likes:
+    post:
+      tags:
+        - Social Service
+      summary: Поставить лайк рецепту
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: recipeId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '201':
+          description: Лайк поставлен
+        '400':
+          description: Лайк уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Social Service
+      summary: Убрать лайк с рецепта
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: recipeId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '200':
+          description: Лайк удален
+        '404':
+          description: Лайк не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /saved-recipes:
+    post:
+      tags:
+        - Social Service
+      summary: Сохранить рецепт
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: recipeId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '201':
+          description: Рецепт сохранен
+        '400':
+          description: Рецепт уже сохранен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Social Service
+      summary: Убрать рецепт из сохраненных
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: recipeId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 5
+      responses:
+        '200':
+          description: Рецепт удален из сохраненных
+        '404':
+          description: Сохраненный рецепт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
