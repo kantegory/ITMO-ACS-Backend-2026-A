@@ -1,0 +1,45 @@
+---
+- name: Обновить кеш пакетов apt (предупреждения сторонних репозиториев допустимы)
+  ansible.builtin.command: apt-get update
+  register: apt_update
+  changed_when: false
+  failed_when: false
+  tags: [packages]
+
+- name: Предупредить, если кеш apt обновился не полностью
+  ansible.builtin.debug:
+    msg: "apt-get update завершился с кодом {{ apt_update.rc }}, установка продолжится по имеющемуся кешу"
+  when: apt_update.rc != 0
+  tags: [packages]
+
+- name: Установить системные пакеты
+  ansible.builtin.apt:
+    name: "{{ system_packages }}"
+    state: present
+  tags: [packages]
+
+- name: Создать пользователя приложения
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+  tags: [environment]
+
+- name: Создать рабочий каталог приложения
+  ansible.builtin.file:
+    path: "{{ app_base_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+  tags: [environment]
+
+- name: Установить переменные окружения для всех пользователей
+  ansible.builtin.template:
+    src: job-search-env.sh.j2
+    dest: /etc/profile.d/job-search.sh
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [environment]

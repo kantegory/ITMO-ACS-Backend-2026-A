@@ -1,0 +1,46 @@
+---
+- name: Установить nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+  tags: [packages]
+
+- name: Убрать стандартный сайт nginx
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Перезагрузить nginx
+  tags: [config]
+
+- name: Настроить обратный прокси для приложения
+  ansible.builtin.template:
+    src: job-search.conf.j2
+    dest: /etc/nginx/sites-available/job-search.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Перезагрузить nginx
+  tags: [config]
+
+- name: Включить сайт приложения
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/job-search.conf
+    dest: /etc/nginx/sites-enabled/job-search.conf
+    state: link
+  notify: Перезагрузить nginx
+  tags: [config]
+
+- name: Проверить конфигурацию nginx
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  tags: [config]
+
+- name: Применить изменения конфигурации сейчас
+  ansible.builtin.meta: flush_handlers
+
+- name: Включить и запустить службу nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+  tags: [services]
