@@ -14,7 +14,7 @@ class InternalController {
         }
 
         const menuRepo = dataSource.getRepository(Menu);
-        const relations = includeItems ? ['menuItems'] : [];
+        const relations = includeItems ? ['items'] : [];
 
         return await menuRepo.find({ where: { restaurant_id: restaurantId }, relations });
     }

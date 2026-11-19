@@ -20,7 +20,7 @@ class ReviewController extends BaseController {
         const { user } = request;
 
         try {
-            await axios.get(`${SETTINGS.RESTAURANT_SERVICE_URL}/internal/restaurants/${body.restaurant_id}`);
+            await axios.get(`${SETTINGS.RESTAURANT_SERVICE_URL}/api/v1/internal/restaurants/${body.restaurant_id}`);
         } catch {
             return { message: 'Restaurant not found' };
         }

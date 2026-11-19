@@ -1,0 +1,96 @@
+name: Lab7 deploy to EKS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [eks-deploy]
+    paths:
+      - 'БР1.2/Персук Виктория/labs/lab2/services/**'
+      - 'БР1.2/Персук Виктория/labs/lab7/helm/**'
+      - '.github/workflows/lab7-eks.yml'
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  CLUSTER: restaurant-lab
+  LABS: БР1.2/Персук Виктория/labs
+
+concurrency:
+  group: eks-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - restaurant-service
+          - reservation-service
+          - menu-service
+          - review-service
+          - notification-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        working-directory: ${{ env.LABS }}/lab2/services/${{ matrix.service }}
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/restaurant-lab/${{ matrix.service }}:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm upgrade
+        run: |
+          if ! helm upgrade --install restaurant "$LABS/lab7/helm/restaurant" \
+                --namespace restaurant --create-namespace \
+                --set image.registry="${{ steps.ecr.outputs.registry }}" \
+                --set image.tag="${{ github.sha }}" \
+                --wait --timeout 10m; then
+            echo "Deploy failed, rolling back"
+            helm rollback restaurant --namespace restaurant --wait || true
+            exit 1
+          fi
+
+      - name: Show state
+        run: |
+          kubectl get pods,svc,ingress,hpa -n restaurant -o wide
+          kubectl get ingress api -n restaurant -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'; echo

@@ -31,7 +31,7 @@ export async function startReviewConsumer(): Promise<void> {
 
                 // Fetch all reviews for this restaurant from review-service
                 const { data: reviews } = await axios.get(
-                    `${SETTINGS.REVIEW_SERVICE_URL}/internal/reviews`,
+                    `${SETTINGS.REVIEW_SERVICE_URL}/api/v1/internal/reviews`,
                     { params: { restaurant_id: restaurantId } },
                 );
 

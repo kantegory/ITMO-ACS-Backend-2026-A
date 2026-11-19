@@ -20,7 +20,7 @@ import { publishRestaurantStatusChanged } from '../messaging/publisher';
 
 async function getCallerRole(userId: number): Promise<RoleName | null> {
     try {
-        const { data } = await axios.get(`${SETTINGS.AUTH_SERVICE_URL}/internal/users/${userId}`);
+        const { data } = await axios.get(`${SETTINGS.AUTH_SERVICE_URL}/api/v1/internal/users/${userId}`);
         return data.role || null;
     } catch {
         return null;
@@ -189,7 +189,7 @@ class RestaurantController extends BaseController {
 
         try {
             const { data: users } = await axios.get(
-                `${SETTINGS.AUTH_SERVICE_URL}/internal/users`,
+                `${SETTINGS.AUTH_SERVICE_URL}/api/v1/internal/users`,
                 { params: { ids: userIds } },
             );
             const userMap = new Map(users.map((u: any) => [u.user_id, u]));
@@ -242,7 +242,7 @@ class RestaurantController extends BaseController {
     @OpenAPI({ summary: 'Get menus for a restaurant' })
     async getMenus(@Param('id') id: number) {
         try {
-            const { data } = await axios.get(`${SETTINGS.MENU_SERVICE_URL}/internal/menus`, {
+            const { data } = await axios.get(`${SETTINGS.MENU_SERVICE_URL}/api/v1/internal/menus`, {
                 params: { restaurant_id: id },
             });
             return data;
@@ -255,7 +255,7 @@ class RestaurantController extends BaseController {
     @OpenAPI({ summary: 'Get full menu with items for a restaurant' })
     async getFullMenu(@Param('id') id: number) {
         try {
-            const { data } = await axios.get(`${SETTINGS.MENU_SERVICE_URL}/internal/menus`, {
+            const { data } = await axios.get(`${SETTINGS.MENU_SERVICE_URL}/api/v1/internal/menus`, {
                 params: { restaurant_id: id, include_items: true },
             });
             return data;
@@ -270,7 +270,7 @@ class RestaurantController extends BaseController {
     @OpenAPI({ summary: 'Get tables for a restaurant' })
     async getTables(@Param('id') id: number) {
         try {
-            const { data } = await axios.get(`${SETTINGS.RESERVATION_SERVICE_URL}/internal/tables`, {
+            const { data } = await axios.get(`${SETTINGS.RESERVATION_SERVICE_URL}/api/v1/internal/tables`, {
                 params: { restaurant_id: id },
             });
             return data;
@@ -297,7 +297,7 @@ class RestaurantController extends BaseController {
         }
 
         try {
-            const { data } = await axios.get(`${SETTINGS.RESERVATION_SERVICE_URL}/internal/reservations`, {
+            const { data } = await axios.get(`${SETTINGS.RESERVATION_SERVICE_URL}/api/v1/internal/reservations`, {
                 params: { restaurant_id: id },
             });
             return data;
@@ -312,7 +312,7 @@ class RestaurantController extends BaseController {
     @OpenAPI({ summary: 'Get reviews for a restaurant' })
     async getReviews(@Param('id') id: number) {
         try {
-            const { data } = await axios.get(`${SETTINGS.REVIEW_SERVICE_URL}/internal/reviews`, {
+            const { data } = await axios.get(`${SETTINGS.REVIEW_SERVICE_URL}/api/v1/internal/reviews`, {
                 params: { restaurant_id: id },
             });
             return data;

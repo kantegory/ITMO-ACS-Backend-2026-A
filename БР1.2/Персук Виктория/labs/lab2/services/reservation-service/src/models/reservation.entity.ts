@@ -18,10 +18,10 @@ export class Reservation {
     table_id!: number;
 
     @Column({ type: 'timestamp' })
-    reservation_time!: Date;
+    start_time!: Date;
 
     @Column({ type: 'timestamp' })
-    reservation_date!: Date;
+    end_time!: Date;
 
     @Column({ type: 'enum', enum: ReservationStatus, default: ReservationStatus.Pending })
     status!: ReservationStatus;

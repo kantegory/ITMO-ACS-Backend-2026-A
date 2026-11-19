@@ -58,7 +58,7 @@ class MenuController {
     @OpenAPI({ summary: 'Create a menu', security: [{ bearerAuth: [] }] })
     async createMenu(@Body({ type: CreateMenuDto }) body: CreateMenuDto) {
         try {
-            await axios.get(`${SETTINGS.RESTAURANT_SERVICE_URL}/internal/restaurants/${body.restaurant_id}`);
+            await axios.get(`${SETTINGS.RESTAURANT_SERVICE_URL}/api/v1/internal/restaurants/${body.restaurant_id}`);
         } catch {
             return { message: 'Restaurant not found' };
         }
@@ -69,7 +69,7 @@ class MenuController {
     @Get('/:id')
     @OpenAPI({ summary: 'Get menu by id' })
     async getMenu(@Param('id') id: number) {
-        return await this.menuRepo.findOne({ where: { menu_id: id }, relations: ['menuItems'] });
+        return await this.menuRepo.findOne({ where: { menu_id: id }, relations: ['items'] });
     }
 }
 

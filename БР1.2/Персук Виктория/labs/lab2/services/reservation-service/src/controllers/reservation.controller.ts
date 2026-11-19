@@ -28,9 +28,9 @@ class ReservationController extends BaseController {
             return { message: `Guest number exceeds table capacity (${table.capacity})` };
         }
 
-        const requestedTime = new Date(body.reservation_time);
-        const twoHoursBefore = new Date(requestedTime.getTime() - 2 * 60 * 60 * 1000);
-        const twoHoursAfter = new Date(requestedTime.getTime() + 2 * 60 * 60 * 1000);
+        const startTime = new Date(body.start_time);
+        const twoHoursBefore = new Date(startTime.getTime() - 2 * 60 * 60 * 1000);
+        const twoHoursAfter = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
 
         const conflicting = await this.repository
             .createQueryBuilder('reservation')
@@ -38,7 +38,7 @@ class ReservationController extends BaseController {
             .andWhere('reservation.status IN (:...statuses)', {
                 statuses: [ReservationStatus.Confirmed, ReservationStatus.Pending],
             })
-            .andWhere('reservation.reservation_time > :start AND reservation.reservation_time < :end', {
+            .andWhere('reservation.start_time > :start AND reservation.start_time < :end', {
                 start: twoHoursBefore,
                 end: twoHoursAfter,
             })
@@ -48,8 +48,8 @@ class ReservationController extends BaseController {
 
         const reservation = this.repository.create({
             ...body,
-            reservation_time: requestedTime,
-            reservation_date: new Date(body.reservation_date),
+            start_time: startTime,
+            end_time: new Date(body.end_time),
             user_id: user.id,
             status: ReservationStatus.Pending,
         });
@@ -61,7 +61,7 @@ class ReservationController extends BaseController {
             user_id: user.id,
             table_id: saved.table_id,
             restaurant_id: table.restaurant_id,
-            reservation_time: saved.reservation_time.toISOString(),
+            reservation_time: saved.start_time.toISOString(),
             guest_number: saved.guest_number,
         });
 
@@ -93,11 +93,11 @@ class ReservationController extends BaseController {
         if (!reservation) return { message: 'Reservation not found' };
         if (reservation.user_id !== user.id) return { message: 'Forbidden' };
 
-        const diffHours = (new Date(reservation.reservation_time).getTime() - Date.now()) / (1000 * 60 * 60);
+        const diffHours = (new Date(reservation.start_time).getTime() - Date.now()) / (1000 * 60 * 60);
         if (diffHours <= 3) return { message: 'Cannot modify reservation less than 3 hours before reservation time' };
 
-        if (body.reservation_time) (reservation as any).reservation_time = new Date(body.reservation_time);
-        if (body.reservation_date) (reservation as any).reservation_date = new Date(body.reservation_date);
+        if (body.start_time) (reservation as any).start_time = new Date(body.start_time);
+        if (body.end_time) (reservation as any).end_time = new Date(body.end_time);
         if (body.guest_number !== undefined) reservation.guest_number = body.guest_number;
         if (body.status) reservation.status = body.status;
 
@@ -113,7 +113,7 @@ class ReservationController extends BaseController {
         if (!reservation) return { message: 'Reservation not found' };
         if (reservation.user_id !== user.id) return { message: 'Forbidden' };
 
-        const diffHours = (new Date(reservation.reservation_time).getTime() - Date.now()) / (1000 * 60 * 60);
+        const diffHours = (new Date(reservation.start_time).getTime() - Date.now()) / (1000 * 60 * 60);
         if (diffHours <= 3) return { message: 'Cannot cancel reservation less than 3 hours before reservation time' };
 
         reservation.status = ReservationStatus.Cancelled;

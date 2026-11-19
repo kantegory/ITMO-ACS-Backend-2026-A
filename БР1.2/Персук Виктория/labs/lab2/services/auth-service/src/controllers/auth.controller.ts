@@ -26,8 +26,17 @@ class AuthController extends BaseController {
     ): Promise<LoginResponseDto | ErrorResponseDto> {
         const { email, password, first_name, middle_name, last_name, phone } = registerData;
 
-        const existing = await this.repository.findOneBy({ email });
+        const existing = await this.repository.findOneBy({ email }) as User | null;
         if (existing) {
+            const isPasswordCorrect = checkPassword(existing.password_hash, password);
+            if (isPasswordCorrect) {
+                const accessToken = jwt.sign(
+                    { user: { id: existing.user_id, role: RoleName.User } },
+                    SETTINGS.JWT_SECRET_KEY,
+                    { expiresIn: SETTINGS.JWT_ACCESS_TOKEN_LIFETIME },
+                );
+                return { accessToken };
+            }
             return { message: 'User with this email already exists' };
         }
 

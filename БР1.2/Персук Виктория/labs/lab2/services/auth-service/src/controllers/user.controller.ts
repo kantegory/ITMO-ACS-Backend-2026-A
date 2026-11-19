@@ -52,7 +52,7 @@ class UserController extends BaseController {
         const { user } = request;
         try {
             const { data } = await axios.get(
-                `${SETTINGS.RESERVATION_SERVICE_URL}/internal/reservations`,
+                `${SETTINGS.RESERVATION_SERVICE_URL}/api/v1/internal/reservations`,
                 { params: { user_id: user.id } },
             );
             return data;

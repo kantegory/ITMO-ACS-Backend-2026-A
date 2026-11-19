@@ -17,7 +17,7 @@ class TableController extends BaseController {
     @OpenAPI({ summary: 'Create a table', security: [{ bearerAuth: [] }] })
     async create(@Body({ type: CreateTableDto }) body: CreateTableDto) {
         try {
-            await axios.get(`${SETTINGS.RESTAURANT_SERVICE_URL}/internal/restaurants/${body.restaurant_id}`);
+            await axios.get(`${SETTINGS.RESTAURANT_SERVICE_URL}/api/v1/internal/restaurants/${body.restaurant_id}`);
         } catch {
             return { message: 'Restaurant not found' };
         }

@@ -14,5 +14,5 @@ export class Menu {
     name!: string;
 
     @OneToMany(() => MenuItem, (item) => item.menu)
-    menuItems!: MenuItem[];
+    items!: MenuItem[];
 }

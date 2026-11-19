@@ -17,6 +17,8 @@ const dataSource = new DataSource({
     entities: [Restaurant, Cuisine, RestaurantCuisine, RestaurantOwner, RestaurantStaff, RestaurantPhoto],
     logging: true,
     synchronize: true,
+    // в AWS RDS (PostgreSQL 16) подключение разрешено только по TLS
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });
 
 export default dataSource;

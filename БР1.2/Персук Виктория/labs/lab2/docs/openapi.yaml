@@ -1,0 +1,2166 @@
+openapi: "3.0.3"
+info:
+  title: Restaurant Booking Platform — Internal & Public APIs
+  description: |
+    OpenAPI-спецификация всех микросервисов платформы бронирования столиков.
+
+    Сервисы:
+    - **api-gateway** — маршрутизация и JWT-верификация (порт 3000)
+    - **auth-service** — аутентификация, пользователи, роли (порт 3001)
+    - **restaurant-service** — рестораны, кухни, фото, персонал, столики (порт 3002)
+    - **reservation-service** — столики, бронирования (порт 3003)
+    - **menu-service** — меню и позиции меню (порт 3004)
+    - **review-service** — отзывы (порт 3005)
+    - **notification-service** — уведомления, только RabbitMQ (порт 3006)
+
+    Эндпоинты `/internal/*` доступны только внутри кластера и не проксируются через API Gateway.
+  version: "1.0.0"
+
+tags:
+  - name: auth — public
+    description: Публичные эндпоинты auth-service (порт 3001)
+  - name: auth — internal
+    description: Internal-эндпоинты auth-service (порт 3001, только внутри кластера)
+  - name: restaurant — public
+    description: Публичные эндпоинты restaurant-service (порт 3002)
+  - name: restaurant — internal
+    description: Internal-эндпоинты restaurant-service (порт 3002, только внутри кластера)
+  - name: reservation — public
+    description: Публичные эндпоинты reservation-service (порт 3003)
+  - name: reservation — internal
+    description: Internal-эндпоинты reservation-service (порт 3003, только внутри кластера)
+  - name: menu — public
+    description: Публичные эндпоинты menu-service (порт 3004)
+  - name: menu — internal
+    description: Internal-эндпоинты menu-service (порт 3004, только внутри кластера)
+  - name: review — public
+    description: Публичные эндпоинты review-service (порт 3005)
+  - name: review — internal
+    description: Internal-эндпоинты review-service (порт 3005, только внутри кластера)
+
+# Для удобства используем переменную сервиса в URL
+servers:
+  - url: http://localhost:3000/api
+    description: API Gateway (публичный вход)
+  - url: http://auth-service:3001
+    description: auth-service (прямой, только внутри кластера)
+  - url: http://restaurant-service:3002
+    description: restaurant-service (прямой, только внутри кластера)
+  - url: http://reservation-service:3003
+    description: reservation-service (прямой, только внутри кластера)
+  - url: http://menu-service:3004
+    description: menu-service (прямой, только внутри кластера)
+  - url: http://review-service:3005
+    description: review-service (прямой, только внутри кластера)
+
+paths:
+
+  # ─────────────────────────────────────────
+  # AUTH-SERVICE — PUBLIC
+  # ─────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [auth — public]
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Пользователь создан, возвращает JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Email уже занят или невалидные данные
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                emailTaken:
+                  value:
+                    message: User with this email already exists
+                validationFailed:
+                  value:
+                    message: Validation failed
+
+  /auth/login:
+    post:
+      tags: [auth — public]
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Успешная аутентификация, возвращает JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Password or email is incorrect
+
+  /users/me:
+    get:
+      tags: [auth — public]
+      summary: Получить профиль текущего пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [auth — public]
+      summary: Обновить профиль текущего пользователя
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/reservations:
+    get:
+      tags: [auth — public]
+      summary: Получить все бронирования текущего пользователя
+      description: |
+        Агрегирующий эндпоинт. auth-service проксирует запрос к
+        `GET /internal/reservations?user_id={id}` в reservation-service.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Список бронирований пользователя
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReservationInternal"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # ─────────────────────────────────────────
+  # AUTH-SERVICE — INTERNAL
+  # ─────────────────────────────────────────
+
+  /internal/users:
+    get:
+      tags: [auth — internal]
+      summary: Массовое получение пользователей по списку ID (internal)
+      description: |
+        Batch-эндпоинт для устранения проблемы N+1 при агрегации данных.
+
+        Вызывается из:
+        - **restaurant-service** — обогащение списка бронирований (`GET /restaurants/:id/reservations`) именами пользователей
+        - **restaurant-service** — обогащение списка отзывов (`GET /restaurants/:id/reviews`) данными авторов
+        - **restaurant-service** — обогащение списка персонала (`GET /restaurants/:id/staff`) профилями сотрудников
+
+        Пример: вместо 20 отдельных вызовов `GET /internal/users/{id}` для списка бронирований
+        делается один вызов `GET /internal/users?ids=1,5,7,42`.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID пользователей через запятую
+          schema:
+            type: string
+            example: "1,5,7,42"
+      responses:
+        "200":
+          description: Список найденных пользователей (отсутствующие ID молча пропускаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserInternal"
+              example:
+                - user_id: 1
+                  email: alice@example.com
+                  role: User
+                - user_id: 42
+                  email: v.persuk@example.com
+                  role: Owner
+        "400":
+          description: Параметр ids не передан или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "ids parameter is required"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/users/{id}:
+    get:
+      tags: [auth — internal]
+      summary: Получить пользователя по ID (internal)
+      description: |
+        Вызывается из:
+        - **reservation-service** — проверка существования пользователя при создании брони
+        - **review-service** — проверка существования автора отзыва
+        - **restaurant-service** — проверка существования пользователя при добавлении в персонал
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserInternal"
+        "404":
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: User not found
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ─────────────────────────────────────────
+  # RESTAURANT-SERVICE — PUBLIC
+  # ─────────────────────────────────────────
+
+  /restaurants:
+    get:
+      tags: [restaurant — public]
+      summary: Получить список ресторанов
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+            example: Москва
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Verified, Rejected]
+      responses:
+        "200":
+          description: Список ресторанов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Restaurant"
+    post:
+      tags: [restaurant — public]
+      summary: Создать ресторан
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRestaurantRequest"
+      responses:
+        "201":
+          description: Ресторан создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Restaurant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /restaurants/{id}:
+    get:
+      tags: [restaurant — public]
+      summary: Получить ресторан по ID
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Ресторан найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Restaurant"
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Restaurant not found
+    patch:
+      tags: [restaurant — public]
+      summary: Обновить ресторан
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRestaurantRequest"
+      responses:
+        "200":
+          description: Ресторан обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Restaurant"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+    delete:
+      tags: [restaurant — public]
+      summary: Удалить ресторан
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Ресторан удалён
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+
+  /restaurants/{id}/verify:
+    patch:
+      tags: [restaurant — public]
+      summary: Верифицировать ресторан (только Admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Ресторан верифицирован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Restaurant"
+        "403":
+          description: Только Admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "Forbidden: admin only"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+
+  /restaurants/{id}/reject:
+    patch:
+      tags: [restaurant — public]
+      summary: Отклонить ресторан (только Admin)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Ресторан отклонён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Restaurant"
+        "403":
+          description: Только Admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "Forbidden: admin only"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+
+  /restaurants/{id}/staff:
+    get:
+      tags: [restaurant — public]
+      summary: Получить персонал ресторана
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Список сотрудников
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMember"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+    post:
+      tags: [restaurant — public]
+      summary: Добавить сотрудника в ресторан
+      description: |
+        Проверяет существование пользователя через `GET /internal/users/{id}` в auth-service.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: integer
+                  example: 42
+      responses:
+        "201":
+          description: Сотрудник добавлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /restaurants/{id}/staff/{userId}:
+    delete:
+      tags: [restaurant — public]
+      summary: Удалить сотрудника из ресторана
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 42
+      responses:
+        "204":
+          description: Сотрудник удалён
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+
+  /restaurants/{id}/photos:
+    get:
+      tags: [restaurant — public]
+      summary: Получить фотографии ресторана
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Список фотографий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RestaurantPhoto"
+    post:
+      tags: [restaurant — public]
+      summary: Добавить фотографию ресторана
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  example: https://cdn.example.com/photo1.jpg
+      responses:
+        "201":
+          description: Фотография добавлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestaurantPhoto"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+
+  /photos/{id}:
+    delete:
+      tags: [restaurant — public]
+      summary: Удалить фотографию
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Фото удалено
+        "403":
+          description: Не владелец
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "Forbidden: not the owner"
+        "404":
+          description: Фото не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Photo not found
+
+  /cuisines:
+    get:
+      tags: [restaurant — public]
+      summary: Получить список кухонь
+      responses:
+        "200":
+          description: Список кухонь
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cuisine"
+
+  /restaurants/{id}/reservations:
+    get:
+      tags: [restaurant — public]
+      summary: Получить бронирования ресторана
+      description: |
+        Агрегирующий эндпоинт. restaurant-service проксирует запрос к
+        `GET /internal/reservations?restaurant_id={id}` в reservation-service.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Список бронирований ресторана
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReservationInternal"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /restaurants/{id}/reviews:
+    get:
+      tags: [restaurant — public]
+      summary: Получить отзывы ресторана
+      description: |
+        Агрегирующий эндпоинт. restaurant-service проксирует запрос к
+        `GET /internal/reviews?restaurant_id={id}` в review-service.
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Список отзывов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewInternal"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      tags: [review — public]
+      summary: Создать отзыв на ресторан
+      description: |
+        Запрос принимает **review-service**.
+        Перед созданием вызывает:
+        - `GET /internal/users/{user_id}` в auth-service
+        - `GET /internal/restaurants/{restaurant_id}` в restaurant-service
+        После создания публикует событие `review.created` в RabbitMQ.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewRequest"
+      responses:
+        "201":
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewInternal"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Restaurant not found
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /restaurants/{id}/menus:
+    get:
+      tags: [restaurant — public]
+      summary: Получить список меню ресторана
+      description: |
+        Агрегирующий эндпоинт. restaurant-service проксирует запрос к
+        `GET /internal/menus?restaurant_id={id}` в menu-service.
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Список меню без позиций
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuWithoutItems"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      tags: [menu — public]
+      summary: Создать меню для ресторана
+      description: |
+        Запрос принимает **menu-service**.
+        Перед созданием вызывает `GET /internal/restaurants/{id}` в restaurant-service.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: Обеденное меню
+      responses:
+        "201":
+          description: Меню создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuWithoutItems"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Restaurant not found
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /restaurants/{id}/menu:
+    get:
+      tags: [restaurant — public]
+      summary: Получить меню ресторана с позициями
+      description: |
+        Агрегирующий эндпоинт. restaurant-service проксирует запрос к
+        `GET /internal/menus?restaurant_id={id}&include_items=true` в menu-service.
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Меню с позициями
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuWithItems"
+        "404":
+          $ref: "#/components/responses/NotFoundRestaurant"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # ─────────────────────────────────────────
+  # RESTAURANT-SERVICE — INTERNAL
+  # ─────────────────────────────────────────
+
+  /internal/restaurants:
+    get:
+      tags: [restaurant — internal]
+      summary: Массовое получение ресторанов по списку ID (internal)
+      description: |
+        Batch-эндпоинт для устранения проблемы N+1 при агрегации данных.
+
+        Вызывается из:
+        - **auth-service** — обогащение списка бронирований пользователя (`GET /users/me/reservations`)
+          данными ресторанов (название, адрес) через цепочку: бронь → table_id → restaurant_id
+        - **reservation-service** — обогащение batch-ответа при агрегации нескольких ресторанов
+
+        Пример: `GET /internal/restaurants?ids=5,7,12`
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID ресторанов через запятую
+          schema:
+            type: string
+            example: "5,7,12"
+      responses:
+        "200":
+          description: Список найденных ресторанов (отсутствующие ID молча пропускаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RestaurantInternal"
+              example:
+                - restaurant_id: 7
+                  name: Sakura Garden
+                  status: Verified
+                  city: Москва
+                - restaurant_id: 12
+                  name: Pasta Bar
+                  status: Verified
+                  city: Москва
+        "400":
+          description: Параметр ids не передан или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "ids parameter is required"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/restaurants/{id}:
+    get:
+      tags: [restaurant — internal]
+      summary: Получить ресторан по ID (internal)
+      description: |
+        Вызывается из:
+        - **review-service** — проверка существования ресторана при создании отзыва
+        - **menu-service** — проверка существования ресторана при создании меню
+        - **reservation-service** — проверка существования ресторана при создании столика
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Ресторан найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestaurantInternal"
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Restaurant not found
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/restaurants/{id}/rating:
+    patch:
+      tags: [restaurant — internal]
+      summary: Обновить средний рейтинг ресторана (internal)
+      description: |
+        Вызывается внутри **restaurant-service** как consumer событий
+        `review.created` / `review.deleted` из RabbitMQ.
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating:
+                  type: number
+                  format: float
+                  minimum: 1
+                  maximum: 5
+                  example: 4.2
+      responses:
+        "200":
+          description: Рейтинг обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restaurant_id:
+                    type: integer
+                    example: 7
+                  rating:
+                    type: number
+                    example: 4.2
+        "400":
+          description: Невалидное значение рейтинга
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Invalid rating value
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Restaurant not found
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/tables/{id}:
+    get:
+      tags: [restaurant — internal]
+      summary: Получить столик по ID (internal)
+      description: |
+        Вызывается из **reservation-service** для проверки вместимости столика
+        при создании бронирования.
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Столик найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableInternal"
+        "404":
+          description: Столик не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Table not found
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ─────────────────────────────────────────
+  # RESERVATION-SERVICE — PUBLIC
+  # ─────────────────────────────────────────
+
+  /tables:
+    post:
+      tags: [reservation — public]
+      summary: Создать столик
+      description: |
+        Перед созданием вызывает `GET /internal/restaurants/{id}` в restaurant-service.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTableRequest"
+      responses:
+        "201":
+          description: Столик создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableInternal"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Restaurant not found
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /tables/{id}:
+    patch:
+      tags: [reservation — public]
+      summary: Обновить столик
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                capacity:
+                  type: integer
+                  example: 6
+      responses:
+        "200":
+          description: Столик обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableInternal"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Столик не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Table not found
+    delete:
+      tags: [reservation — public]
+      summary: Удалить столик
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Столик удалён
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Столик не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Table not found
+
+  /reservations:
+    get:
+      tags: [reservation — public]
+      summary: Получить список бронирований
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReservationInternal"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [reservation — public]
+      summary: Создать бронирование
+      description: |
+        Перед созданием вызывает:
+        - `GET /internal/users/{user_id}` в auth-service
+        - `GET /internal/tables/{table_id}` в restaurant-service (вместимость)
+
+        После создания публикует событие `reservation.created` в RabbitMQ.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservationRequest"
+      responses:
+        "201":
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationInternal"
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                capacityExceeded:
+                  value:
+                    message: Guest number exceeds table capacity
+                timeConflict:
+                  value:
+                    message: Table is already booked for this time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Столик не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Table not found
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /reservations/{id}:
+    get:
+      tags: [reservation — public]
+      summary: Получить бронирование по ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Бронирование найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationInternal"
+        "404":
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [reservation — public]
+      summary: Обновить бронирование
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReservationRequest"
+      responses:
+        "200":
+          description: Бронирование обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationInternal"
+        "400":
+          description: Слишком поздно изменять
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Cannot modify reservation less than 3 hours before reservation time
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [reservation — public]
+      summary: Отменить бронирование
+      description: |
+        После отмены публикует событие `reservation.cancelled` в RabbitMQ.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Бронирование отменено
+        "400":
+          description: Слишком поздно отменять
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Cannot cancel reservation less than 3 hours before reservation time
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ─────────────────────────────────────────
+  # RESERVATION-SERVICE — INTERNAL
+  # ─────────────────────────────────────────
+
+  /internal/tables:
+    get:
+      tags: [reservation — internal]
+      summary: Массовое получение столиков по списку ID (internal)
+      description: |
+        Batch-эндпоинт для устранения проблемы N+1 при агрегации данных.
+
+        Вызывается из:
+        - **auth-service** — обогащение списка бронирований пользователя (`GET /users/me/reservations`)
+          данными столиков (вместимость, restaurant_id) за один запрос вместо N отдельных вызовов
+        - **restaurant-service** — при формировании полного ответа с бронированиями ресторана
+
+        Пример: `GET /internal/tables?ids=15,16,17`
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Список ID столиков через запятую
+          schema:
+            type: string
+            example: "15,16,17"
+      responses:
+        "200":
+          description: Список найденных столиков (отсутствующие ID молча пропускаются)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TableInternal"
+              example:
+                - table_id: 15
+                  restaurant_id: 7
+                  capacity: 4
+                - table_id: 16
+                  restaurant_id: 7
+                  capacity: 2
+        "400":
+          description: Параметр ids не передан или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: "ids parameter is required"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/reservations:
+    get:
+      tags: [reservation — internal]
+      summary: Получить бронирования по restaurant_id или user_id (internal)
+      description: |
+        Вызывается из:
+        - **restaurant-service** с `restaurant_id` — для эндпоинта `GET /restaurants/:id/reservations`
+        - **auth-service** с `user_id` — для эндпоинта `GET /users/me/reservations`
+
+        Хотя бы один из параметров обязателен.
+      parameters:
+        - name: restaurant_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            example: 7
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            example: 42
+      responses:
+        "200":
+          description: Список бронирований (может быть пустым)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReservationInternal"
+        "400":
+          description: Не передан ни один из параметров
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: At least one query parameter required
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ─────────────────────────────────────────
+  # MENU-SERVICE — PUBLIC
+  # ─────────────────────────────────────────
+
+  /menu-items:
+    post:
+      tags: [menu — public]
+      summary: Создать позицию меню
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMenuItemRequest"
+      responses:
+        "201":
+          description: Позиция создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Меню не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Menu not found
+
+  /menu-items/{id}:
+    patch:
+      tags: [menu — public]
+      summary: Обновить позицию меню
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMenuItemRequest"
+      responses:
+        "200":
+          description: Позиция обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Позиция меню не найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Menu item not found
+    delete:
+      tags: [menu — public]
+      summary: Удалить позицию меню
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Позиция удалена
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Позиция меню не найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Menu item not found
+
+  # ─────────────────────────────────────────
+  # MENU-SERVICE — INTERNAL
+  # ─────────────────────────────────────────
+
+  /internal/menus:
+    get:
+      tags: [menu — internal]
+      summary: Получить меню ресторана, опционально с позициями (internal)
+      description: |
+        Вызывается из **restaurant-service** для двух эндпоинтов:
+        - `GET /restaurants/:id/menus` — без `include_items`
+        - `GET /restaurants/:id/menu` — с `include_items=true`
+      parameters:
+        - name: restaurant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 7
+        - name: include_items
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+            example: true
+      responses:
+        "200":
+          description: Список меню (с позициями или без)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuWithItems"
+              examples:
+                withoutItems:
+                  summary: include_items=false (по умолчанию)
+                  value:
+                    - menu_id: 1
+                      restaurant_id: 7
+                      name: Обеденное меню
+                withItems:
+                  summary: include_items=true
+                  value:
+                    - menu_id: 1
+                      restaurant_id: 7
+                      name: Обеденное меню
+                      menuItems:
+                        - item_id: 10
+                          menu_id: 1
+                          name: Суп дня
+                          description: Суп с лапшой
+                          price: 350.00
+        "400":
+          description: Не передан restaurant_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: restaurant_id is required
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ─────────────────────────────────────────
+  # REVIEW-SERVICE — PUBLIC
+  # ─────────────────────────────────────────
+
+  /reviews/{id}:
+    patch:
+      tags: [review — public]
+      summary: Обновить отзыв
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReviewRequest"
+      responses:
+        "200":
+          description: Отзыв обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewInternal"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Отзыв не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Review not found
+    delete:
+      tags: [review — public]
+      summary: Удалить отзыв
+      description: |
+        После удаления публикует событие `review.deleted` в RabbitMQ.
+        restaurant-service пересчитает рейтинг ресторана.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Отзыв удалён
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Отзыв не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Review not found
+
+  # ─────────────────────────────────────────
+  # REVIEW-SERVICE — INTERNAL
+  # ─────────────────────────────────────────
+
+  /internal/reviews:
+    get:
+      tags: [review — internal]
+      summary: Получить отзывы по restaurant_id (internal)
+      description: |
+        Вызывается из **restaurant-service** для эндпоинта `GET /restaurants/:id/reviews`.
+      parameters:
+        - name: restaurant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 7
+      responses:
+        "200":
+          description: Список отзывов (может быть пустым)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewInternal"
+        "400":
+          description: Не передан restaurant_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: restaurant_id is required
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+# ─────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 1
+
+  responses:
+    Unauthorized:
+      description: Не авторизован (отсутствует или истёк JWT)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Unauthorized
+
+    Forbidden:
+      description: Нет прав на действие
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Forbidden
+
+    NotFoundRestaurant:
+      description: Ресторан не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Restaurant not found
+
+    InternalError:
+      description: Внутренняя ошибка сервиса
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Internal server error
+
+    ServiceUnavailable:
+      description: Зависимый upstream-сервис недоступен
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Service unavailable
+
+  schemas:
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Something went wrong
+
+    # ── AUTH ──
+
+    RegisterRequest:
+      type: object
+      required: [first_name, last_name, email, password]
+      properties:
+        first_name:
+          type: string
+          example: Виктория
+        middle_name:
+          type: string
+          example: Александровна
+        last_name:
+          type: string
+          example: Персук
+        email:
+          type: string
+          format: email
+          example: v.persuk@example.com
+        phone:
+          type: string
+          example: "+79991234567"
+        password:
+          type: string
+          format: password
+          example: securePassword123
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: v.persuk@example.com
+        password:
+          type: string
+          format: password
+          example: securePassword123
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          example: Bearer
+
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 42
+        first_name:
+          type: string
+          example: Виктория
+        middle_name:
+          type: string
+          example: Александровна
+        last_name:
+          type: string
+          example: Персук
+        email:
+          type: string
+          format: email
+          example: v.persuk@example.com
+        phone:
+          type: string
+          example: "+79991234567"
+        role:
+          type: string
+          enum: [Admin, User, Owner, Manager]
+          example: User
+        created_at:
+          type: string
+          format: date-time
+        edited_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        middle_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+
+    UserInternal:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 42
+        email:
+          type: string
+          format: email
+          example: v.persuk@example.com
+        role:
+          type: string
+          enum: [Admin, User, Owner, Manager]
+          example: User
+
+    # ── RESTAURANT ──
+
+    Restaurant:
+      type: object
+      properties:
+        restaurant_id:
+          type: integer
+          example: 7
+        name:
+          type: string
+          example: Sakura Garden
+        description:
+          type: string
+          example: Японский ресторан в центре города
+        address:
+          type: string
+          example: ул. Ленина, 10
+        city:
+          type: string
+          example: Москва
+        rating:
+          type: number
+          format: float
+          example: 4.5
+        price:
+          type: string
+          enum: [$, $$, $$$]
+          example: $$
+        status:
+          type: string
+          enum: [Pending, Verified, Rejected]
+          example: Verified
+
+    RestaurantInternal:
+      type: object
+      properties:
+        restaurant_id:
+          type: integer
+          example: 7
+        name:
+          type: string
+          example: Sakura Garden
+        status:
+          type: string
+          enum: [Pending, Verified, Rejected]
+          example: Verified
+        city:
+          type: string
+          example: Москва
+
+    CreateRestaurantRequest:
+      type: object
+      required: [name, address, city, price]
+      properties:
+        name:
+          type: string
+          example: Sakura Garden
+        description:
+          type: string
+          example: Японский ресторан
+        address:
+          type: string
+          example: ул. Ленина, 10
+        city:
+          type: string
+          example: Москва
+        price:
+          type: string
+          enum: [$, $$, $$$]
+          example: $$
+
+    UpdateRestaurantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        price:
+          type: string
+          enum: [$, $$, $$$]
+
+    StaffMember:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 42
+        restaurant_id:
+          type: integer
+          example: 7
+
+    RestaurantPhoto:
+      type: object
+      properties:
+        photo_id:
+          type: integer
+          example: 5
+        restaurant_id:
+          type: integer
+          example: 7
+        url:
+          type: string
+          example: https://cdn.example.com/photo1.jpg
+
+    Cuisine:
+      type: object
+      properties:
+        cuisine_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Японская
+
+    # ── RESERVATION ──
+
+    TableInternal:
+      type: object
+      properties:
+        table_id:
+          type: integer
+          example: 15
+        restaurant_id:
+          type: integer
+          example: 7
+        capacity:
+          type: integer
+          example: 4
+
+    CreateTableRequest:
+      type: object
+      required: [restaurant_id, capacity]
+      properties:
+        restaurant_id:
+          type: integer
+          example: 7
+        capacity:
+          type: integer
+          example: 4
+
+    ReservationInternal:
+      type: object
+      properties:
+        reservation_id:
+          type: integer
+          example: 101
+        user_id:
+          type: integer
+          example: 42
+        table_id:
+          type: integer
+          example: 15
+        reservation_time:
+          type: string
+          format: date-time
+          example: "2026-06-01T19:00:00Z"
+        reservation_date:
+          type: string
+          format: date-time
+          example: "2026-06-01T00:00:00Z"
+        status:
+          type: string
+          enum: [Pending, Confirmed, Cancelled]
+          example: Pending
+        guest_number:
+          type: integer
+          example: 2
+        created_at:
+          type: string
+          format: date-time
+        edited_at:
+          type: string
+          format: date-time
+
+    CreateReservationRequest:
+      type: object
+      required: [table_id, reservation_time, reservation_date, guest_number]
+      properties:
+        table_id:
+          type: integer
+          example: 15
+        reservation_time:
+          type: string
+          format: date-time
+          example: "2026-06-01T19:00:00Z"
+        reservation_date:
+          type: string
+          format: date-time
+          example: "2026-06-01T00:00:00Z"
+        guest_number:
+          type: integer
+          example: 2
+
+    UpdateReservationRequest:
+      type: object
+      properties:
+        reservation_time:
+          type: string
+          format: date-time
+        reservation_date:
+          type: string
+          format: date-time
+        guest_number:
+          type: integer
+        status:
+          type: string
+          enum: [Pending, Confirmed, Cancelled]
+
+    # ── MENU ──
+
+    MenuWithoutItems:
+      type: object
+      properties:
+        menu_id:
+          type: integer
+          example: 1
+        restaurant_id:
+          type: integer
+          example: 7
+        name:
+          type: string
+          example: Обеденное меню
+
+    MenuWithItems:
+      allOf:
+        - $ref: "#/components/schemas/MenuWithoutItems"
+        - type: object
+          properties:
+            menuItems:
+              type: array
+              description: Присутствует только при include_items=true
+              items:
+                $ref: "#/components/schemas/MenuItem"
+
+    MenuItem:
+      type: object
+      properties:
+        item_id:
+          type: integer
+          example: 10
+        menu_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Суп дня
+        description:
+          type: string
+          example: Лёгкий суп с лапшой
+        price:
+          type: number
+          format: float
+          example: 350.00
+
+    CreateMenuItemRequest:
+      type: object
+      required: [menu_id, name, price]
+      properties:
+        menu_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Суп дня
+        description:
+          type: string
+          example: Лёгкий суп с лапшой
+        price:
+          type: number
+          format: float
+          example: 350.00
+
+    UpdateMenuItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+
+    # ── REVIEW ──
+
+    ReviewInternal:
+      type: object
+      properties:
+        review_id:
+          type: integer
+          example: 200
+        user_id:
+          type: integer
+          example: 42
+        restaurant_id:
+          type: integer
+          example: 7
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        comment:
+          type: string
+          example: Отличная еда!
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-05-01T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-05-01T12:00:00Z"
+
+    CreateReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        comment:
+          type: string
+          example: Отличная еда!
+
+    UpdateReviewRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+
+    # ── RABBITMQ EVENT SCHEMAS ──
+
+    UserRegisteredEvent:
+      description: |
+        Exchange: auth | Routing key: user.registered
+        Publisher: auth-service | Consumer: notification-service
+      type: object
+      required: [user_id, email]
+      properties:
+        user_id:
+          type: integer
+          example: 42
+        email:
+          type: string
+          format: email
+          example: v.persuk@example.com
+        first_name:
+          type: string
+          example: Виктория
+
+    ReservationCreatedEvent:
+      description: |
+        Exchange: reservations | Routing key: reservation.created
+        Publisher: reservation-service | Consumer: notification-service
+      type: object
+      required: [reservation_id, user_id, table_id, restaurant_id, reservation_time, guest_number]
+      properties:
+        reservation_id:
+          type: integer
+          example: 101
+        user_id:
+          type: integer
+          example: 42
+        table_id:
+          type: integer
+          example: 15
+        restaurant_id:
+          type: integer
+          example: 7
+        reservation_time:
+          type: string
+          format: date-time
+          example: "2026-06-01T19:00:00Z"
+        guest_number:
+          type: integer
+          example: 2
+
+    ReservationCancelledEvent:
+      description: |
+        Exchange: reservations | Routing key: reservation.cancelled
+        Publisher: reservation-service | Consumer: notification-service
+      type: object
+      required: [reservation_id, user_id]
+      properties:
+        reservation_id:
+          type: integer
+          example: 101
+        user_id:
+          type: integer
+          example: 42
+        reason:
+          type: string
+          example: Отменено пользователем
+
+    RestaurantStatusChangedEvent:
+      description: |
+        Exchange: restaurants | Routing key: restaurant.status_changed
+        Publisher: restaurant-service | Consumer: notification-service
+      type: object
+      required: [restaurant_id, old_status, new_status, owner_user_id]
+      properties:
+        restaurant_id:
+          type: integer
+          example: 7
+        restaurant_name:
+          type: string
+          example: Sakura Garden
+        old_status:
+          type: string
+          enum: [Pending, Verified, Rejected]
+          example: Pending
+        new_status:
+          type: string
+          enum: [Pending, Verified, Rejected]
+          example: Verified
+        owner_user_id:
+          type: integer
+          example: 5
+
+    ReviewCreatedEvent:
+      description: |
+        Exchange: reviews | Routing key: review.created
+        Publisher: review-service | Consumer: restaurant-service (пересчёт рейтинга)
+      type: object
+      required: [review_id, restaurant_id, user_id, rating]
+      properties:
+        review_id:
+          type: integer
+          example: 200
+        restaurant_id:
+          type: integer
+          example: 7
+        user_id:
+          type: integer
+          example: 42
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        comment:
+          type: string
+          example: Отличная еда, рекомендую!
+
+    ReviewDeletedEvent:
+      description: |
+        Exchange: reviews | Routing key: review.deleted
+        Publisher: review-service | Consumer: restaurant-service (пересчёт рейтинга)
+      type: object
+      required: [review_id, restaurant_id]
+      properties:
+        review_id:
+          type: integer
+          example: 200
+        restaurant_id:
+          type: integer
+          example: 7

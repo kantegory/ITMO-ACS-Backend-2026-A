@@ -18,7 +18,7 @@ export class MenuItem {
     @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true })
     price!: number;
 
-    @ManyToOne(() => Menu, (menu) => menu.menuItems)
+    @ManyToOne(() => Menu, (menu) => menu.items)
     @JoinColumn({ name: 'menu_id' })
     menu!: Menu;
 }

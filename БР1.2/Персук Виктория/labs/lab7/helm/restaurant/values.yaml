@@ -1,0 +1,100 @@
+# Образы: <registry>/<repoPrefix>/<имя сервиса>:<tag>
+# registry и tag подставляет GitHub Actions при деплое
+image:
+  registry: ""
+  repoPrefix: restaurant-lab
+  tag: latest
+
+aws:
+  region: ap-southeast-2
+  # секрет в AWS Secrets Manager, созданный Terraform
+  secretName: restaurant-lab/app
+
+rabbitmq:
+  image: rabbitmq:3-management
+  storage: 5Gi
+  # закрепить брокер за зоной (рядом с RDS); пусто — без привязки
+  zone: ap-southeast-2a
+
+services:
+  api-gateway:
+    port: 3000
+    replicas: 2
+    maxReplicas: 4
+    resources: { cpu: 100m, memory: 128Mi }
+    probe: { type: http, path: /health }
+    env:
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
+      RESERVATION_SERVICE_URL: http://reservation-service:3003
+      MENU_SERVICE_URL: http://menu-service:3004
+      REVIEW_SERVICE_URL: http://review-service:3005
+
+  auth-service:
+    port: 3001
+    replicas: 2
+    maxReplicas: 4
+    resources: { cpu: 100m, memory: 384Mi }
+    probe: { type: tcp }
+    db: auth
+    jwt: true
+    rabbitmq: true
+    env:
+      JWT_ACCESS_TOKEN_LIFETIME: "86400"
+      RESERVATION_SERVICE_URL: http://reservation-service:3003
+
+  restaurant-service:
+    port: 3002
+    replicas: 2
+    maxReplicas: 4
+    resources: { cpu: 100m, memory: 384Mi }
+    probe: { type: tcp }
+    db: restaurant
+    jwt: true
+    rabbitmq: true
+    env:
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RESERVATION_SERVICE_URL: http://reservation-service:3003
+      MENU_SERVICE_URL: http://menu-service:3004
+      REVIEW_SERVICE_URL: http://review-service:3005
+
+  reservation-service:
+    port: 3003
+    replicas: 2
+    maxReplicas: 4
+    resources: { cpu: 100m, memory: 384Mi }
+    probe: { type: tcp }
+    db: reservation
+    jwt: true
+    rabbitmq: true
+    env:
+      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
+
+  menu-service:
+    port: 3004
+    replicas: 2
+    maxReplicas: 3
+    resources: { cpu: 100m, memory: 384Mi }
+    probe: { type: tcp }
+    db: menu
+    jwt: true
+    env:
+      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
+
+  review-service:
+    port: 3005
+    replicas: 2
+    maxReplicas: 3
+    resources: { cpu: 100m, memory: 384Mi }
+    probe: { type: tcp }
+    db: review
+    jwt: true
+    rabbitmq: true
+    env:
+      AUTH_SERVICE_URL: http://auth-service:3001
+      RESTAURANT_SERVICE_URL: http://restaurant-service:3002
+
+  notification-service:
+    replicas: 1
+    resources: { cpu: 50m, memory: 128Mi }
+    rabbitmq: true

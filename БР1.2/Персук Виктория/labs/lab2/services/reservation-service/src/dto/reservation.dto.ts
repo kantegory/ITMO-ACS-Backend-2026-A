@@ -8,10 +8,10 @@ export class CreateReservationDto {
     table_id!: number;
 
     @Type(() => String)
-    reservation_time!: string;
+    start_time!: string;
 
     @Type(() => String)
-    reservation_date!: string;
+    end_time!: string;
 
     @IsNumber()
     @Type(() => Number)
@@ -21,11 +21,11 @@ export class CreateReservationDto {
 export class UpdateReservationDto {
     @IsOptional()
     @Type(() => String)
-    reservation_time?: string;
+    start_time?: string;
 
     @IsOptional()
     @Type(() => String)
-    reservation_date?: string;
+    end_time?: string;
 
     @IsOptional()
     @IsNumber()
