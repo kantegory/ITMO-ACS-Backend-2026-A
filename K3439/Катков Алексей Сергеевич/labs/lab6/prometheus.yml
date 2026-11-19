@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: [node-metrics-host:9100]
+
+  - job_name: services
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: [http://api-gateway:8000/ready]
+        labels: {service: api-gateway}
+      - targets: [http://auth-service:8001/ready]
+        labels: {service: auth-service}
+      - targets: [http://recipe-service:8002/ready]
+        labels: {service: recipe-service}
+      - targets: [http://social-service:8003/ready]
+        labels: {service: social-service}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

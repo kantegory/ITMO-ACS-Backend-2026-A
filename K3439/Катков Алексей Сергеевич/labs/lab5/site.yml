@@ -1,0 +1,139 @@
+- name: Set up the recipe API host
+  hosts: recipes
+  become: true
+  vars:
+    recipes_repo: https://github.com/Deraxus/ITMO-ACS-Backend-2026-A.git
+    recipes_version: katkov-deploy
+    recipes_checkout: /opt/recipes/source
+    recipes_app: "{{ recipes_checkout }}/K3439/Катков Алексей Сергеевич/labs/lab4/app"
+    recipes_http_port: 80
+    recipes_gateway_port: 18000
+    recipes_docker_preinstalled: false
+    recipes_checkout_existing: false
+    recipes_disable_default_site: true
+  tasks:
+    - name: Install system packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - git
+          - nginx
+          - openssl
+          - python3
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Prepare Docker apt keyring
+      when: not recipes_docker_preinstalled | bool
+      block:
+        - name: Create shared keyring directory
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: '0755'
+
+        - name: Install Docker repository key
+          ansible.builtin.get_url:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            dest: /etc/apt/keyrings/docker.asc
+            mode: '0644'
+
+        - name: Configure Docker repository
+          ansible.builtin.apt_repository:
+            repo: "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+            filename: docker
+            state: present
+
+        - name: Install Docker Engine and Compose plugin
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+
+        - name: Enable Docker
+          ansible.builtin.service:
+            name: docker
+            enabled: true
+            state: started
+
+    - name: Check out application source
+      ansible.builtin.git:
+        repo: "{{ recipes_repo }}"
+        version: "{{ recipes_version }}"
+        dest: "{{ recipes_checkout }}"
+        single_branch: true
+      when: not recipes_checkout_existing | bool
+
+    - name: Generate the application environment on first deployment
+      ansible.builtin.command:
+        cmd: bash init-env.sh
+        chdir: "{{ recipes_app }}"
+        creates: "{{ recipes_app }}/.env"
+
+    - name: Start application services and wait for readiness
+      community.docker.docker_compose_v2:
+        project_src: "{{ recipes_app }}"
+        build: always
+        state: present
+        wait: true
+        wait_timeout: 180
+      environment:
+        GATEWAY_PORT: "{{ recipes_gateway_port }}"
+
+    - name: Configure nginx proxy
+      ansible.builtin.template:
+        src: recipes.conf.j2
+        dest: /etc/nginx/sites-available/recipes
+        mode: '0644'
+      notify: Reload nginx
+
+    - name: Enable recipes site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/recipes
+        path: /etc/nginx/sites-enabled/recipes
+        state: link
+      notify: Reload nginx
+
+    - name: Disable the default site on the dedicated host
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      when: recipes_disable_default_site | bool
+      notify: Reload nginx
+
+    - name: Check nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Start nginx with the system service
+      ansible.builtin.service:
+        name: nginx
+        enabled: true
+        state: started
+      when: ansible_service_mgr == 'systemd'
+
+    - name: Start nginx inside the development container
+      ansible.builtin.command:
+        cmd: nginx
+        creates: /run/nginx.pid
+      when: ansible_service_mgr != 'systemd'
+
+    - name: Apply nginx changes before the smoke check
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify HTTP through nginx
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ recipes_http_port }}/ready"
+        return_content: true
+      register: recipes_probe
+      failed_when: recipes_probe.status != 200 or recipes_probe.json.status != 'ok'
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.command: nginx -s reload
