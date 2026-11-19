@@ -1,0 +1,230 @@
+# ДЗ8. Continuous Delivery в Amazon EKS.
+# Пересобираются только изменённые сервисы, остальным в ECR добавляется новый тег
+# без пересборки. Выкладка требует подтверждения в окружении production,
+# после неё выполняется smoke-тест, при ошибке релиз откатывается.
+name: HW8 CD
+
+on:
+  push:
+    branches: [eks-deploy]
+    paths:
+      - 'БР1.2/Персук Виктория/labs/lab2/services/**'
+      - 'БР1.2/Персук Виктория/labs/lab7/helm/**'
+      - '.github/workflows/hw8-cd.yml'
+  workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: 'Пересобрать все образы'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  CLUSTER: restaurant-lab
+  RELEASE: restaurant
+  NAMESPACE: restaurant
+  LABS: БР1.2/Персук Виктория/labs
+
+concurrency:
+  group: eks-deploy
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.changes }}
+      prev_tag: ${{ steps.prev.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api-gateway:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/api-gateway/**'
+            auth-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/auth-service/**'
+            restaurant-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/restaurant-service/**'
+            reservation-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/reservation-service/**'
+            menu-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/menu-service/**'
+            review-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/review-service/**'
+            notification-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/notification-service/**'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.22.1
+
+      # Тег образов, который сейчас развёрнут в кластере (none, если релиза нет)
+      - name: Get deployed tag
+        id: prev
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+          TAG=$(helm get values "$RELEASE" -n "$NAMESPACE" -o json 2>/dev/null | jq -r '.image.tag // "none"' || true)
+          echo "tag=${TAG:-none}" >> "$GITHUB_OUTPUT"
+          echo "Развёрнутый тег: ${TAG:-none}"
+
+  images:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - restaurant-service
+          - reservation-service
+          - menu-service
+          - review-service
+          - notification-service
+    env:
+      SERVICE: ${{ matrix.service }}
+      NEW_TAG: ${{ github.sha }}
+      PREV_TAG: ${{ needs.prepare.outputs.prev_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      # build: сервис изменён, образа прошлой версии нет или запрошена полная пересборка
+      # retag: код не менялся, прошлый образ получает новый тег без пересборки
+      - name: Decide build or retag
+        id: mode
+        run: |
+          REPO="restaurant-lab/$SERVICE"
+          if aws ecr describe-images --repository-name "$REPO" --image-ids imageTag="$NEW_TAG" >/dev/null 2>&1; then
+            MODE=skip
+          elif [ "${{ inputs.rebuild_all }}" = "true" ] \
+            || echo '${{ needs.prepare.outputs.changed }}' | jq -e --arg s "$SERVICE" 'index($s)' >/dev/null \
+            || [ "$PREV_TAG" = "none" ] \
+            || ! aws ecr describe-images --repository-name "$REPO" --image-ids imageTag="$PREV_TAG" >/dev/null 2>&1; then
+            MODE=build
+          else
+            MODE=retag
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "**$SERVICE**: $MODE" >> "$GITHUB_STEP_SUMMARY"
+          echo "$SERVICE: $MODE"
+
+      - name: Build image
+        if: steps.mode.outputs.mode == 'build'
+        working-directory: ${{ env.LABS }}/lab2/services/${{ matrix.service }}
+        run: docker build -t "${{ steps.ecr.outputs.registry }}/restaurant-lab/$SERVICE:$NEW_TAG" .
+
+      - name: Trivy gate (CRITICAL)
+        if: steps.mode.outputs.mode == 'build'
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --no-progress --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            "${{ steps.ecr.outputs.registry }}/restaurant-lab/$SERVICE:$NEW_TAG"
+
+      - name: Push image
+        if: steps.mode.outputs.mode == 'build'
+        run: docker push "${{ steps.ecr.outputs.registry }}/restaurant-lab/$SERVICE:$NEW_TAG"
+
+      - name: Retag previous image
+        if: steps.mode.outputs.mode == 'retag'
+        run: |
+          REPO="restaurant-lab/$SERVICE"
+          aws ecr batch-get-image --repository-name "$REPO" --image-ids imageTag="$PREV_TAG" \
+            --query 'images[0].[imageManifest,imageManifestMediaType]' --output json > image.json
+          aws ecr put-image --repository-name "$REPO" --image-tag "$NEW_TAG" \
+            --image-manifest "$(jq -r '.[0]' image.json)" \
+            --image-manifest-media-type "$(jq -r '.[1]' image.json)" > /dev/null
+          echo "$PREV_TAG -> $NEW_TAG"
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.smoke.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.22.1
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+
+      - name: Helm upgrade
+        id: helm
+        run: |
+          helm upgrade --install "$RELEASE" "$LABS/lab7/helm/restaurant" \
+            --namespace "$NAMESPACE" --create-namespace \
+            --set image.registry="${{ steps.ecr.outputs.registry }}" \
+            --set image.tag="${{ github.sha }}" \
+            --wait --timeout 10m
+
+      - name: Smoke test
+        id: smoke
+        run: |
+          for i in $(seq 1 30); do
+            ALB=$(kubectl get ingress api -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            [ -n "$ALB" ] && break
+            sleep 10
+          done
+          echo "url=http://$ALB/health" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 30); do
+            if curl -fsS "http://$ALB/health"; then break; fi
+            echo "ALB ещё не готов, попытка $i"; sleep 10
+          done
+          echo
+          curl -fsS "http://$ALB/health" | jq -e '.status == "ok"'
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://$ALB/api/v1/restaurants")
+          echo "GET /api/v1/restaurants -> $CODE"
+          [ "$CODE" = "200" ]
+
+      - name: Rollback on failure
+        if: failure() && steps.helm.outcome != 'skipped'
+        run: |
+          echo "Деплой или smoke-тест не прошёл, откат на предыдущую ревизию"
+          helm rollback "$RELEASE" -n "$NAMESPACE" --wait || true
+          helm history "$RELEASE" -n "$NAMESPACE"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Релиз"
+            echo '```'
+            helm history "$RELEASE" -n "$NAMESPACE" --max 5
+            echo '```'
+            echo '```'
+            kubectl get deploy -n "$NAMESPACE" -o wide
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

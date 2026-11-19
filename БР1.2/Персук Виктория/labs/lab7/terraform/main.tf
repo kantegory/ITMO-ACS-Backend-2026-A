@@ -85,7 +85,7 @@ module "eks" {
   subnet_ids = module.vpc.private_subnets
 
   cluster_addons = {
-    coredns = {}
+    coredns    = {}
     kube-proxy = {}
     vpc-cni = {
       before_compute = true
