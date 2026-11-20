@@ -10,6 +10,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+    res.json({ status: "ok", service: "recipe-service" });
+});
+
 app.get("/api/recipes", getRecipes);
 app.get("/api/recipes/:id", getRecipe);
 app.get("/api/recipes/:recipeId/steps", getSteps);

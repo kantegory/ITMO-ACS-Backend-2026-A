@@ -16,6 +16,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+    res.json({ status: "ok", service: "social-service" });
+});
+
 // Внутренние эндпоинты (для других сервисов)
 app.get("/internal/recipes/:id/stats", getRecipeStats);
 

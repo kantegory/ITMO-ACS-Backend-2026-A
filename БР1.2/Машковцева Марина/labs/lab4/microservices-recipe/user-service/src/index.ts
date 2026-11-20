@@ -11,6 +11,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+    res.json({ status: "ok", service: "user-service" });
+});
+
 // Публичные маршруты
 app.post("/api/auth/register", register);
 app.post("/api/auth/login", login);
