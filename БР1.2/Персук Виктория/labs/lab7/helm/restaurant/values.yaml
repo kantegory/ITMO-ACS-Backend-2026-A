@@ -12,13 +12,15 @@ aws:
 
 # Подключение сервисов к RDS
 db:
-  logging: true    # логировать каждый SQL-запрос (TypeORM)
-  poolMax: 10      # размер пула подключений в каждом поде
+  # ЛР8: логирование каждого SQL-запроса выключено, оно тратило CPU под нагрузкой
+  logging: false   # логировать каждый SQL-запрос (TypeORM)
+  # ЛР8: 24 пода при максимуме HPA x 5 = 120 подключений, без пула 10 было бы 240 при лимите RDS около 80
+  poolMax: 5       # размер пула подключений в каждом поде
 
 # Автомасштабирование подов
 hpa:
   cpuTarget: 70                      # целевая загрузка CPU от requests, %
-  scaleDownStabilizationSeconds: 300 # сколько ждать перед уменьшением числа реплик
+  scaleDownStabilizationSeconds: 120 # сколько ждать перед уменьшением числа реплик
 
 rabbitmq:
   image: rabbitmq:3-management
@@ -30,8 +32,8 @@ services:
   api-gateway:
     port: 3000
     replicas: 2
-    maxReplicas: 4
-    resources: { cpu: 100m, memory: 128Mi }
+    maxReplicas: 6
+    resources: { cpu: 100m, memory: 48Mi, memoryLimit: 128Mi, cpuLimit: 500m }
     probe: { type: http, path: /health }
     env:
       AUTH_SERVICE_URL: http://auth-service:3001
@@ -43,8 +45,8 @@ services:
   auth-service:
     port: 3001
     replicas: 2
-    maxReplicas: 4
-    resources: { cpu: 100m, memory: 384Mi }
+    maxReplicas: 6
+    resources: { cpu: 250m, memory: 96Mi, memoryLimit: 256Mi, cpuLimit: "1" }
     probe: { type: tcp }
     db: auth
     jwt: true
@@ -56,8 +58,8 @@ services:
   restaurant-service:
     port: 3002
     replicas: 2
-    maxReplicas: 4
-    resources: { cpu: 100m, memory: 384Mi }
+    maxReplicas: 6
+    resources: { cpu: 150m, memory: 96Mi, memoryLimit: 256Mi, cpuLimit: 500m }
     probe: { type: tcp }
     db: restaurant
     jwt: true
@@ -71,8 +73,8 @@ services:
   reservation-service:
     port: 3003
     replicas: 2
-    maxReplicas: 4
-    resources: { cpu: 100m, memory: 384Mi }
+    maxReplicas: 6
+    resources: { cpu: 150m, memory: 96Mi, memoryLimit: 256Mi, cpuLimit: 500m }
     probe: { type: tcp }
     db: reservation
     jwt: true
@@ -84,7 +86,7 @@ services:
     port: 3004
     replicas: 2
     maxReplicas: 3
-    resources: { cpu: 100m, memory: 384Mi }
+    resources: { cpu: 100m, memory: 96Mi, memoryLimit: 256Mi, cpuLimit: 500m }
     probe: { type: tcp }
     db: menu
     jwt: true
@@ -95,7 +97,7 @@ services:
     port: 3005
     replicas: 2
     maxReplicas: 3
-    resources: { cpu: 100m, memory: 384Mi }
+    resources: { cpu: 100m, memory: 96Mi, memoryLimit: 256Mi, cpuLimit: 500m }
     probe: { type: tcp }
     db: review
     jwt: true
@@ -106,5 +108,5 @@ services:
 
   notification-service:
     replicas: 1
-    resources: { cpu: 50m, memory: 128Mi }
+    resources: { cpu: 50m, memory: 64Mi, memoryLimit: 128Mi, cpuLimit: 250m }
     rabbitmq: true
