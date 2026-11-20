@@ -1,0 +1,62 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  - job_name: service-health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://auth:3000/health"]
+        labels:
+          service: auth
+      - targets: ["http://user:3000/health"]
+        labels:
+          service: user
+      - targets: ["http://workout:3000/health"]
+        labels:
+          service: workout
+      - targets: ["http://userworkouts:3000/health"]
+        labels:
+          service: userworkouts
+      - targets: ["http://progress:3000/health"]
+        labels:
+          service: progress
+      - targets: ["http://blog:3000/health"]
+        labels:
+          service: blog
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [service]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: dependency-health
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ["postgres:5432"]
+        labels:
+          service: postgres
+      - targets: ["rabbitmq:5672"]
+        labels:
+          service: rabbitmq
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [service]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

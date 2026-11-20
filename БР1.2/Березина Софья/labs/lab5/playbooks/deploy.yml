@@ -1,0 +1,66 @@
+---
+- name: Deploy the fitness platform
+  hosts: fitness_servers
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Check that the local lab3 Compose project exists
+      ansible.builtin.stat:
+        path: "{{ lab3_source_dir }}/docker-compose.yml"
+      delegate_to: localhost
+      become: false
+      register: compose_file
+
+    - name: Require the lab3 Compose project
+      ansible.builtin.assert:
+        that:
+          - compose_file.stat.exists
+        fail_msg: "The lab3 source was not found at {{ lab3_source_dir }}."
+
+    - name: Ensure Docker is available on the target
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - version
+      changed_when: false
+
+  tasks:
+    - name: Create the application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy the Compose project definition
+      ansible.builtin.copy:
+        src: "{{ lab3_source_dir }}/docker-compose.yml"
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Copy database initialization scripts
+      ansible.builtin.copy:
+        src: "{{ lab3_source_dir }}/db/init/"
+        dest: "{{ app_dir }}/db/init/"
+        owner: root
+        group: root
+        mode: preserve
+
+    - name: Copy backend services
+      ansible.builtin.copy:
+        src: "{{ lab3_source_dir }}/services/"
+        dest: "{{ app_dir }}/services/"
+        owner: root
+        group: root
+        mode: preserve
+
+    - name: Build and start application services
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        state: present
+        build: always
