@@ -254,5 +254,25 @@ export type ReservationAvailabilityRequest = {
 export type ReservationAvailabilityResponse = {
   ok: true;
   available: boolean;
-  reason: "OK" | "USER_NOT_FOUND" | "USER_INACTIVE" | "TABLE_NOT_FOUND" | "TABLE_INACTIVE" | "CAPACITY_EXCEEDED" | "INVALID_TIME_RANGE";
+  reason:
+    | "OK"
+    | "USER_NOT_FOUND"
+    | "USER_INACTIVE"
+    | "TABLE_NOT_FOUND"
+    | "TABLE_INACTIVE"
+    | "TIME_CONFLICT"
+    | "CAPACITY_EXCEEDED"
+    | "INVALID_TIME_RANGE";
+};
+
+export type Reservation = ReservationAvailabilityRequest & {
+  id: number;
+  created_at: string;
+};
+
+export type ReservationCreateResponse = {
+  ok: true;
+  created: boolean;
+  reason: ReservationAvailabilityResponse["reason"];
+  reservation?: Reservation;
 };

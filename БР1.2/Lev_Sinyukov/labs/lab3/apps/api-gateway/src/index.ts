@@ -8,6 +8,7 @@ import {
   parseRpcResult,
   ReservationAvailabilityRequest,
   ReservationAvailabilityResponse,
+  ReservationCreateResponse,
   RestaurantSearchRequest,
   RestaurantSearchResponse,
   ReviewSummaryResponse,
@@ -96,6 +97,24 @@ async function bootstrap() {
     } catch (error) {
       console.error("Reservation availability RPC error:", error);
       return res.status(503).json(buildError("SERVICE_UNAVAILABLE", "Reservation workflow is unavailable"));
+    }
+  });
+
+  app.post("/api/v1/reservations", async (req, res) => {
+    const payload = req.body as ReservationAvailabilityRequest;
+
+    try {
+      const response = parseRpcResult(
+        await rpcClient.request<ReservationAvailabilityRequest, ReservationCreateResponse>(
+          "reservation.create.request",
+          payload,
+        ),
+      );
+
+      return res.status(response.created ? 201 : 409).json(response);
+    } catch (error) {
+      console.error("Reservation creation RPC error:", error);
+      return res.status(503).json(buildError("SERVICE_UNAVAILABLE", "Reservation service is unavailable"));
     }
   });
 
