@@ -1,0 +1,62 @@
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: recipe-api-health
+      folder: Recipe API
+      interval: 1m
+      rules:
+        - uid: eg4wjqokpoj5sf
+          title: Recipe API Service Down
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                editorMode: code
+                expr: probe_success{job="blackbox-health",check_type="microservice"}
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 1
+                        type: lt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 1m
+          annotations:
+            description: |-
+                Healthcheck failed for {{ $labels.instance }}.
+                Prometheus probe_success is below 1.
+                Check the Docker container and service logs.
+            summary: Microservice {{ $labels.instance }} is unavailable
+          isPaused: false
+          notification_settings:
+            receiver: Recipe API Email
