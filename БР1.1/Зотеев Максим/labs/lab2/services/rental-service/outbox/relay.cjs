@@ -36,6 +36,7 @@ async function relay() {
   const channel = await connection.createConfirmChannel();
   channel.on("close", () => fail("RabbitMQ channel closed"));
   channel.on("return", () => fail("Unroutable event")); // The event stays in the outbox.
+  console.log("Outbox relay started");
   for (;;) {
     fs.writeFileSync(HEARTBEAT, String(Date.now()));
     await db.query("BEGIN");
@@ -48,6 +49,7 @@ async function relay() {
       });
       await confirmed(channel);
       await db.query("DELETE FROM rental_outbox WHERE seq=$1", [e.seq]);
+      console.log(`Published ${e.routing_key} ${e.event_id} (rental ${e.payload.rental_id})`);
     }
     await db.query("COMMIT");
     if (!rows.length) await delay(150);
