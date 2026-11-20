@@ -1,0 +1,57 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [new-semester]
+    paths:
+      - 'БР1.2/Персук Виктория/labs/lab2/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      APP_PATH: БР1.2/Персук Виктория/labs/lab2
+      TARGET: ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy files to server
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude node_modules --exclude dist --exclude dbs \
+            "$APP_PATH/" "$TARGET:~/app/"
+
+      - name: Build and restart containers
+        run: |
+          ssh -i ~/.ssh/deploy_key "$TARGET" << 'EOF'
+          set -e
+          cd ~/app
+          DC="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+          for s in api-gateway auth-service restaurant-service reservation-service menu-service review-service notification-service; do
+            $DC build "$s"
+          done
+          $DC up -d
+          $DC ps
+          docker image prune -f
+          EOF
+
+      - name: Health check
+        run: |
+          curl -fsS --retry 10 --retry-delay 5 --retry-all-errors \
+            http://${{ secrets.SERVER_HOST }}/health

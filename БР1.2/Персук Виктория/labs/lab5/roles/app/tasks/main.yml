@@ -1,0 +1,35 @@
+- name: Create app directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+
+- name: Sync application files
+  ansible.posix.synchronize:
+    src: "{{ app_src }}"
+    dest: "{{ app_dir }}/"
+    delete: true
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=dist"
+      - "--exclude=dbs"
+      - "--exclude=.DS_Store"
+  become: false
+
+- name: Build and start containers
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    files:
+      - docker-compose.yml
+      - docker-compose.prod.yml
+    build: policy
+    state: present
+
+- name: Wait for api-gateway
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ app_port }}/health"
+  register: gw
+  retries: 20
+  delay: 5
+  until: gw.status == 200

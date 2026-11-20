@@ -1,0 +1,132 @@
+# ДЗ8. Continuous Integration: проверки при pull request в ветку деплоя.
+# AWS не нужен: образы собираются и сканируются локально в раннере.
+name: HW8 CI
+
+on:
+  pull_request:
+    branches: [eks-deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  LABS: БР1.2/Персук Виктория/labs
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Какие части проекта изменились в этом PR
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.list.outputs.services }}
+      helm: ${{ steps.filter.outputs.helm }}
+      terraform: ${{ steps.filter.outputs.terraform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api-gateway:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/api-gateway/**'
+            auth-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/auth-service/**'
+            restaurant-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/restaurant-service/**'
+            reservation-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/reservation-service/**'
+            menu-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/menu-service/**'
+            review-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/review-service/**'
+            notification-service:
+              - 'БР1.2/Персук Виктория/labs/lab2/services/notification-service/**'
+            helm:
+              - 'БР1.2/Персук Виктория/labs/lab7/helm/**'
+            terraform:
+              - 'БР1.2/Персук Виктория/labs/lab7/terraform/**'
+
+      - name: List changed services
+        id: list
+        run: |
+          SERVICES=$(echo '${{ steps.filter.outputs.changes }}' \
+            | jq -c 'map(select(. != "helm" and . != "terraform"))')
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          echo "Изменённые сервисы: $SERVICES"
+
+  # Сборка образа (она же компиляция TypeScript) и сканирование уязвимостей
+  services:
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        working-directory: ${{ env.LABS }}/lab2/services/${{ matrix.service }}
+        run: docker build -t "ci/${{ matrix.service }}:${{ github.sha }}" .
+
+      - name: Trivy report (HIGH, CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --no-progress --severity HIGH,CRITICAL --ignore-unfixed \
+            "ci/${{ matrix.service }}:${{ github.sha }}"
+
+      - name: Trivy gate (CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest \
+            image --no-progress --quiet --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            "ci/${{ matrix.service }}:${{ github.sha }}"
+
+  # Проверка Helm-чарта
+  helm:
+    needs: changes
+    if: needs.changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.22.1
+      - name: Lint and render chart
+        run: |
+          helm lint "$LABS/lab7/helm/restaurant"
+          helm template test "$LABS/lab7/helm/restaurant" \
+            --set image.registry=example.com --set image.tag=ci > /dev/null
+
+  # Проверка Terraform без доступа к AWS
+  terraform:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.LABS }}/lab7/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+      - run: terraform fmt -check -recursive -diff
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  # Один итоговый статус для правила защиты ветки
+  ci-result:
+    needs: [changes, services, helm, terraform]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success" or .result == "skipped")'

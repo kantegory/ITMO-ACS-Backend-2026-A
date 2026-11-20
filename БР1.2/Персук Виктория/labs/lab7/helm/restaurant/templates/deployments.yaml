@@ -1,0 +1,128 @@
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+spec:
+  replicas: {{ $svc.replicas }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: {{ $name }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $.Values.image.registry }}/{{ $.Values.image.repoPrefix }}/{{ $name }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          {{- if $svc.port }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          {{- end }}
+          env:
+            {{- if $svc.port }}
+            - name: APP_PORT
+              value: {{ $svc.port | quote }}
+            {{- end }}
+            {{- if $svc.db }}
+            - name: APP_API_PREFIX
+              value: /api/v1
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DB_HOST
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: {{ printf "%s_db" $svc.db }}
+            - name: DB_USER
+              value: {{ printf "%s_db" $svc.db }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: {{ printf "%s_DB_PASSWORD" (upper $svc.db) }}
+            - name: DB_SSL
+              value: "true"
+            - name: DB_LOGGING
+              value: {{ $.Values.db.logging | quote }}
+            - name: DB_POOL_MAX
+              value: {{ $.Values.db.poolMax | quote }}
+            {{- end }}
+            {{- if $svc.jwt }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET_KEY
+            {{- end }}
+            {{- if $svc.rabbitmq }}
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: RABBITMQ_URL
+            {{- end }}
+            {{- range $key, $value := $svc.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            requests:
+              cpu: {{ $svc.resources.cpu }}
+              memory: {{ $svc.resources.memory }}
+            limits:
+              memory: {{ $svc.resources.memoryLimit | default $svc.resources.memory }}
+              {{- with $svc.resources.cpuLimit }}
+              cpu: {{ . }}
+              {{- end }}
+          {{- with $svc.probe }}
+          readinessProbe:
+            {{- if eq .type "http" }}
+            httpGet:
+              path: {{ .path }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            {{- if eq .type "http" }}
+            httpGet:
+              path: {{ .path }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          {{- end }}
+{{- end }}

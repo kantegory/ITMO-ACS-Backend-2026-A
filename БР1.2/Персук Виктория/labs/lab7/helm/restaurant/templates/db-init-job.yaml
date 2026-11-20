@@ -1,0 +1,43 @@
+# Создаёт в RDS базы и пользователей для каждого сервиса (идемпотентно).
+# Выполняется до установки/обновления сервисов.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: postgres:16-alpine
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          env:
+            - name: PGSSLMODE
+              value: require
+            - name: PGDATABASE
+              value: postgres
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              export PGHOST="$DB_HOST" PGUSER="$DB_MASTER_USER" PGPASSWORD="$DB_MASTER_PASSWORD"
+              for svc in auth restaurant reservation menu review; do
+                db="${svc}_db"
+                pass=$(printenv "$(echo "$svc" | tr a-z A-Z)_DB_PASSWORD")
+                echo "==> $db"
+                psql -v ON_ERROR_STOP=1 <<SQL
+              SELECT format('CREATE ROLE %I LOGIN', '${db}') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${db}')\gexec
+              ALTER ROLE ${db} WITH LOGIN PASSWORD '${pass}';
+              GRANT ${db} TO CURRENT_USER;
+              SELECT format('CREATE DATABASE %I OWNER %I', '${db}', '${db}') WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${db}')\gexec
+              SQL
+              done
+              echo "All databases are ready"
