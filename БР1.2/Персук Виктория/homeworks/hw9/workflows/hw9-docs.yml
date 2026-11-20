@@ -1,0 +1,79 @@
+# ДЗ9. Проверка спецификации OpenAPI и коллекции Postman, сборка сайта MkDocs
+# и публикация на GitHub Pages.
+name: HW9 Docs
+
+on:
+  push:
+    branches: [new-semester]
+    paths:
+      - 'БР1.2/Персук Виктория/homeworks/hw9/**'
+      - '.github/workflows/hw9-docs.yml'
+  pull_request:
+    paths:
+      - 'БР1.2/Персук Виктория/homeworks/hw9/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  SITE: БР1.2/Персук Виктория/homeworks/hw9/docs-site
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.SITE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Lint OpenAPI
+        run: npx -y @redocly/cli@latest lint docs/api/openapi.yaml --format=stylish
+
+      - name: Validate Postman collection
+        run: |
+          python - <<'PY'
+          import json
+          for f in ['docs/api/restaurant-booking.postman_collection.json',
+                    'docs/api/local.postman_environment.json',
+                    'docs/api/eks.postman_environment.json']:
+              json.load(open(f, encoding='utf-8'))
+              print('OK', f)
+          PY
+
+      - name: Build site
+        run: |
+          pip install -r requirements.txt
+          mkdocs build --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: ${{ env.SITE }}/site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - id: pages
+        uses: actions/deploy-pages@v4

@@ -68,6 +68,10 @@ spec:
                   key: {{ printf "%s_DB_PASSWORD" (upper $svc.db) }}
             - name: DB_SSL
               value: "true"
+            - name: DB_LOGGING
+              value: {{ $.Values.db.logging | quote }}
+            - name: DB_POOL_MAX
+              value: {{ $.Values.db.poolMax | quote }}
             {{- end }}
             {{- if $svc.jwt }}
             - name: JWT_SECRET_KEY
@@ -92,7 +96,10 @@ spec:
               cpu: {{ $svc.resources.cpu }}
               memory: {{ $svc.resources.memory }}
             limits:
-              memory: {{ $svc.resources.memory }}
+              memory: {{ $svc.resources.memoryLimit | default $svc.resources.memory }}
+              {{- with $svc.resources.cpuLimit }}
+              cpu: {{ . }}
+              {{- end }}
           {{- with $svc.probe }}
           readinessProbe:
             {{- if eq .type "http" }}
