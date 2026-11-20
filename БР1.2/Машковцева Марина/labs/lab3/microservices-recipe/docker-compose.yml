@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # RabbitMQ
+    rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - recipe-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # User Service
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - JWT_SECRET=my_super_secret_key_123
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - recipe-network
+    volumes:
+      - ./user-service:/app
+      - /app/node_modules
+
+  # Recipe Service
+  recipe-service:
+    build: ./recipe-service
+    container_name: recipe-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - JWT_SECRET=my_super_secret_key_123
+      - SOCIAL_SERVICE_URL=http://social-service:3003
+    depends_on:
+      - user-service
+    networks:
+      - recipe-network
+    volumes:
+      - ./recipe-service:/app
+      - /app/node_modules
+
+  # Social Service
+  social-service:
+    build: ./social-service
+    container_name: social-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - JWT_SECRET=my_super_secret_key_123
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - USER_SERVICE_URL=http://user-service:3001
+      - RECIPE_SERVICE_URL=http://recipe-service:3002
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+    networks:
+      - recipe-network
+    volumes:
+      - ./social-service:/app
+      - /app/node_modules
+
+  # API Gateway
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    depends_on:
+      - user-service
+      - recipe-service
+      - social-service
+    networks:
+      - recipe-network
+    volumes:
+      - ./gateway:/app
+      - /app/node_modules
+
+networks:
+  recipe-network:
+    driver: bridge

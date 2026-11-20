@@ -1,0 +1,65 @@
+---
+- name: Deploy Recipe API
+  hosts: ubuntu_servers
+  become: true
+
+  vars:
+    app_dir: /opt/recipe-api
+
+  tasks:
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy application files
+      ansible.builtin.copy:
+        src: ../../lab4/microservices-recipe/
+        dest: "{{ app_dir }}/"
+        mode: preserve
+      notify: Restart application
+
+    - name: Generate JWT secret if missing
+      ansible.builtin.shell: |
+        umask 077
+        printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)" > "{{ app_dir }}/.env"
+      args:
+        creates: "{{ app_dir }}/.env"
+      no_log: true
+      notify: Restart application
+
+    - name: Install Nginx configuration
+      ansible.builtin.copy:
+        src: ../../lab4/microservices-recipe/nginx/recipe-api.conf
+        dest: /etc/nginx/sites-available/recipe-api
+        mode: "0644"
+      notify: Reload Nginx
+
+    - name: Enable Recipe API Nginx site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/recipe-api
+        dest: /etc/nginx/sites-enabled/recipe-api
+        state: link
+      notify: Reload Nginx
+
+    - name: Disable default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload Nginx
+
+    - name: Check Nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+  handlers:
+    - name: Restart application
+      ansible.builtin.command:
+        cmd: docker compose up -d --build
+        chdir: "{{ app_dir }}"
+
+    - name: Reload Nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded

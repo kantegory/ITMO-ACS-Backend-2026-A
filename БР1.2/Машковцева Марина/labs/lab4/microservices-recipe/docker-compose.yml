@@ -1,0 +1,74 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  user-service:
+    build: user-service
+    restart: unless-stopped
+    environment:
+      PORT: "3001"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - user_data:/app/data
+
+  recipe-service:
+    build: recipe-service
+    restart: unless-stopped
+    environment:
+      PORT: "3002"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SOCIAL_SERVICE_URL: http://social-service:3003
+    depends_on:
+      - user-service
+    volumes:
+      - recipe_data:/app/data
+
+  social-service:
+    build: social-service
+    restart: unless-stopped
+    environment:
+      PORT: "3003"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:3001
+      RECIPE_SERVICE_URL: http://recipe-service:3002
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+    volumes:
+      - social_data:/app/data
+
+  gateway:
+    build: gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      PORT: "3000"
+      USER_SERVICE_URL: http://user-service:3001
+      RECIPE_SERVICE_URL: http://recipe-service:3002
+      SOCIAL_SERVICE_URL: http://social-service:3003
+    depends_on:
+      - user-service
+      - recipe-service
+      - social-service
+
+volumes:
+  rabbitmq_data:
+  user_data:
+  recipe_data:
+  social_data:

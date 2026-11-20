@@ -1,0 +1,32 @@
+---
+- name: Deploy Recipe API monitoring
+  hosts: ubuntu_servers
+  become: true
+
+  vars:
+    monitoring_dir: /opt/recipe-monitoring
+
+  tasks:
+    - name: Create monitoring directory
+      ansible.builtin.file:
+        path: "{{ monitoring_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy monitoring configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/"
+        dest: "{{ monitoring_dir }}/"
+        mode: preserve
+
+    - name: Validate monitoring configuration
+      ansible.builtin.command:
+        cmd: docker compose config --quiet
+        chdir: "{{ monitoring_dir }}"
+      changed_when: false
+
+    - name: Start monitoring containers
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ monitoring_dir }}"
+      changed_when: true

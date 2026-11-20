@@ -1,0 +1,36 @@
+
+name: Deploy Recipe API
+
+on:
+  push:
+    branches:
+      - feature/lab4
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Ubuntu server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            "$SSH_USER@$SSH_HOST" 'bash -se' <<'REMOTE'
+          set -e
+          cd "$HOME/ITMO-ACS-Backend-2026-A/БР1.2/Машковцева Марина/labs/lab4/microservices-recipe"
+          git pull --ff-only origin feature/lab4
+          docker compose up -d --build
+          docker compose ps
+          REMOTE
+
