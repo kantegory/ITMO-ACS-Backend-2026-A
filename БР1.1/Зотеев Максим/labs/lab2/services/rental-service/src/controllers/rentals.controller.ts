@@ -37,9 +37,9 @@ export const createRental = async (req: Request, res: Response) => {
   const { start_date, end_date } = req.body ?? {};
   if (!start_date) throw badRequest("start_date обязателен");
 
-  // Сначала создаём сделку, потом помечаем объект занятым.
-  // На случай гонки делаем компенсацию: при 409 от availability — удаляем
-  // только что созданную сделку и возвращаем 409 клиенту вместо 500.
+  // Сделка (и событие outbox из триггера) записывается в транзакции, внутри неё объект
+  // помечается занятым. Ошибка availability откатывает транзакцию (409 — объект уже занят).
+  // Если же объект уже помечен занятым, а COMMIT не прошёл, возвращаем объекту доступность.
   const rental = rentalsRepo().create({
     propertyId,
     tenantId: req.user!.sub,
@@ -51,22 +51,40 @@ export const createRental = async (req: Request, res: Response) => {
     endDate: end_date ?? null,
     status: "active",
   });
-  await AppDataSource.transaction(async (manager) => {
-    await manager.save(rental);
-    try {
-      await propertyClient.updateAvailability(propertyId, {
-        is_available: false,
-        expected_available: true,
-        reason: "rental_created",
-        rental_id: String(rental.id),
-      });
-    } catch (error) {
-      if (error instanceof HttpError && error.status === 409) {
-        throw conflict("Объект уже арендуется кем-то другим", "property_taken");
+  let reserved = false;
+  try {
+    await AppDataSource.transaction(async (manager) => {
+      await manager.save(rental);
+      try {
+        await propertyClient.updateAvailability(propertyId, {
+          is_available: false,
+          expected_available: true,
+          reason: "rental_created",
+          rental_id: String(rental.id),
+        });
+        reserved = true;
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 409) {
+          throw conflict("Объект уже арендуется кем-то другим", "property_taken");
+        }
+        throw error;
       }
-      throw error;
+    });
+  } catch (error) {
+    if (reserved) {
+      await propertyClient
+        .updateAvailability(propertyId, {
+          is_available: true,
+          expected_available: false,
+          reason: "rental_cancelled", // сделка не сохранилась — для объекта это отмена
+          rental_id: String(rental.id),
+        })
+        .catch((e: Error) =>
+          console.error(`Не удалось вернуть доступность объекта ${propertyId} после отката сделки:`, e.message)
+        );
     }
-  });
+    throw error;
+  }
 
   publishEvent("rental.created", {
     rental_id: String(rental.id),

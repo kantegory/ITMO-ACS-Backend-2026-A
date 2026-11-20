@@ -6,6 +6,7 @@ import { Message } from "../entities/Message";
 
 const EXCHANGE = "rental.events";
 const QUEUE = "messaging.rental-events";
+const MAX_ATTEMPTS = 8;
 
 let connection: ChannelModel | null = null;
 let channel: Channel | null = null;
@@ -64,9 +65,12 @@ export const connectRabbit = async () => {
           channel!.ack(msg);
         } catch (e) {
           console.error("Ошибка обработки сообщения:", e);
+          // Quorum queues count redeliveries in x-delivery-count. Back off 1, 2, 4 … 30 s (about
+          // two minutes in total, longer than a PostgreSQL failover), then let the queue policy
+          // dead-letter the event to messaging.failed, from where the replay job re-publishes it.
           const attempts = Number(msg.properties.headers?.["x-delivery-count"] ?? 0);
-          const retry = process.env.RABBIT_QUORUM === "true" && attempts < 3;
-          if (retry) await new Promise((resolve) => setTimeout(resolve, 500 * (attempts + 1)));
+          const retry = process.env.RABBIT_DEAD_LETTER === "true" && attempts < MAX_ATTEMPTS;
+          if (retry) await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** attempts, 30000)));
           channel!.nack(msg, false, retry);
         }
       });

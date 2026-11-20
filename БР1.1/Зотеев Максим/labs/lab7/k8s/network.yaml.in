@@ -15,7 +15,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: dns-and-package-download
+  name: dns
   namespace: rental-lab7
 spec:
   podSelector:
@@ -29,6 +29,7 @@ spec:
       - messaging-service
       - api-gateway
       - initialize
+      - replay-failed
       - rental-outbox
   policyTypes:
   - Ingress
@@ -51,17 +52,6 @@ spec:
       port: 53
     - protocol: TCP
       port: 53
-  - to:
-    - ipBlock:
-        cidr: 0.0.0.0/0
-        except:
-        - 10.0.0.0/8
-        - 172.16.0.0/12
-        - 192.168.0.0/16
-        - 169.254.0.0/16
-    ports:
-    - protocol: TCP
-      port: 443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -91,6 +81,28 @@ spec:
     ports:
     - protocol: TCP
       port: ${DB_PORT}
+---
+# rental-service is not here: with the outbox it never talks to the broker, rental-outbox does.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: broker-clients
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - identity-service
+      - property-service
+      - messaging-service
+      - rental-outbox
+      - initialize
+      - replay-failed
+  policyTypes:
+  - Egress
+  egress:
   - to:
     - podSelector:
         matchExpressions:
@@ -166,9 +178,9 @@ spec:
           values:
           - identity-service
           - property-service
-          - rental-service
           - messaging-service
           - initialize
+          - replay-failed
           - rental-outbox
     ports:
     - protocol: TCP

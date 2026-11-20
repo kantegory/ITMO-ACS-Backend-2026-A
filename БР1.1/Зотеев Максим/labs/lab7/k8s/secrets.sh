@@ -33,6 +33,9 @@ fi
 [[ ${1:-} == prepare ]] || { echo 'Usage: secrets.sh {prepare|monitoring}' >&2; exit 2; }
 
 # Keep each TLS key with its certificate, even when two runs start together.
+# The broker certificate is valid for 28 days, enough for the lab stand. To rotate it, delete
+# tls.crt and rabbit-tls.tar from the credentials directory, rerun `deploy.sh prepare` and
+# restart the rabbit StatefulSet and the broker clients.
 certs="$temp/tls"
 if [[ -s "$dir/tls.crt" ]]; then
   certs="$dir"  # Existing credentials from the original deployment.
@@ -63,6 +66,17 @@ fi
 put configmap ca --from-file="pg-ca.pem=$dir/pg-ca.pem" --from-file="rabbit-ca.pem=$certs/ca.crt"
 put secret generic rabbit-tls --from-file="tls.key=$certs/tls.key" --from-file="tls.crt=$certs/tls.crt" --from-file="ca.crt=$certs/ca.crt"
 
+# Pull secret for a private GHCR package (a token with read:packages). Without it the
+# package has to be public.
+if [[ -n ${GHCR_PULL_TOKEN:-} ]]; then
+  # Written to a file so the token never appears in a process list.
+  jq -n --arg user "${GHCR_USER:?Set GHCR_USER to the GitHub account that owns the token}" \
+    '{auths: {"ghcr.io": {auth: ($user + ":" + env.GHCR_PULL_TOKEN | @base64)}}}' > "$temp/dockerconfig.json"
+  put secret generic ghcr-pull --type=kubernetes.io/dockerconfigjson --from-file=.dockerconfigjson="$temp/dockerconfig.json"
+else
+  echo 'GHCR_PULL_TOKEN is not set: the image package must be public' >&2
+fi
+
 password jwt
 password internal
 password broker
@@ -81,9 +95,7 @@ for db in identity property rental messaging; do
 done
 put secret generic pg-roles "${roles[@]}"
 
-for key in service_username service_password; do
-  jq -erj --arg id "$db_id" --arg key "$key" \
-    '.resources[] | select(.type=="upcloud_managed_database_postgresql" and .name=="lab") | .instances[].attributes | select(.id==$id) | .[$key] | strings | select(length>0)' \
-    "$tf/terraform.tfstate" > "$temp/$key"
-done
-put secret generic pg-bootstrap --from-file="PGUSER=$temp/service_username" --from-file="PGPASSWORD=$temp/service_password"
+terraform -chdir="$tf" output -json database_admin > "$temp/admin.json"
+jq -erj '.username | strings | select(length>0)' "$temp/admin.json" > "$temp/username"
+jq -erj '.password | strings | select(length>0)' "$temp/admin.json" > "$temp/password"
+put secret generic pg-bootstrap --from-file="PGUSER=$temp/username" --from-file="PGPASSWORD=$temp/password"

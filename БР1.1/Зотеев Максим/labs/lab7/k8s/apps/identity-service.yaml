@@ -15,39 +15,16 @@ spec:
         app: identity-service
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: ghcr-pull
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
-      initContainers:
-      - name: install
-        image: node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
-        workingDir: "/app"
-        command:
-        - sh
-        - "-ec"
-        - tar -xzf /bundle/application.tgz -C /app && npm ci --omit=dev --ignore-scripts --no-fund --no-audit
-        env:
-        - name: NPM_CONFIG_CACHE
-          value: "/tmp/npm-cache"
-        volumeMounts:
-        - name: app
-          mountPath: "/app"
-          readOnly: false
-        - name: bundle
-          mountPath: "/bundle"
-          readOnly: true
-        resources:
-          requests:
-            cpu: 50m
-            memory: 128Mi
-          limits:
-            cpu: '1'
-            memory: 512Mi
       containers:
       - name: identity-service
-        image: node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+        image: ${IMAGE}
         workingDir: "/app"
         command:
         - node
@@ -68,12 +45,7 @@ spec:
           value: "/ca/rabbit-ca.pem"
         - name: DB_SYNCHRONIZE
           value: 'false'
-        - name: RABBIT_QUORUM
-          value: 'true'
         volumeMounts:
-        - name: app
-          mountPath: "/app"
-          readOnly: true
         - name: ca
           mountPath: "/ca"
           readOnly: true
@@ -108,11 +80,6 @@ spec:
           periodSeconds: 5
           failureThreshold: 45
       volumes:
-      - name: app
-        emptyDir: {}
-      - name: bundle
-        configMap:
-          name: application
       - name: ca
         configMap:
           name: ca
