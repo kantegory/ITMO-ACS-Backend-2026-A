@@ -13,10 +13,12 @@ const dataSource = new DataSource({
     database: SETTINGS.DB_NAME,
     entities: [User, Role],
     subscribers: [UserSubscriber],
-    logging: true,
+    // логирование SQL и размер пула подключений настраиваются из окружения (ЛР8)
+    logging: process.env.DB_LOGGING !== 'false',
     synchronize: true,
     // в AWS RDS (PostgreSQL 16) подключение разрешено только по TLS
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    extra: { max: parseInt(process.env.DB_POOL_MAX || '10') },
 });
 
 export default dataSource;
