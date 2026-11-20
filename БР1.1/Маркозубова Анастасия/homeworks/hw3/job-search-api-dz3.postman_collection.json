@@ -1,0 +1,827 @@
+{
+  "info": {
+    "_postman_id": "4c1cf2b8-3e57-4ce0-b2d9-5dd2bcb6f001",
+    "name": "ДЗ3 - Job Search API - Сквозной сценарий",
+    "description": "Комплексный сценарий для сервиса поиска работы: регистрация компании -> вход компании -> создание профиля компании -> выбор специализации -> создание вакансии -> поиск и просмотр вакансии -> регистрация соискателя -> вход соискателя -> создание профиля соискателя -> создание резюме -> получение своих резюме -> отклик на вакансию -> просмотр откликов компанией -> изменение статуса отклика.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8002/api"
+    },
+    {
+      "key": "companyPassword",
+      "value": "qwerty123"
+    },
+    {
+      "key": "seekerPassword",
+      "value": "qwerty123"
+    }
+  ],
+  "item": [
+    {
+      "name": "Сквозной сценарий",
+      "item": [
+        {
+          "name": "1. Company - Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = String(Date.now());",
+                  "pm.collectionVariables.set('uniqueSuffix', suffix);",
+                  "pm.collectionVariables.set('companyEmail', `hw3.company.${suffix}@example.com`);",
+                  "pm.collectionVariables.set('seekerEmail', `hw3.seeker.${suffix}@example.com`);",
+                  "pm.collectionVariables.set('companyName', `HW3 Company ${suffix}`);",
+                  "pm.collectionVariables.set('vacancyTitle', `Backend Node.js ${suffix}`);",
+                  "pm.collectionVariables.set('vacancyLocation', `Москва HW3 ${suffix}`);",
+                  "pm.collectionVariables.set('resumeTitle', `Backend Developer ${suffix}`);",
+                  "pm.collectionVariables.unset('companyToken');",
+                  "pm.collectionVariables.unset('seekerToken');",
+                  "pm.collectionVariables.unset('specializationId');",
+                  "pm.collectionVariables.unset('companyId');",
+                  "pm.collectionVariables.unset('seekerId');",
+                  "pm.collectionVariables.unset('resumeId');",
+                  "pm.collectionVariables.unset('createdVacancyId');",
+                  "pm.collectionVariables.unset('selectedVacancyId');",
+                  "pm.collectionVariables.unset('applicationId');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Компания зарегистрирована', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Роль компании корректна', function () {",
+                  "    pm.expect(json.user.role).to.eql('company');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{companyEmail}}\",\n  \"password\": \"{{companyPassword}}\",\n  \"role\": \"company\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "2. Company - Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Компания вошла в систему', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "const token = json.accessToken || json.access_token;",
+                  "pm.collectionVariables.set('companyToken', token);",
+                  "pm.collectionVariables.set('companyUserId', String(json.user.user_id));",
+                  "pm.test('Токен компании сохранён', function () {",
+                  "    pm.expect(token).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{companyEmail}}\",\n  \"password\": \"{{companyPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "3. Company - Create Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль компании создан', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('companyId', String(json.company_id));",
+                  "pm.test('ID компании сохранён', function () {",
+                  "    pm.expect(json.company_id).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{companyToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{companyName}}\",\n  \"description\": \"Компания из сценария ДЗ3\",\n  \"website\": \"https://company-{{uniqueSuffix}}.example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/companies"
+          }
+        },
+        {
+          "name": "4. References - Get Specializations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список специализаций получен', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const items = pm.response.json();",
+                  "pm.test('Справочник специализаций не пустой', function () {",
+                  "    pm.expect(items).to.be.an('array').and.not.empty;",
+                  "});",
+                  "const backendSpec = items.find((item) => String(item.name || '').toLowerCase().includes('backend'));",
+                  "const selected = backendSpec || items[0];",
+                  "pm.collectionVariables.set('specializationId', String(selected.specialization_id));",
+                  "pm.collectionVariables.set('specializationName', String(selected.name));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/specializations"
+          }
+        },
+        {
+          "name": "5. Company - Create Vacancy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Вакансия создана', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('createdVacancyId', String(json.vacancy_id));",
+                  "pm.test('ID вакансии сохранён', function () {",
+                  "    pm.expect(json.vacancy_id).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{companyToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specialization_id\": {{specializationId}},\n  \"title\": \"{{vacancyTitle}}\",\n  \"description\": \"Вакансия для проверки сценария в Postman\",\n  \"requirements\": \"Node.js, TypeScript, REST API\",\n  \"salary_min\": 150000,\n  \"salary_max\": 220000,\n  \"experience_required\": 2,\n  \"location\": \"{{vacancyLocation}}\",\n  \"work_format\": \"remote\",\n  \"employment_type\": \"full-time\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/vacancies"
+          }
+        },
+        {
+          "name": "6. Vacancies - Filter List",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список вакансий по фильтру получен', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const items = pm.response.json();",
+                  "pm.test('После фильтрации есть хотя бы одна вакансия', function () {",
+                  "    pm.expect(items).to.be.an('array').and.not.empty;",
+                  "});",
+                  "const filtered = items.filter((item) => item.location === pm.collectionVariables.get('vacancyLocation'));",
+                  "pm.test('Фильтр по уникальной локации сработал', function () {",
+                  "    pm.expect(filtered.length).to.be.greaterThan(0);",
+                  "});",
+                  "const selected = filtered[Math.floor(Math.random() * filtered.length)];",
+                  "pm.collectionVariables.set('selectedVacancyId', String(selected.vacancy_id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/vacancies?specialization_id={{specializationId}}&location={{vacancyLocation}}"
+          }
+        },
+        {
+          "name": "7. Vacancies - View Random Vacancy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Детали вакансии получены', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Открыта выбранная вакансия', function () {",
+                  "    pm.expect(String(json.vacancy_id)).to.eql(pm.collectionVariables.get('selectedVacancyId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/vacancies/{{selectedVacancyId}}"
+          }
+        },
+        {
+          "name": "8. Seeker - Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель зарегистрирован', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Роль соискателя корректна', function () {",
+                  "    pm.expect(json.user.role).to.eql('seeker');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{seekerEmail}}\",\n  \"password\": \"{{seekerPassword}}\",\n  \"role\": \"seeker\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "9. Seeker - Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель вошёл в систему', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "const token = json.accessToken || json.access_token;",
+                  "pm.collectionVariables.set('seekerToken', token);",
+                  "pm.collectionVariables.set('seekerUserId', String(json.user.user_id));",
+                  "pm.test('Токен соискателя сохранён', function () {",
+                  "    pm.expect(token).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{seekerEmail}}\",\n  \"password\": \"{{seekerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "10. Seeker - Create Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль соискателя создан', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('seekerId', String(json.seeker_id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seekerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Анастасия\",\n  \"last_name\": \"Маркозубова\",\n  \"phone\": \"+79990001122\",\n  \"bio\": \"Тестовый профиль для ДЗ3\",\n  \"contact_info\": \"Telegram: @anastasia_hw3\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/seekers"
+          }
+        },
+        {
+          "name": "11. Seeker - Create Resume",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Резюме создано', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('resumeId', String(json.resume_id));",
+                  "pm.test('ID резюме сохранён', function () {",
+                  "    pm.expect(json.resume_id).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seekerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{resumeTitle}}\",\n  \"specialization_id\": {{specializationId}},\n  \"desired_salary\": 170000,\n  \"experience_years\": 2,\n  \"location\": \"Москва\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/resumes"
+          }
+        },
+        {
+          "name": "12. Seeker - Get My Resumes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список своих резюме получен', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const items = pm.response.json();",
+                  "pm.test('Созданное резюме присутствует в списке', function () {",
+                  "    pm.expect(items.some((item) => String(item.resume_id) === pm.collectionVariables.get('resumeId'))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seekerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/resumes/me"
+          }
+        },
+        {
+          "name": "13. Seeker - Apply To Vacancy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Отклик создан', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('applicationId', String(json.application_id));",
+                  "pm.test('Статус отклика sent', function () {",
+                  "    pm.expect(json.status).to.eql('sent');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seekerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resume_id\": {{resumeId}},\n  \"cover_letter\": \"Здравствуйте! Хочу откликнуться на вакансию из сценария ДЗ3.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/vacancies/{{selectedVacancyId}}/applications"
+          }
+        },
+        {
+          "name": "14. Company - Get Vacancy Applications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Компания получила список откликов', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const items = pm.response.json();",
+                  "pm.test('Созданный отклик присутствует в списке', function () {",
+                  "    pm.expect(items.some((item) => String(item.application_id) === pm.collectionVariables.get('applicationId'))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{companyToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/vacancies/{{selectedVacancyId}}/applications"
+          }
+        },
+        {
+          "name": "15. Company - Update Application Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус отклика изменён', function () {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Новый статус invited', function () {",
+                  "    pm.expect(json.status).to.eql('invited');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{companyToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"invited\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/applications/{{applicationId}}/status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Негативные проверки",
+      "description": "Эти запросы лучше запускать после успешного выполнения сквозного сценария, чтобы были заполнены переменные collectionVariables.",
+      "item": [
+        {
+          "name": "1. Register - Invalid Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('При невалидном email приходит 400', function () {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"qwerty123\",\n  \"role\": \"seeker\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "2. Login - Wrong Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('При неверном пароле приходит 401', function () {",
+                  "    pm.expect(pm.response.code).to.eql(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{companyEmail}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "3. Seekers - No Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Без токена приходит 401', function () {",
+                  "    pm.expect(pm.response.code).to.eql(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Без\",\n  \"last_name\": \"Токена\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/seekers"
+          }
+        },
+        {
+          "name": "4. Companies - Seeker Token Forbidden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель не может создать профиль компании: 403', function () {",
+                  "    pm.expect(pm.response.code).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seekerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Forbidden Company\",\n  \"description\": \"Должна упасть с 403\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/companies"
+          }
+        },
+        {
+          "name": "5. Resumes - Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Несуществующее резюме возвращает 404', function () {",
+                  "    pm.expect(pm.response.code).to.eql(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/resumes/999999999"
+          }
+        },
+        {
+          "name": "6. Applications - Duplicate Apply",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Повторный отклик даёт 409', function () {",
+                  "    pm.expect(pm.response.code).to.eql(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{seekerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resume_id\": {{resumeId}},\n  \"cover_letter\": \"Повторный отклик для проверки 409\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/vacancies/{{selectedVacancyId}}/applications"
+          }
+        }
+      ]
+    }
+  ]
+}
