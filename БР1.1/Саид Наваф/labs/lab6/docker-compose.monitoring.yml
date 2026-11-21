@@ -1,0 +1,99 @@
+# ЛР6: стек мониторинга (Prometheus + Loki + Promtail + Grafana)
+# Подключается к сети приложения lab4_default (её создаёт docker compose из ЛР4).
+name: monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: mon-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [lab4_default]
+    restart: unless-stopped
+
+  node-exporter:
+    # Метрики самой ВМ: CPU, RAM, диск, сеть. host-сеть нужна, чтобы видеть сетевые интерфейсы ВМ.
+    image: prom/node-exporter:v1.8.2
+    container_name: mon-node-exporter
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=:9100
+    network_mode: host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+
+  blackbox:
+    # Healthcheck: HTTP-проверки API и nginx, TCP-проверка PostgreSQL
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: mon-blackbox
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [lab4_default]
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: mon-loki
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    networks: [lab4_default]
+    restart: unless-stopped
+
+  promtail:
+    # Собирает логи всех контейнеров ВМ через docker.sock и отправляет в Loki
+    image: grafana/promtail:3.2.1
+    container_name: mon-promtail
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/positions
+    networks: [lab4_default]
+    depends_on: [loki]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: mon-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?задайте GRAFANA_ADMIN_PASSWORD в файле .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3001/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    ports:
+      # Порт 3000 занят API, поэтому Grafana на 3001, только локально; наружу её отдаёт nginx по пути /grafana/
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [lab4_default]
+    depends_on: [prometheus, loki]
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  loki-data:
+  promtail-positions:
+  grafana-data:
+
+networks:
+  lab4_default:
+    external: true
