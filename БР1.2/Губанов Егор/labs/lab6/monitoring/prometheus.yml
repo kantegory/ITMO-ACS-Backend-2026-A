@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: debian_vm
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  - job_name: services_200
+    metrics_path: /probe
+    params:
+      module: [http_200]
+    static_configs:
+      - targets:
+          - http://gateway:3000/api/v1/property-types/
+          - http://catalog:3002/api/v1/property-types/
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: services_401
+    metrics_path: /probe
+    params:
+      module: [http_401]
+    static_configs:
+      - targets:
+          - http://auth:3001/api/v1/me/
+          - http://deals:3003/api/v1/me/renting/
+          - http://messaging:3004/api/v1/messages/
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

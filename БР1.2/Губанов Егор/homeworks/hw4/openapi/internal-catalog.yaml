@@ -1,0 +1,170 @@
+openapi: 3.0.3
+info:
+  title: Catalog Service — Internal API
+  version: 1.0.0
+servers:
+  - url: http://catalog:3002
+security:
+  - InternalKey: []
+paths:
+  /internal/v1/properties/{id}:
+    get:
+      summary: Данные объекта по id (для deals и messaging)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySnapshot'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440001
+                owner_id: 550e8400-e29b-41d4-a716-446655440000
+                type_id: 550e8400-e29b-41d4-a716-446655440010
+                title: Квартира для демо
+                city: Санкт-Петербург
+                address: Невский пр., 1
+                price: 50000
+                is_published: true
+                type_is_published: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /internal/v1/owners/{ownerId}/properties:
+    get:
+      summary: Список объектов владельца (кратко)
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PropertyShort'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Key
+  schemas:
+    PropertySnapshot:
+      type: object
+      required:
+        - id
+        - owner_id
+        - type_id
+        - title
+        - city
+        - address
+        - price
+        - is_published
+        - type_is_published
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        type_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        city:
+          type: string
+        address:
+          type: string
+        price:
+          type: number
+          format: double
+        is_published:
+          type: boolean
+        type_is_published:
+          type: boolean
+    PropertyShort:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+        type_id:
+          type: string
+        title:
+          type: string
+        city:
+          type: string
+        address:
+          type: string
+        price:
+          type: number
+        is_published:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+  responses:
+    Unauthorized:
+      description: Неверный internal key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 401
+            message: Нужно войти
+    NotFound:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 404
+            message: Не нашлось
+    ServerError:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 500
+            message: Сервер упал

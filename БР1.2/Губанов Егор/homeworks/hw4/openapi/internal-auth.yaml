@@ -1,0 +1,98 @@
+openapi: 3.0.3
+info:
+  title: Auth Service — Internal API
+  version: 1.0.0
+  description: Internal API сервиса auth
+servers:
+  - url: http://auth:3001
+security:
+  - InternalKey: []
+paths:
+  /internal/v1/users/{id}:
+    get:
+      summary: Пользователь по id (краткий профиль)
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserBrief'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                role: OWNER
+                first_name: Иван
+                last_name: Владелец
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Key
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    UserBrief:
+      type: object
+      required: [id, role, first_name, last_name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [TENANT, OWNER, ADMIN]
+        first_name:
+          type: string
+        last_name:
+          type: string
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+  responses:
+    Unauthorized:
+      description: Неверный internal key или нет доступа
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 401
+            message: Нужно войти
+    NotFound:
+      description: Пользователь не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 404
+            message: Не нашлось
+    ServerError:
+      description: Ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 500
+            message: Сервер упал
