@@ -1,0 +1,116 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: property-service
+  namespace: rental-lab7
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: property-service
+  template:
+    metadata:
+      labels:
+        app: property-service
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: property-service
+        image: ${IMAGE}
+        workingDir: "/app"
+        command:
+        - node
+        - "/app/services/property-service/dist/index.js"
+        envFrom:
+        - configMapRef:
+            name: database
+        - secretRef:
+            name: db-property
+        - secretRef:
+            name: broker-client
+        - secretRef:
+            name: auth
+        env:
+        - name: DB_CA_FILE
+          value: "/ca/pg-ca.pem"
+        - name: NODE_EXTRA_CA_CERTS
+          value: "/ca/rabbit-ca.pem"
+        - name: DB_SYNCHRONIZE
+          value: 'false'
+        volumeMounts:
+        - name: ca
+          mountPath: "/ca"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 600m
+            memory: 300Mi
+        ports:
+        - name: http
+          containerPort: 3002
+        readinessProbe:
+          httpGet:
+            path: "/ready"
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+        startupProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          failureThreshold: 45
+      volumes:
+      - name: ca
+        configMap:
+          name: ca
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: property-service
+            topologyKey: kubernetes.io/hostname
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: property-service
+  namespace: rental-lab7
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: property-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: property-service
+  namespace: rental-lab7
+spec:
+  selector:
+    app: property-service
+  ports:
+  - name: http
+    port: 3002
+    targetPort: http

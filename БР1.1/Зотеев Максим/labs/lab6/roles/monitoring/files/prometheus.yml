@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ["172.31.0.1:9100"]
+
+  - job_name: health
+    metrics_path: /probe
+    params:
+      module: [http_health]
+    static_configs:
+      - targets:
+          - http://api-gateway:8080/health
+          - http://identity-service:3001/health
+          - http://property-service:3002/health
+          - http://rental-service:3003/health
+          - http://messaging-service:3004/health
+    relabel_configs: &probe_relabel
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        regex: (?:https?://)?([^:]+):.*
+        target_label: service
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: health_tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - postgres:5432
+          - rabbitmq:5672
+    relabel_configs: *probe_relabel

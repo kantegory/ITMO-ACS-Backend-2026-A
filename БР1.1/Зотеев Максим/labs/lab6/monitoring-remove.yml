@@ -1,0 +1,31 @@
+# Удаляет стек мониторинга вместе с образами и данными: на сервере 8.8 ГБ диска,
+# и без этого автодеплою из ДЗ6 не хватит места на сборку.
+#   ansible-playbook monitoring-remove.yml
+
+- name: Удаление мониторинга
+  hosts: vps
+  become: true
+  vars_files:
+    - roles/monitoring/defaults/main.yml
+  tasks:
+    - name: Остановка контейнеров, удаление образов и данных
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_dir }}"
+        state: absent
+        remove_images: all
+        remove_volumes: true
+      become: false
+
+    - name: Удаление правила UFW для node-exporter
+      community.general.ufw:
+        rule: allow
+        from_ip: "{{ monitoring_subnet }}"
+        to_ip: "{{ monitoring_gateway }}"
+        to_port: "9100"
+        proto: tcp
+        delete: true
+
+    - name: Удаление каталога мониторинга
+      ansible.builtin.file:
+        path: "{{ monitoring_dir }}"
+        state: absent

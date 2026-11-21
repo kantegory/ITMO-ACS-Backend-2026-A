@@ -1,0 +1,158 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: rental-lab7
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alloy
+  namespace: rental-lab7
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - pods/log
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alloy
+  namespace: rental-lab7
+subjects:
+- kind: ServiceAccount
+  name: alloy
+  namespace: rental-lab7
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alloy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  namespace: rental-lab7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: alloy
+        image: grafana/alloy:v1.10.2@sha256:bcf27f18c4402869af112fb39e35e1db3804a404686f4caa20bdf77814219223
+        ports:
+        - containerPort: 12345
+        volumeMounts:
+        - name: monitor-settings
+          mountPath: "/config/alloy.config"
+          subPath: alloy.config
+          readOnly: true
+        - name: storage
+          mountPath: "/data"
+        readinessProbe:
+          tcpSocket:
+            port: 12345
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 35m
+            memory: 64Mi
+          limits:
+            cpu: 600m
+            memory: 384Mi
+        args:
+        - run
+        - "--server.http.listen-addr=0.0.0.0:12345"
+        - "--storage.path=/data"
+        - "/config/alloy.config"
+      volumes:
+      - name: monitor-settings
+        configMap:
+          name: monitor-settings
+      - name: storage
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      serviceAccountName: alloy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: rental-lab7
+spec:
+  selector:
+    app: alloy
+  ports:
+  - port: 12345
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alloy
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - alloy
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - loki
+    ports:
+    - protocol: TCP
+      port: 3100

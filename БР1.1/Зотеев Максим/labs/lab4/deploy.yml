@@ -1,0 +1,45 @@
+# Подготовка сервера, развёртывание приложения и nginx. Можно запускать
+# повторно: изменения в коде lab2 доезжают на сервер, без изменений — changed=0.
+#   ansible-playbook deploy.yml
+
+- name: Развёртывание сервиса аренды недвижимости
+  hosts: vps
+  become: true
+  tasks:
+    - name: Подготовка сервера
+      ansible.builtin.import_role:
+        name: common
+
+    - name: Docker
+      ansible.builtin.import_role:
+        name: docker
+
+    - name: nginx
+      ansible.builtin.import_role:
+        name: nginx
+
+    # Применить изменения nginx сразу: если дальше упадёт сборка, отложенный
+    # до конца play обработчик потерялся бы, и следующий запуск его уже не вызовет.
+    - name: Применение конфигурации nginx
+      ansible.builtin.meta: flush_handlers
+
+    # После всех установок пакетов и до сборки образов: скачанные .deb
+    # занимают больше гигабайта на 8.8 ГБ диска.
+    - name: Очистка кэша apt
+      ansible.builtin.command: find /var/cache/apt/archives -name "*.deb" -print -delete
+      register: apt_cache_clean
+      changed_when: apt_cache_clean.stdout | length > 0
+
+    - name: Приложение
+      ansible.builtin.import_role:
+        name: app
+
+  post_tasks:
+    - name: API доступно снаружи через nginx
+      ansible.builtin.uri:
+        url: "http://{{ public_host }}/health"
+        return_content: true
+      register: public_health
+      failed_when: public_health.status != 200 or public_health.json.status != 'ok'
+      delegate_to: localhost
+      become: false
