@@ -379,11 +379,11 @@
 
 **Дата лекции:** 05.10.2026
 
-*Презентация в процессе доработки...*
+**Материалы темы:** [materials/lectures/3.4-observability](./materials/lectures/3.4-observability/)
 
 **Технологический стек темы:**
 
-- Связка `Grafana + Loki + Promtail + Prometheus`
+- Связка `Grafana + Loki + Promtail/Alloy + Prometheus`
 - Обзор `Sentry` и `sentry-sdk`
 
 ### ЛР6: Настройка системы мониторинга ресурсов
@@ -415,7 +415,7 @@
 
 **Дата лекции:** 19.10.2026
 
-*Презентация в процессе доработки...*
+**Материалы темы:** [materials/lectures/4.1-cloud-design](./materials/lectures/4.1-cloud-design/)
 
 ### ДЗ7: Технический дизайн облачной инфраструктуры для микросервисного веб-приложения
 
@@ -431,7 +431,7 @@
 
 **Дата лекции:** 16.11.2026 *(темы 4.2 и 4.3 объединены в рамках одной лекции)*
 
-*Презентация в процессе доработки...*
+**Материалы темы:** [materials/lectures/4.2-kubernetes](./materials/lectures/4.2-kubernetes/)
 
 **Можно почитать:**
 
@@ -451,7 +451,7 @@
 
 **Дата лекции:** 16.11.2026 *(темы 4.2 и 4.3 объединены в рамках одной лекции)*
 
-*Презентация в процессе доработки...*
+**Материалы темы:** [materials/lectures/4.2-kubernetes](./materials/lectures/4.2-kubernetes/) — раздел [07-cicd-for-cloud.md](./materials/lectures/4.2-kubernetes/07-cicd-for-cloud.md)
 
 ### ДЗ8: Настройка CI/CD для облачной инфраструктуры
 
