@@ -1,0 +1,116 @@
+# Точка входа: маршрутизация и проверка JWT. Две реплики — единственный компонент, который видит внешний трафик.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: rental
+  labels:
+    app: api-gateway
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: rental
+  labels:
+    app: api-gateway
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0        # обновление без простоя
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: api-gateway
+          image: rental/api-gateway:latest
+          # образы собираются на узле и импортируются в containerd,
+          # внешний registry в учебном стенде не используется
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SERVER_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: SERVER_HOST
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: AUTH_SERVICE_URL
+            - name: PROPERTY_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: PROPERTY_SERVICE_URL
+            - name: BOOKING_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: BOOKING_SERVICE_URL
+            - name: PAYMENT_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: PAYMENT_SERVICE_URL
+            - name: MESSAGING_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rental-config
+                  key: MESSAGING_SERVICE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: JWT_SECRET
+            - name: SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rental-secrets
+                  key: SERVICE_TOKEN
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi

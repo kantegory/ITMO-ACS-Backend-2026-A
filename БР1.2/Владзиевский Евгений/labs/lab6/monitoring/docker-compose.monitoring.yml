@@ -1,0 +1,123 @@
+# ЛР6: стек мониторинга и наблюдаемости.
+#
+# Prometheus собирает метрики, Loki — логи, Grafana показывает и то и другое.
+# Стек подключён к сети приложения (rental-app_default), чтобы blackbox-exporter
+# мог опрашивать /health микросервисов по их именам в docker-сети.
+#
+# Наружу ничего не публикуется: Grafana доступна только через nginx (/grafana/).
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      # только loopback: нужен для отладки и проверок с самого сервера
+      - "127.0.0.1:9090:9090"
+    networks: [monitoring, app]
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|run/credentials)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks: [monitoring]
+    pid: host
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    restart: unless-stopped
+    command:
+      - '--docker_only=true'
+      - '--housekeeping_interval=15s'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    networks: [monitoring]
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.26.0
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/blackbox/blackbox.yml'
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks: [monitoring, app]
+
+  loki:
+    image: grafana/loki:3.4.2
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    networks: [monitoring]
+
+  promtail:
+    image: grafana/promtail:3.4.2
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/tmp
+    depends_on: [loki]
+    networks: [monitoring]
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:?нужен GF_ADMIN_PASSWORD в .env}
+      # Grafana отдаётся через nginx по подпути /grafana/
+      GF_SERVER_ROOT_URL: http://192.168.1.245/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      # По умолчанию только loopback (доступ через nginx).
+      # В ЛР7 роль прокси берёт на себя Traefik в кластере k3s, и адрес
+      # меняется на 0.0.0.0 через GF_BIND_ADDR в .env.
+      - "${GF_BIND_ADDR:-127.0.0.1}:3000:3000"
+    depends_on: [prometheus, loki]
+    networks: [monitoring]
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  promtail_positions:
+
+networks:
+  monitoring:
+    driver: bridge
+  # Сеть, созданная стеком приложения (docker-compose.prod.yml)
+  app:
+    external: true
+    name: rental-app_default
