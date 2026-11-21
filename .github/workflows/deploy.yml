@@ -1,0 +1,63 @@
+
+name: Deploy Restaurant Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'БР1.2/Lev_Sinyukov/labs/lab3/**'
+      - '.github/workflows/deploy.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restaurant-production
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload source code
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          SOURCE="БР1.2/Lev_Sinyukov/labs/lab3"
+
+          test -f "$SOURCE/docker-compose.yml" || {
+            echo "Application directory not found"
+            exit 1
+          }
+
+          rsync -av \
+            --exclude='node_modules/' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='docker-compose.prod.yml' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            "$SOURCE/" \
+            "$SSH_USER@$SSH_HOST:/srv/restaurant-deploy/incoming/"
