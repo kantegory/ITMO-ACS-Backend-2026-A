@@ -1,0 +1,967 @@
+{
+  "info": {
+    "_postman_id": "92d17d50-4203-4b69-b6e4-a1460742e1c2",
+    "name": "Restaurant Booking Lab3 - RabbitMQ Flow",
+    "description": "End-to-end scenario for lab3. The collection creates a restaurant, reservation and review through the API Gateway, then verifies that catalog-service received the RabbitMQ rating event from review-service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'Content-Type', value: 'application/json' });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "gatewayRoot",
+      "value": "http://127.0.0.1:8200"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8200/api/v1"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@restaurant-booking.local"
+    },
+    {
+      "key": "adminPassword",
+      "value": "admin12345"
+    },
+    {
+      "key": "userPassword",
+      "value": "password123"
+    },
+    {
+      "key": "reservationDate",
+      "value": "2026-06-01"
+    },
+    {
+      "key": "reservationTime",
+      "value": "19:30"
+    },
+    {
+      "key": "suffix",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "cuisineId",
+      "value": ""
+    },
+    {
+      "key": "locationId",
+      "value": ""
+    },
+    {
+      "key": "restaurantId",
+      "value": ""
+    },
+    {
+      "key": "tableId",
+      "value": ""
+    },
+    {
+      "key": "menuCategoryId",
+      "value": ""
+    },
+    {
+      "key": "reservationId",
+      "value": ""
+    },
+    {
+      "key": "restaurantEmail",
+      "value": ""
+    },
+    {
+      "key": "userEmail",
+      "value": ""
+    },
+    {
+      "key": "userPhone",
+      "value": ""
+    },
+    {
+      "key": "ratingPollAttempts",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Init and Gateway Health",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const suffix = Date.now().toString();",
+              "pm.collectionVariables.set('suffix', suffix);",
+              "pm.collectionVariables.set('restaurantEmail', 'restaurant' + suffix + '@example.com');",
+              "pm.collectionVariables.set('userEmail', 'postman' + suffix + '@example.com');",
+              "pm.collectionVariables.set('userPhone', '+79' + suffix.slice(-9));",
+              "['adminToken', 'userToken', 'cuisineId', 'locationId', 'restaurantId', 'tableId', 'menuCategoryId', 'reservationId', 'ratingPollAttempts'].forEach((key) => pm.collectionVariables.unset(key));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('gateway is healthy', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('api-gateway responded', function () {",
+              "  pm.expect(json.service).to.eql('api-gateway');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gatewayRoot}}/health",
+          "host": [
+            "{{gatewayRoot}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Initializes unique test data and checks that api-gateway is alive."
+      },
+      "response": []
+    },
+    {
+      "name": "01 Login Admin",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('admin login is successful', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('admin access token exists', function () {",
+              "  pm.expect(json.data.tokens.accessToken).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.collectionVariables.set('adminToken', json.data.tokens.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "02 Load Cuisines",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('cuisines loaded', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('at least one cuisine exists', function () {",
+              "  pm.expect(json.data).to.be.an('array').that.is.not.empty;",
+              "});",
+              "pm.collectionVariables.set('cuisineId', json.data[0].id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/reference/cuisines",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "reference",
+            "cuisines"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "03 Create Location",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('location created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('locationId', json.data.id);",
+              "pm.test('location id exists', function () {",
+              "  pm.expect(json.data.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"city\": \"Postman City {{suffix}}\",\n  \"address\": \"Postman street, {{suffix}}\",\n  \"district\": \"Center\",\n  \"metroStation\": \"Postman\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/locations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "locations"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "04 Create Restaurant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('restaurant created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('restaurantId', json.data.id);",
+              "pm.test('restaurant id exists', function () {",
+              "  pm.expect(json.data.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"locationId\": \"{{locationId}}\",\n  \"priceCategory\": \"MEDIUM\",\n  \"title\": \"Postman Restaurant {{suffix}}\",\n  \"description\": \"Restaurant created from Postman collection for lab3\",\n  \"phone\": \"+79990001122\",\n  \"email\": \"{{restaurantEmail}}\",\n  \"openTime\": \"10:00\",\n  \"closeTime\": \"23:00\",\n  \"cuisineIds\": [\"{{cuisineId}}\"]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/restaurants",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "restaurants"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "05 Create Table",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('table created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('tableId', json.data.id);",
+              "pm.test('table id exists', function () {",
+              "  pm.expect(json.data.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tableNumber\": \"P-{{suffix}}\",\n  \"capacity\": 4\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/restaurants/{{restaurantId}}/tables",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "restaurants",
+            "{{restaurantId}}",
+            "tables"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "06 Create Menu Category",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('menu category created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('menuCategoryId', json.data.id);",
+              "pm.test('menu category id exists', function () {",
+              "  pm.expect(json.data.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Postman Menu {{suffix}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/restaurants/{{restaurantId}}/menu-categories",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "restaurants",
+            "{{restaurantId}}",
+            "menu-categories"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "07 Create Menu Item",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('menu item created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('menu item id exists', function () {",
+              "  pm.expect(json.data.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Postman Dish {{suffix}}\",\n  \"description\": \"Dish created from Postman collection\",\n  \"price\": 420,\n  \"weight\": \"250 g\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/menu-categories/{{menuCategoryId}}/items",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "menu-categories",
+            "{{menuCategoryId}}",
+            "items"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "08 Create Photo",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('photo created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('photo id exists', function () {",
+              "  pm.expect(json.data.id).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imageUrl\": \"https://example.com/photo.jpg\",\n  \"isMain\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/restaurants/{{restaurantId}}/photos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "restaurants",
+            "{{restaurantId}}",
+            "photos"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "09 Publish Restaurant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('restaurant published', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('isPublished is true', function () {",
+              "  pm.expect(json.data.isPublished).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"isPublished\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/restaurants/{{restaurantId}}/publication",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "restaurants",
+            "{{restaurantId}}",
+            "publication"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "10 Register User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('user registered', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('userToken', json.data.tokens.accessToken);",
+              "pm.test('user access token exists', function () {",
+              "  pm.expect(json.data.tokens.accessToken).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Postman\",\n  \"lastName\": \"User\",\n  \"email\": \"{{userEmail}}\",\n  \"phone\": \"{{userPhone}}\",\n  \"password\": \"{{userPassword}}\",\n  \"passwordConfirmation\": \"{{userPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "11 Search Restaurant Through Gateway",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('search completed', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "const restaurantId = pm.collectionVariables.get('restaurantId');",
+              "pm.test('created restaurant is found by city', function () {",
+              "  pm.expect(json.data.some((restaurant) => restaurant.id === restaurantId)).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/restaurants?city=Postman%20City%20{{suffix}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "restaurants"
+          ],
+          "query": [
+            {
+              "key": "city",
+              "value": "Postman%20City%20{{suffix}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "12 Load Composed Restaurant Detail",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('restaurant detail loaded', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('detail is composed from menu and reservation services', function () {",
+              "  pm.expect(json.data.menu).to.be.an('array').that.is.not.empty;",
+              "  pm.expect(json.data.tables).to.be.an('array').that.is.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/restaurants/{{restaurantId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "restaurants",
+            "{{restaurantId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "13 Check Availability",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('availability loaded', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "const tableId = pm.collectionVariables.get('tableId');",
+              "pm.test('created table is available', function () {",
+              "  pm.expect(json.data.some((table) => table.id === tableId)).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/restaurants/{{restaurantId}}/availability?reservationDate={{reservationDate}}&reservationTime={{reservationTime}}&guestsCount=2",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "restaurants",
+            "{{restaurantId}}",
+            "availability"
+          ],
+          "query": [
+            {
+              "key": "reservationDate",
+              "value": "{{reservationDate}}"
+            },
+            {
+              "key": "reservationTime",
+              "value": "{{reservationTime}}"
+            },
+            {
+              "key": "guestsCount",
+              "value": "2"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "14 Create Reservation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('reservation created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('reservationId', json.data.id);",
+              "pm.test('reservation is pending', function () {",
+              "  pm.expect(json.data.status).to.eql('PENDING');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{userToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"tableId\": \"{{tableId}}\",\n  \"reservationDate\": \"{{reservationDate}}\",\n  \"reservationTime\": \"{{reservationTime}}\",\n  \"guestsCount\": 2,\n  \"comment\": \"Postman reservation\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/reservations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "reservations"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "15 Create Review and Publish RabbitMQ Event",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('review created', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('review rating is 5', function () {",
+              "  pm.expect(json.data.rating).to.eql(5);",
+              "});",
+              "pm.collectionVariables.set('ratingPollAttempts', '0');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{userToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Works well through RabbitMQ\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/restaurants/{{restaurantId}}/reviews",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "restaurants",
+            "{{restaurantId}}",
+            "reviews"
+          ]
+        },
+        "description": "review-service recalculates the restaurant rating and publishes review.rating.recalculated to RabbitMQ."
+      },
+      "response": []
+    },
+    {
+      "name": "16 Wait Rating From RabbitMQ Event",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const attempts = Number(pm.collectionVariables.get('ratingPollAttempts') || 0);",
+              "if (attempts > 0) {",
+              "  const start = Date.now();",
+              "  while (Date.now() - start < 500) {}",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('restaurant detail loaded for rating check', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "const ratingOk = Number(json.data.avgRating) === 5 && Number(json.data.reviewsCount) === 1;",
+              "let attempts = Number(pm.collectionVariables.get('ratingPollAttempts') || 0);",
+              "if (!ratingOk && attempts < 10) {",
+              "  attempts += 1;",
+              "  pm.collectionVariables.set('ratingPollAttempts', String(attempts));",
+              "  postman.setNextRequest(pm.info.requestName);",
+              "} else {",
+              "  pm.collectionVariables.unset('ratingPollAttempts');",
+              "  pm.test('restaurant rating was updated through RabbitMQ event', function () {",
+              "    pm.expect(ratingOk, 'avgRating=' + json.data.avgRating + ', reviewsCount=' + json.data.reviewsCount).to.eql(true);",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/restaurants/{{restaurantId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "restaurants",
+            "{{restaurantId}}"
+          ]
+        },
+        "description": "Polls catalog-service through api-gateway until the rating event has been consumed from RabbitMQ."
+      },
+      "response": []
+    },
+    {
+      "name": "17 Confirm Reservation Status",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('reservation status updated', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('reservation is confirmed', function () {",
+              "  pm.expect(json.data.status).to.eql('CONFIRMED');",
+              "});",
+              "postman.setNextRequest(null);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"CONFIRMED\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/reservations/{{reservationId}}/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "reservations",
+            "{{reservationId}}",
+            "status"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
