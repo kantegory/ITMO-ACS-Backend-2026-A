@@ -1,0 +1,961 @@
+openapi: 3.1.0
+info:
+  title: Restaurant Booking Internal Microservices API
+  version: 1.0.0
+  description: Внутренние REST-контракты для межсервисного взаимодействия после разделения монолита.
+servers:
+  - url: http://identity-service:8001
+    description: identity-service
+  - url: http://catalog-service:8002
+    description: catalog-service
+  - url: http://menu-service:8003
+    description: menu-service
+  - url: http://reservation-service:8004
+    description: reservation-service
+  - url: http://review-service:8005
+    description: review-service
+tags:
+  - name: Identity Internal
+  - name: Catalog Internal
+  - name: Menu Internal
+  - name: Reservation Internal
+  - name: Review Internal
+paths:
+  /internal/auth/introspect:
+    post:
+      tags:
+        - Identity Internal
+      summary: Проверить JWT и вернуть текущего пользователя
+      operationId: introspectToken
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrospectTokenRequest'
+      responses:
+        '200':
+          description: Токен валиден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectTokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/users/{userId}/summary:
+    get:
+      tags:
+        - Identity Internal
+      summary: Получить краткий профиль пользователя
+      operationId: getUserSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Краткий профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/users/summaries:
+    post:
+      tags:
+        - Identity Internal
+      summary: Получить краткие профили пользователей пачкой
+      operationId: getUserSummaries
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSummariesRequest'
+      responses:
+        '200':
+          description: Список кратких профилей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummariesResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/{restaurantId}/summary:
+    get:
+      tags:
+        - Catalog Internal
+      summary: Проверить ресторан и получить краткую карточку
+      operationId: getRestaurantSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: requirePublished
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Краткая карточка ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/summaries:
+    post:
+      tags:
+        - Catalog Internal
+      summary: Получить краткие карточки ресторанов пачкой
+      operationId: getRestaurantSummaries
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestaurantSummariesRequest'
+      responses:
+        '200':
+          description: Список кратких карточек ресторанов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantSummariesResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/{restaurantId}/rating-summary:
+    get:
+      tags:
+        - Review Internal
+      summary: Получить рейтинг ресторана из review-service
+      operationId: getRestaurantRatingSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Рейтинг ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantRatingSummaryResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Catalog Internal
+      summary: Обновить денормализованную проекцию рейтинга ресторана
+      operationId: updateRestaurantRatingSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRestaurantRatingRequest'
+      responses:
+        '200':
+          description: Рейтинг обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantRatingSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/{restaurantId}/menu-summary:
+    get:
+      tags:
+        - Menu Internal
+      summary: Получить меню ресторана
+      operationId: getRestaurantMenuSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Меню ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/{restaurantId}/tables:
+    get:
+      tags:
+        - Reservation Internal
+      summary: Получить столики ресторана
+      operationId: getRestaurantTables
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Список столиков ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantTablesResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/{restaurantId}/tables/available:
+    get:
+      tags:
+        - Reservation Internal
+      summary: Получить доступные столики ресторана
+      operationId: getAvailableRestaurantTables
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: reservationDate
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+            examples:
+              - '2026-04-02'
+        - name: reservationTime
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d{2}:\\d{2}$'
+            examples:
+              - '19:30'
+        - name: guestsCount
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Доступные столики
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableTablesResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/availability/search:
+    post:
+      tags:
+        - Reservation Internal
+      summary: Проверить доступность по списку ресторанов
+      operationId: searchAvailability
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchAvailabilityRequest'
+      responses:
+        '200':
+          description: Карта доступности по ресторанам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchAvailabilityResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/reservations/{reservationId}/summary:
+    get:
+      tags:
+        - Reservation Internal
+      summary: Получить краткую информацию о бронировании
+      operationId: getReservationSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Краткая информация о бронировании
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /internal/restaurants/{restaurantId}/reviews-summary:
+    get:
+      tags:
+        - Review Internal
+      summary: Получить отзывы ресторана с пагинацией
+      operationId: getRestaurantReviewsSummary
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        '200':
+          description: Отзывы ресторана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantReviewsSummaryResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Unauthorized:
+      description: Пользователь не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Сущность не найдена
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Внутренняя ошибка сервиса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    IntrospectTokenRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: JWT без префикса Bearer или полный Authorization header.
+    IntrospectTokenResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AuthContext'
+    AuthContext:
+      type: object
+      required:
+        - userId
+        - role
+        - email
+      properties:
+        userId:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/UserRole'
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+    UserRole:
+      type: string
+      enum:
+        - ADMIN
+        - USER
+    UserSummary:
+      type: object
+      required:
+        - id
+        - role
+        - firstName
+        - lastName
+        - email
+        - phone
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/UserRole'
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+    UserSummaryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/UserSummary'
+    UserSummariesRequest:
+      type: object
+      required:
+        - userIds
+      properties:
+        userIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+          minItems: 1
+    UserSummariesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummary'
+    RestaurantSummary:
+      type: object
+      required:
+        - id
+        - title
+        - priceCategory
+        - isPublished
+        - location
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        openTime:
+          type: string
+          pattern: '^\\d{2}:\\d{2}$'
+        closeTime:
+          type: string
+          pattern: '^\\d{2}:\\d{2}$'
+        priceCategory:
+          $ref: '#/components/schemas/PriceCategory'
+        avgRating:
+          type: number
+          minimum: 0
+          maximum: 5
+        reviewsCount:
+          type: integer
+          minimum: 0
+        isPublished:
+          type: boolean
+        location:
+          $ref: '#/components/schemas/LocationSummary'
+        cuisines:
+          type: array
+          items:
+            $ref: '#/components/schemas/CuisineSummary'
+        mainPhoto:
+          $ref: '#/components/schemas/RestaurantPhotoSummary'
+    RestaurantSummaryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/RestaurantSummary'
+    RestaurantSummariesRequest:
+      type: object
+      required:
+        - restaurantIds
+      properties:
+        restaurantIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+          minItems: 1
+        requirePublished:
+          type: boolean
+          default: true
+    RestaurantSummariesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantSummary'
+    LocationSummary:
+      type: object
+      required:
+        - id
+        - city
+        - address
+      properties:
+        id:
+          type: string
+          format: uuid
+        city:
+          type: string
+        address:
+          type: string
+        district:
+          type: string
+        metroStation:
+          type: string
+    CuisineSummary:
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+    RestaurantPhotoSummary:
+      type: object
+      required:
+        - id
+        - imageUrl
+        - isMain
+      properties:
+        id:
+          type: string
+          format: uuid
+        imageUrl:
+          type: string
+          format: uri
+        isMain:
+          type: boolean
+    PriceCategory:
+      type: string
+      enum:
+        - LOW
+        - MEDIUM
+        - HIGH
+    UpdateRestaurantRatingRequest:
+      type: object
+      required:
+        - avgRating
+        - reviewsCount
+      properties:
+        avgRating:
+          type: number
+          minimum: 0
+          maximum: 5
+        reviewsCount:
+          type: integer
+          minimum: 0
+    RestaurantRatingSummaryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/RestaurantRatingSummary'
+    RestaurantRatingSummary:
+      type: object
+      required:
+        - restaurantId
+        - avgRating
+        - reviewsCount
+      properties:
+        restaurantId:
+          type: string
+          format: uuid
+        avgRating:
+          type: number
+          minimum: 0
+          maximum: 5
+        reviewsCount:
+          type: integer
+          minimum: 0
+    MenuSummaryResponse:
+      type: object
+      required:
+        - restaurantId
+        - data
+      properties:
+        restaurantId:
+          type: string
+          format: uuid
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuCategorySummary'
+    MenuCategorySummary:
+      type: object
+      required:
+        - id
+        - title
+        - items
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItemSummary'
+    MenuItemSummary:
+      type: object
+      required:
+        - id
+        - title
+        - price
+        - isAvailable
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        weight:
+          type: string
+        isAvailable:
+          type: boolean
+    RestaurantTablesResponse:
+      type: object
+      required:
+        - restaurantId
+        - data
+      properties:
+        restaurantId:
+          type: string
+          format: uuid
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantTableSummary'
+    RestaurantTableSummary:
+      type: object
+      required:
+        - id
+        - tableNumber
+        - capacity
+        - isActive
+      properties:
+        id:
+          type: string
+          format: uuid
+        tableNumber:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+        isActive:
+          type: boolean
+    AvailableTablesResponse:
+      type: object
+      required:
+        - restaurantId
+        - reservationDate
+        - reservationTime
+        - guestsCount
+        - data
+      properties:
+        restaurantId:
+          type: string
+          format: uuid
+        reservationDate:
+          type: string
+        reservationTime:
+          type: string
+        guestsCount:
+          type: integer
+          minimum: 1
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailableTable'
+    AvailableTable:
+      type: object
+      required:
+        - id
+        - tableNumber
+        - capacity
+      properties:
+        id:
+          type: string
+          format: uuid
+        tableNumber:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+    SearchAvailabilityRequest:
+      type: object
+      required:
+        - restaurantIds
+        - reservationDate
+        - reservationTime
+        - guestsCount
+      properties:
+        restaurantIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+          minItems: 1
+        reservationDate:
+          type: string
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        reservationTime:
+          type: string
+          pattern: '^\\d{2}:\\d{2}$'
+        guestsCount:
+          type: integer
+          minimum: 1
+    SearchAvailabilityResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantAvailabilityItem'
+    RestaurantAvailabilityItem:
+      type: object
+      required:
+        - restaurantId
+        - hasAvailableTables
+        - availableTablesCount
+      properties:
+        restaurantId:
+          type: string
+          format: uuid
+        hasAvailableTables:
+          type: boolean
+        availableTablesCount:
+          type: integer
+          minimum: 0
+    ReservationSummaryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ReservationSummary'
+    ReservationSummary:
+      type: object
+      required:
+        - id
+        - userId
+        - restaurantId
+        - tableId
+        - status
+        - reservationDate
+        - reservationTime
+        - guestsCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        restaurantId:
+          type: string
+          format: uuid
+        tableId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ReservationStatus'
+        reservationDate:
+          type: string
+        reservationTime:
+          type: string
+        guestsCount:
+          type: integer
+          minimum: 1
+    ReservationStatus:
+      type: string
+      enum:
+        - PENDING
+        - CONFIRMED
+        - CANCELLED
+        - COMPLETED
+    RestaurantReviewsSummaryResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantReviewSummary'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    RestaurantReviewSummary:
+      type: object
+      required:
+        - id
+        - restaurantId
+        - userId
+        - rating
+        - comment
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        restaurantId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        rating:
+          type: number
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PaginationMeta:
+      type: object
+      required:
+        - page
+        - limit
+        - totalItems
+        - totalPages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              examples:
+                - RESTAURANT_NOT_FOUND
+            message:
+              type: string
+              examples:
+                - Restaurant is not found
+            details:
+              type: array
+              items:
+                type: object
+                additionalProperties: true

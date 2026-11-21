@@ -1,0 +1,106 @@
+# coding=utf-8
+
+from copy import deepcopy
+from typing import Any
+from typing_extensions import Self
+
+from corehttp.rest import HttpRequest, HttpResponse
+from corehttp.runtime import PipelineClient, policies
+
+from ._configuration import RestaurantBookingApiClientConfiguration
+from ._utils.serialization import Deserializer, Serializer
+from .operations import (
+    AdminApiOperations,
+    AuthApiOperations,
+    ReferenceApiOperations,
+    ReservationsApiOperations,
+    RestaurantsApiOperations,
+    UsersApiOperations,
+)
+
+
+class RestaurantBookingApiClient:  # pylint: disable=client-accepts-api-version-keyword
+    """RestaurantBookingApiClient.
+
+    :ivar auth_api: AuthApiOperations operations
+    :vartype auth_api: restaurantbookingapi.operations.AuthApiOperations
+    :ivar users_api: UsersApiOperations operations
+    :vartype users_api: restaurantbookingapi.operations.UsersApiOperations
+    :ivar reference_api: ReferenceApiOperations operations
+    :vartype reference_api: restaurantbookingapi.operations.ReferenceApiOperations
+    :ivar restaurants_api: RestaurantsApiOperations operations
+    :vartype restaurants_api: restaurantbookingapi.operations.RestaurantsApiOperations
+    :ivar reservations_api: ReservationsApiOperations operations
+    :vartype reservations_api: restaurantbookingapi.operations.ReservationsApiOperations
+    :ivar admin_api: AdminApiOperations operations
+    :vartype admin_api: restaurantbookingapi.operations.AdminApiOperations
+    :keyword endpoint: Service host. Default value is "/".
+    :paramtype endpoint: str
+    """
+
+    def __init__(  # pylint: disable=missing-client-constructor-parameter-credential
+        self, *, endpoint: str = "/", **kwargs: Any
+    ) -> None:
+        _endpoint = "{endpoint}"
+        self._config = RestaurantBookingApiClientConfiguration(endpoint=endpoint, **kwargs)
+
+        _policies = kwargs.pop("policies", None)
+        if _policies is None:
+            _policies = [
+                self._config.headers_policy,
+                self._config.user_agent_policy,
+                self._config.proxy_policy,
+                policies.ContentDecodePolicy(**kwargs),
+                self._config.retry_policy,
+                self._config.authentication_policy,
+                self._config.logging_policy,
+            ]
+        self._client: PipelineClient = PipelineClient(endpoint=_endpoint, policies=_policies, **kwargs)
+
+        self._serialize = Serializer()
+        self._deserialize = Deserializer()
+        self._serialize.client_side_validation = False
+        self.auth_api = AuthApiOperations(self._client, self._config, self._serialize, self._deserialize)
+        self.users_api = UsersApiOperations(self._client, self._config, self._serialize, self._deserialize)
+        self.reference_api = ReferenceApiOperations(self._client, self._config, self._serialize, self._deserialize)
+        self.restaurants_api = RestaurantsApiOperations(self._client, self._config, self._serialize, self._deserialize)
+        self.reservations_api = ReservationsApiOperations(
+            self._client, self._config, self._serialize, self._deserialize
+        )
+        self.admin_api = AdminApiOperations(self._client, self._config, self._serialize, self._deserialize)
+
+    def send_request(self, request: HttpRequest, *, stream: bool = False, **kwargs: Any) -> HttpResponse:
+        """Runs the network request through the client's chained policies.
+
+        >>> from corehttp.rest import HttpRequest
+        >>> request = HttpRequest("GET", "https://www.example.org/")
+        <HttpRequest [GET], url: 'https://www.example.org/'>
+        >>> response = client.send_request(request)
+        <HttpResponse: 200 OK>
+
+        For more information on this code flow, see https://aka.ms/azsdk/dpcodegen/python/send_request
+
+        :param request: The network request you want to make. Required.
+        :type request: ~corehttp.rest.HttpRequest
+        :keyword bool stream: Whether the response payload will be streamed. Defaults to False.
+        :return: The response of your network call. Does not do error handling on your response.
+        :rtype: ~corehttp.rest.HttpResponse
+        """
+
+        request_copy = deepcopy(request)
+        path_format_arguments = {
+            "endpoint": self._serialize.url("self._config.endpoint", self._config.endpoint, "str", skip_quote=True),
+        }
+
+        request_copy.url = self._client.format_url(request_copy.url, **path_format_arguments)
+        return self._client.send_request(request_copy, stream=stream, **kwargs)  # type: ignore
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self) -> Self:
+        self._client.__enter__()
+        return self
+
+    def __exit__(self, *exc_details: Any) -> None:
+        self._client.__exit__(*exc_details)

@@ -1,0 +1,114 @@
+name: HW6 Deploy backend
+
+on:
+  push:
+    branches:
+      - hw6
+    paths:
+      - 'БР1.2/Ермаков_Максим/labs/lab4/**'
+      - '.github/workflows/hw6-deploy.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab4-server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'Cheroit/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - name: Get the pushed code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the transfer tool on the runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rsync openssh-client curl
+
+      - name: Configure SSH on the runner
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HW6_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HW6_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          cat > "$HOME/.ssh/config" <<'CONFIG'
+          Host hw6-server
+            HostName 31.77.133.132
+            User deploy
+            Port 22
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 15
+          CONFIG
+
+      - name: Check SSH access and the existing server environment
+        run: |
+          ssh hw6-server whoami
+          ssh hw6-server 'test -r /opt/lab4/.env'
+
+      - name: Transfer the application
+        run: |
+          rsync -az --delete \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='.git/' \
+            --exclude='node_modules/' \
+            --exclude='dist/' \
+            --exclude='dbs/' \
+            --exclude='.DS_Store' \
+            --exclude='*.pdf' \
+            --exclude='*.docx' \
+            --exclude='*.zip' \
+            --exclude='screenshots/' \
+            --exclude='outputs/' \
+            'БР1.2/Ермаков_Максим/labs/lab4/' \
+            hw6-server:/opt/lab4/
+
+      - name: Validate Docker Compose without printing secrets
+        run: ssh hw6-server 'cd /opt/lab4 && docker compose config -q'
+
+      - name: Build the application images on the server
+        run: ssh hw6-server 'cd /opt/lab4 && docker compose build'
+
+      - name: Start the updated containers
+        run: ssh hw6-server 'cd /opt/lab4 && docker compose up -d --no-build --wait --wait-timeout 180'
+
+      - name: Show the container state
+        run: ssh hw6-server 'cd /opt/lab4 && docker compose ps'
+
+      - name: Check the public gateway through Nginx
+        run: |
+          curl --fail --silent --show-error \
+            --retry 12 --retry-delay 5 --retry-max-time 120 \
+            --retry-connrefused --retry-all-errors \
+            --connect-timeout 5 --max-time 10 \
+            --write-out '\nHTTP %{http_code}\n' \
+            http://31.77.133.132/health
+
+      - name: Check the public restaurant API
+        run: |
+          curl --fail --silent --show-error \
+            --retry 12 --retry-delay 5 --retry-max-time 120 \
+            --retry-connrefused --retry-all-errors \
+            --connect-timeout 5 --max-time 10 \
+            --output /dev/null --write-out 'Restaurants API: HTTP %{http_code}\n' \
+            http://31.77.133.132/api/v1/restaurants
+
+      - name: Remove the temporary SSH files from the runner
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts" "$HOME/.ssh/config"
