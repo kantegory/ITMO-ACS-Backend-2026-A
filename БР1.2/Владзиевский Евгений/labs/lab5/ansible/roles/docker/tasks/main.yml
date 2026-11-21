@@ -1,0 +1,47 @@
+---
+# Установка Docker Engine и плагина Compose из официального репозитория Docker
+
+- name: Создать каталог для ключей apt
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Загрузить GPG-ключ репозитория Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+  become: true
+
+- name: Подключить репозиторий Docker
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ (ansible_architecture == 'aarch64') | ternary('arm64', 'amd64') }}
+      signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+  become: true
+
+- name: Установить Docker Engine и плагины
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Добавить пользователя приложения в группу docker
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    groups: docker
+    append: true
+  become: true
+
+- name: Включить и запустить службу docker
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  become: true

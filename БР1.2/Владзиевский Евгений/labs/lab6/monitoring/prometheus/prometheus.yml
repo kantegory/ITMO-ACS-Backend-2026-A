@@ -1,0 +1,74 @@
+# Конфигурация Prometheus для ЛР6
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: rental-app
+
+scrape_configs:
+  # Сам Prometheus
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Метрики виртуальной машины: CPU, память, диск, сеть
+  - job_name: node
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: rental-server
+
+  # Метрики контейнеров
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          instance: rental-server
+
+  # Healthcheck микросервисов через blackbox-exporter:
+  # Prometheus просит blackbox сходить на /health каждого сервиса
+  - job_name: blackbox-health
+    metrics_path: /probe
+    params:
+      module: [http_health]
+    static_configs:
+      - targets:
+          - http://api-gateway:8080/health
+          - http://auth-service:8081/health
+          - http://property-service:8082/health
+          - http://booking-service:8083/health
+          - http://payment-service:8084/health
+          - http://messaging-service:8085/health
+    relabel_configs:
+      # адрес проверяемого сервиса уезжает в параметр target
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      # а сам запрос уходит на blackbox-exporter
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+      # короткое имя сервиса для подписей на дашборде
+      - source_labels: [__param_target]
+        regex: 'http://([^:]+):.*'
+        target_label: service
+        replacement: '$1'
+
+  # Доступность приложения снаружи, через nginx
+  - job_name: blackbox-public
+    metrics_path: /probe
+    params:
+      module: [http_health]
+    static_configs:
+      - targets:
+          - http://192.168.1.245/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+      - target_label: service
+        replacement: nginx (внешний доступ)

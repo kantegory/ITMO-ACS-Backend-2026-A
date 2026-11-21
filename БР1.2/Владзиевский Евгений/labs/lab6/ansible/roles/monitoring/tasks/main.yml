@@ -1,0 +1,89 @@
+---
+# Развёртывание стека мониторинга: Prometheus, Loki, Grafana и экспортеры
+
+- name: Создать каталог стека мониторинга
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+  become: true
+
+- name: Скопировать конфигурации мониторинга
+  ansible.builtin.copy:
+    src: "{{ monitoring_src_dir }}/"
+    dest: "{{ monitoring_dir }}/"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+  become: true
+  notify: Перезапустить стек мониторинга
+
+- name: Создать файл окружения Grafana (только при первом запуске)
+  ansible.builtin.template:
+    src: monitoring-env.j2
+    dest: "{{ monitoring_dir }}/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+    force: false
+  become: true
+
+- name: Запустить стек мониторинга
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    files:
+      - "{{ monitoring_compose_file }}"
+    env_files:
+      - .env
+    state: present
+    pull: missing
+    remove_orphans: true
+  become: true
+  register: monitoring_compose
+
+- name: Дождаться готовности Grafana
+  ansible.builtin.uri:
+    url: "http://{{ grafana_host }}:{{ grafana_port }}/api/health"
+    status_code: 200
+  register: grafana_health
+  retries: 30
+  delay: 5
+  until: grafana_health.status | default(0) == 200
+  changed_when: false
+
+- name: Дождаться, пока Prometheus соберёт цели
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:9090/api/v1/targets?state=active"
+    status_code: 200
+  register: prom_targets
+  retries: 20
+  delay: 5
+  until:
+    - prom_targets.status | default(0) == 200
+    # после рестарта цели появляются не мгновенно: ждём, пока discovery отработает
+    - prom_targets.json.data.activeTargets | default([]) | length >= monitoring_expected_targets
+  changed_when: false
+
+- name: Убедиться, что все цели Prometheus живы
+  ansible.builtin.assert:
+    that:
+      - prom_targets.json.data.activeTargets | length >= monitoring_expected_targets
+      - prom_targets.json.data.activeTargets | selectattr('health', 'ne', 'up') | list | length == 0
+    success_msg: >-
+      Все цели в состоянии up:
+      {{ prom_targets.json.data.activeTargets | length }} шт.
+    fail_msg: >-
+      Недоступны цели:
+      {{ prom_targets.json.data.activeTargets | rejectattr('health', 'eq', 'up')
+         | map(attribute='labels.instance') | list | join(', ') }}
+
+- name: Показать итог
+  ansible.builtin.debug:
+    msg: >-
+      Контейнеров мониторинга: {{ monitoring_compose.containers | default([]) | length }},
+      Grafana: {{ grafana_health.json.database | default('n/a') }},
+      версия: {{ grafana_health.json.version | default('n/a') }},
+      целей Prometheus: {{ prom_targets.json.data.activeTargets | default([]) | length }}
