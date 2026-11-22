@@ -1,0 +1,46 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: healthcheck
+    folder: ЛР6
+    interval: 30s
+    rules:
+      - uid: lab6-service-down
+        title: Сервис недоступен
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: probe_success
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Сервис {{ $labels.service }} недоступен (healthcheck не проходит)'
+        labels:
+          severity: critical
