@@ -1,0 +1,1471 @@
+{
+  "info": {
+    "_postman_id": "b590b4d6-e73f-5110-ba23-3fd2b28e1a02",
+    "name": "Restaurant Booking API — ДЗ9",
+    "description": "Документация публичного API микросервисного приложения «Restaurant Booking» (Якшин Артемий, БР1.1).\n\nВсе запросы идут через API Gateway (`/api/v1`). Папки упорядочены как пользовательский путь: регистрация → вход → профиль → каталог → столики → бронь → отзыв → уведомления → отмена. Поэтому коллекция одновременно служит документацией и сквозным тестом (Collection Runner или `newman`).\n\n**Переменные:** `base_url` задаётся окружением (локально / Kubernetes); `token`, `restaurant_id`, `table_id`, `reservation_id` и др. заполняются тестами по ходу прогона.\n\n**Авторизация:** Bearer `{{token}}` на уровне коллекции; публичные эндпоинты помечены `No Auth`.\n\n**Запуск из CLI:** `npx newman run \"Restaurant Booking API.postman_collection.json\" -e <окружение>.json`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Аутентификация",
+      "description": "Регистрация и вход. Ответ содержит JWT, который тесты сохраняют в переменную коллекции `token`; остальные запросы используют его автоматически (Bearer-авторизация на уровне коллекции).",
+      "item": [
+        {
+          "name": "Регистрация",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"user_email\", JSON.parse(pm.request.body.raw).email);",
+                  "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "const t = pm.response.json().token;",
+                  "if (t) { pm.collectionVariables.set(\"token\", t); }",
+                  "pm.test(\"Есть JWT\", () => pm.expect(t).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Создаёт пользователя и сразу возвращает JWT.\n\n**Тело:** `name` (2–100 символов), `email`, `password` (8–64), `phone` (необязательно, `+7XXXXXXXXXX`).\n\n**Ответы:** `201` — пользователь и токен; `400` — ошибки валидации по полям; `409` — email уже занят.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{user_name}}\",\n  \"email\": \"{{$randomEmail}}\",\n  \"phone\": \"+79001112233\",\n  \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/auth/register",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Анна Документова\",\n  \"email\": \"docs-1794339200@example.com\",\n  \"phone\": \"+79001112233\",\n  \"password\": \"docs-pass-123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyNCwiZW1haWwiOiJkb2NzLTE3OTQzMzkyMDBAZXhhbXBsZS5jb20iLCJpYXQiOjE3OTQzMzkyMDAsImV4cCI6MTc5NDk0NDAwMH0.zi34rrISlgu3_aD668hxG4NdMvI40yK8REehpyasPGg\",\n  \"user\": {\n    \"user_id\": 24,\n    \"name\": \"Анна Документова\",\n    \"email\": \"docs-1794339200@example.com\",\n    \"phone\": \"+79001112233\",\n    \"created_at\": \"2026-11-10T19:33:20.854Z\"\n  }\n}"
+            },
+            {
+              "name": "400 Validation failed",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/auth/register",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"A\",\n  \"email\": \"not-an-email\",\n  \"password\": \"123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"Bad Request\",\n  \"message\": \"Validation failed\",\n  \"details\": [\n    {\n      \"field\": \"name\",\n      \"message\": \"Must be 2-100 characters\"\n    },\n    {\n      \"field\": \"email\",\n      \"message\": \"Must be a valid email address\"\n    },\n    {\n      \"field\": \"password\",\n      \"message\": \"Must be 8-64 characters\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Вход",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "const t = pm.response.json().token;",
+                  "if (t) { pm.collectionVariables.set(\"token\", t); }",
+                  "pm.test(\"Есть JWT\", () => pm.expect(t).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Проверяет пароль (bcrypt) и возвращает JWT сроком 7 дней.\n\n**Ответы:** `200` — токен и пользователь; `401` — неверный email или пароль.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/auth/login",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"docs-1794339200@example.com\",\n  \"password\": \"docs-pass-123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyNCwiZW1haWwiOiJkb2NzLTE3OTQzMzkyMDBAZXhhbXBsZS5jb20iLCJpYXQiOjE3OTQzMzkyMDEsImV4cCI6MTc5NDk0NDAwMX0.h2n71tL8mY-n6Dc0tgqp0qtjnJLFs8E6329vehAElxw\",\n  \"user\": {\n    \"user_id\": 24,\n    \"name\": \"Анна Документова\",\n    \"email\": \"docs-1794339200@example.com\",\n    \"phone\": \"+79001112233\",\n    \"created_at\": \"2026-11-10T19:33:20.854Z\"\n  }\n}"
+            },
+            {
+              "name": "401 Invalid credentials",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/auth/login",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"docs-1794339200@example.com\",\n  \"password\": \"wrong-password\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"Unauthorized\",\n  \"message\": \"Invalid email or password\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Профиль",
+      "item": [
+        {
+          "name": "Мой профиль",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "pm.test(\"email совпадает\", () => pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get(\"user_email\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Данные текущего пользователя по JWT. Без токена — `401`."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/users/me",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"user_id\": 24,\n  \"name\": \"Анна Документова\",\n  \"email\": \"docs-1794339200@example.com\",\n  \"phone\": \"+79001112233\",\n  \"created_at\": \"2026-11-10T19:33:20.854Z\"\n}"
+            },
+            {
+              "name": "401 без токена",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/users/me",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"Unauthorized\",\n  \"message\": \"Missing or invalid authorization token\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Изменить профиль",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Частичное обновление `name` и `phone`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{user_name}} (обновлено)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Каталог",
+      "description": "Рестораны, кухни, меню и фото (catalog-service). Рейтинг ресторана catalog получает у review-service; при его недоступности рейтинг равен 0, но список отдаётся.",
+      "item": [
+        {
+          "name": "Кухни",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "const c = pm.response.json(); pm.test(\"Непустой список\", () => pm.expect(c.length).to.be.above(0));",
+                  "pm.collectionVariables.set(\"cuisine_id\", c[0].cuisine_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/cuisines",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cuisines"
+              ]
+            },
+            "description": "Справочник типов кухонь, отсортирован по названию.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/cuisines",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "[\n  {\n    \"cuisine_id\": 4,\n    \"name\": \"Грузинская\"\n  },\n  {\n    \"cuisine_id\": 1,\n    \"name\": \"Итальянская\"\n  },\n  {\n    \"cuisine_id\": 3,\n    \"name\": \"Русская\"\n  },\n  {\n    \"cuisine_id\": 5,\n    \"name\": \"Французская\"\n  },\n  {\n    \"cuisine_id\": 2,\n    \"name\": \"Японская\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "Поиск ресторанов",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Есть рестораны\", () => pm.expect(r.data.length).to.be.above(0));",
+                  "pm.collectionVariables.set(\"restaurant_id\", r.data[0].restaurant_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/restaurants?city=Москва&limit=10&page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "restaurants"
+              ],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Москва",
+                  "description": "город (точное совпадение)"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "размер страницы, 1–100"
+                },
+                {
+                  "key": "cuisine_id",
+                  "value": "",
+                  "description": "фильтр по кухне",
+                  "disabled": true
+                },
+                {
+                  "key": "price_level",
+                  "value": "",
+                  "description": "$, $$, $$$, $$$$",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "часть названия, без учёта регистра",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "номер страницы"
+                }
+              ]
+            },
+            "description": "Список с фильтрами и пагинацией. Ответ: `data[]` (рестораны с `average_rating`, `cuisines`, `main_photo`), `total`, `page`, `limit`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Москва, 2 на странице)",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants?city=Москва&limit=2",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"restaurant_id\": 1,\n      \"name\": \"La Piazza\",\n      \"description\": \"Классическая итальянская кухня в центре Москвы.\",\n      \"address\": \"ул. Тверская, 10, Москва\",\n      \"city\": \"Москва\",\n      \"price_level\": \"$$\",\n      \"opening_time\": \"11:00\",\n      \"closing_time\": \"23:00\",\n      \"phone\": \"+74951234567\",\n      \"cuisines\": [\n        {\n          \"cuisine_id\": 1,\n          \"name\": \"Итальянская\"\n        },\n        {\n          \"cuisine_id\": 5,\n          \"name\": \"Французская\"\n        }\n      ],\n      \"average_rating\": 4.5,\n      \"main_photo\": \"https://example.com/photos/lapiazza-1.jpg\"\n    },\n    {\n      \"restaurant_id\": 3,\n      \"name\": \"Тбилисо\",\n      \"description\": \"Уютная грузинская кухня с хачапури и хинкали.\",\n      \"address\": \"Арбат, 5, Москва\",\n      \"city\": \"Москва\",\n      \"price_level\": \"$$\",\n      \"opening_time\": \"12:00\",\n      \"closing_time\": \"23:30\",\n      \"phone\": \"+74959998877\",\n      \"cuisines\": [\n        {\n          \"cuisine_id\": 4,\n          \"name\": \"Грузинская\"\n        }\n      ],\n      \"average_rating\": 5,\n      \"main_photo\": \"https://example.com/photos/tbiliso-1.jpg\"\n    }\n  ],\n  \"total\": 3,\n  \"page\": 1,\n  \"limit\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ресторан",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "restaurants",
+                "{{restaurant_id}}"
+              ]
+            },
+            "description": "Карточка ресторана: описание, кухни, фото, меню, рейтинг и число отзывов. Несуществующий id — `404`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants/1",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"restaurant_id\": 1,\n  \"name\": \"La Piazza\",\n  \"description\": \"Классическая итальянская кухня в центре Москвы.\",\n  \"address\": \"ул. Тверская, 10, Москва\",\n  \"city\": \"Москва\",\n  \"price_level\": \"$$\",\n  \"opening_time\": \"11:00\",\n  \"closing_time\": \"23:00\",\n  \"phone\": \"+74951234567\",\n  \"cuisines\": [\n    {\n      \"cuisine_id\": 1,\n      \"name\": \"Итальянская\"\n    },\n    {\n      \"cuisine_id\": 5,\n      \"name\": \"Французская\"\n    }\n  ],\n  \"average_rating\": 4.5,\n  \"main_photo\": \"https://example.com/photos/lapiazza-1.jpg\",\n  \"photos\": [\n    {\n      \"photo_id\": 1,\n      \"photo_url\": \"https://example.com/photos/lapiazza-1.jpg\"\n    },\n    {\n      \"photo_id\": 2,\n      \"photo_url\": \"https://example.com/photos/lapiazza-2.jpg\"\n    }\n  ],\n  \"menu_items\": [\n    {\n      \"menu_item_id\": 1,\n      \"name\": \"Паста Карбонара\",\n      \"description\": \"Классическая паста со сливочным соусом.\",\n      \"price\": 650,\n      \"category\": \"Основные блюда\"\n    },\n    {\n      \"menu_item_id\": 2,\n      \"name\": \"Пицца Маргарита\",\n      \"description\": \"Томаты, моцарелла, базилик.\",\n      \"price\": 720,\n      \"category\": \"Основные блюда\"\n    },\n    {\n      \"menu_item_id\": 3,\n      \"name\": \"Тирамису\",\n      \"description\": \"Десерт на основе маскарпоне.\",\n      \"price\": 380,\n      \"category\": \"Десерты\"\n    }\n  ],\n  \"reviews_count\": 2\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants/999",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"Not Found\",\n  \"message\": \"Restaurant not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Меню",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/menu",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "restaurants",
+                "{{restaurant_id}}",
+                "menu"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "",
+                  "description": "например «Десерты»",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Позиции меню; `category` — фильтр по части названия категории.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (category=Десерты)",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants/1/menu?category=Десерты",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "[\n  {\n    \"menu_item_id\": 3,\n    \"name\": \"Тирамису\",\n    \"description\": \"Десерт на основе маскарпоне.\",\n    \"price\": 380,\n    \"category\": \"Десерты\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "Фото",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/photos",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "restaurants",
+                "{{restaurant_id}}",
+                "photos"
+              ]
+            },
+            "description": "Фотографии ресторана, главное — `is_main=true`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants/1/photos",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "[\n  {\n    \"photo_id\": 1,\n    \"photo_url\": \"https://example.com/photos/lapiazza-1.jpg\"\n  },\n  {\n    \"photo_id\": 2,\n    \"photo_url\": \"https://example.com/photos/lapiazza-2.jpg\"\n  }\n]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Бронирование",
+      "description": "Проверка свободных столиков и бронирования (reservation-service). Создание и отмена брони публикуют события в RabbitMQ.",
+      "item": [
+        {
+          "name": "Свободные столики",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "const t = pm.response.json().find(x => x.status === \"available\");",
+                  "pm.test(\"Есть свободный столик\", () => pm.expect(t).to.exist);",
+                  "if (t) pm.collectionVariables.set(\"table_id\", t.table_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/tables?date={{reservation_date}}&time={{reservation_time}}&guests=2",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "restaurants",
+                "{{restaurant_id}}",
+                "tables"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{reservation_date}}",
+                  "description": ""
+                },
+                {
+                  "key": "time",
+                  "value": "{{reservation_time}}",
+                  "description": ""
+                },
+                {
+                  "key": "guests",
+                  "value": "2",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Столики ресторана со статусом `available`/`reserved` на дату и время (catalog спрашивает занятость у reservation). `guests` отсекает столики меньшей вместимости.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants/2/tables?date=2027-03-08&time=19:00&guests=2",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "[\n  {\n    \"table_id\": 6,\n    \"table_number\": 1,\n    \"capacity\": 2,\n    \"status\": \"available\"\n  },\n  {\n    \"table_id\": 7,\n    \"table_number\": 2,\n    \"capacity\": 2,\n    \"status\": \"available\"\n  },\n  {\n    \"table_id\": 8,\n    \"table_number\": 3,\n    \"capacity\": 4,\n    \"status\": \"available\"\n  },\n  {\n    \"table_id\": 9,\n    \"table_number\": 4,\n    \"capacity\": 6,\n    \"status\": \"available\"\n  },\n  {\n    \"table_id\": 10,\n    \"table_number\": 5,\n    \"capacity\": 6,\n    \"status\": \"available\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "Создать бронь",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// уникальный слот на каждый прогон, чтобы не получить 409",
+                  "const d = new Date(Date.UTC(2027, 0, 1) + Math.floor(Math.random() * 365) * 86400000);",
+                  "pm.collectionVariables.set(\"reservation_date\", d.toISOString().slice(0, 10));",
+                  "pm.collectionVariables.set(\"reservation_time\", String(12 + Math.floor(Math.random() * 10)).padStart(2, \"0\") + \":30\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "pm.collectionVariables.set(\"reservation_id\", pm.response.json().reservation_id);",
+                  "pm.test(\"Статус confirmed\", () => pm.expect(pm.response.json().status).to.eql(\"confirmed\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reservations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reservations"
+              ]
+            },
+            "description": "Бронирует столик на слот. **Ответы:** `201`; `400` — валидация или гостей больше вместимости; `409` — слот уже занят; `503` — catalog недоступен (столик нельзя проверить).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table_id\": {{table_id}},\n  \"reservation_date\": \"{{reservation_date}}\",\n  \"reservation_time\": \"{{reservation_time}}\",\n  \"guests_count\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/reservations",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"table_id\": 6,\n  \"reservation_date\": \"2027-03-08\",\n  \"reservation_time\": \"19:00\",\n  \"guests_count\": 2\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"reservation_id\": 991,\n  \"user_id\": 24,\n  \"table\": {\n    \"table_id\": 6\n  },\n  \"restaurant\": {\n    \"restaurant_id\": 2,\n    \"name\": \"Sakura\",\n    \"city\": \"Санкт-Петербург\",\n    \"address\": \"Невский пр., 25, Санкт-Петербург\",\n    \"price_level\": \"$$$\"\n  },\n  \"reservation_date\": \"2027-03-08\",\n  \"reservation_time\": \"19:00\",\n  \"guests_count\": 2,\n  \"status\": \"confirmed\",\n  \"created_at\": \"2026-11-10T19:33:28.112Z\"\n}"
+            },
+            {
+              "name": "409 Слот занят",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/reservations",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"table_id\": 6,\n  \"reservation_date\": \"2027-03-08\",\n  \"reservation_time\": \"19:00\",\n  \"guests_count\": 2\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"error\": \"Conflict\",\n  \"message\": \"Table is already booked for this date and time\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Бронь по id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reservations/{{reservation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reservations",
+                "{{reservation_id}}"
+              ]
+            },
+            "description": "Бронь с данными ресторана. Чужая бронь — `403`."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/reservations/991",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"reservation_id\": 991,\n  \"user_id\": 24,\n  \"table\": {\n    \"table_id\": 6\n  },\n  \"restaurant\": {\n    \"restaurant_id\": 2,\n    \"name\": \"Sakura\",\n    \"city\": \"Санкт-Петербург\",\n    \"address\": \"Невский пр., 25, Санкт-Петербург\",\n    \"price_level\": \"$$$\"\n  },\n  \"reservation_date\": \"2027-03-08\",\n  \"reservation_time\": \"19:00\",\n  \"guests_count\": 2,\n  \"status\": \"confirmed\",\n  \"created_at\": \"2026-11-10T19:33:28.112Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Изменить бронь",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reservations/{{reservation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reservations",
+                "{{reservation_id}}"
+              ]
+            },
+            "description": "Перенос на другую дату/время или изменение числа гостей (с повторной проверкой занятости).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"guests_count\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "PUT",
+                "url": "{{base_url}}/reservations/991",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"guests_count\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"reservation_id\": 991,\n  \"user_id\": 24,\n  \"table\": {\n    \"table_id\": 6\n  },\n  \"restaurant\": {\n    \"restaurant_id\": 2,\n    \"name\": \"Sakura\",\n    \"city\": \"Санкт-Петербург\",\n    \"address\": \"Невский пр., 25, Санкт-Петербург\",\n    \"price_level\": \"$$$\"\n  },\n  \"reservation_date\": \"2027-03-08\",\n  \"reservation_time\": \"19:00\",\n  \"guests_count\": 1,\n  \"status\": \"confirmed\",\n  \"created_at\": \"2026-11-10T19:33:28.112Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Мои брони",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/me/reservations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "reservations"
+              ]
+            },
+            "description": "История бронирований текущего пользователя с пагинацией."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/users/me/reservations",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"reservation_id\": 991,\n      \"user_id\": 24,\n      \"table\": {\n        \"table_id\": 6\n      },\n      \"restaurant\": {\n        \"restaurant_id\": 2,\n        \"name\": \"Sakura\",\n        \"city\": \"Санкт-Петербург\",\n        \"address\": \"Невский пр., 25, Санкт-Петербург\",\n        \"price_level\": \"$$$\"\n      },\n      \"reservation_date\": \"2027-03-08\",\n      \"reservation_time\": \"19:00\",\n      \"guests_count\": 1,\n      \"status\": \"confirmed\",\n      \"created_at\": \"2026-11-10T19:33:28.112Z\"\n    }\n  ],\n  \"total\": 1,\n  \"page\": 1,\n  \"limit\": 20\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Отзывы",
+      "item": [
+        {
+          "name": "Оставить отзыв",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "pm.collectionVariables.set(\"review_id\", pm.response.json().review_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reviews",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reviews"
+              ]
+            },
+            "description": "Один отзыв на ресторан от пользователя (`409` при повторе). Публикует событие `review.created`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": {{restaurant_id}},\n  \"rating\": 5,\n  \"comment\": \"Отличное место\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/reviews",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"restaurant_id\": 3,\n  \"rating\": 5,\n  \"comment\": \"Отличные хинкали, быстрое обслуживание\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"review_id\": 8,\n  \"user\": {\n    \"user_id\": 24,\n    \"name\": \"Анна Документова\",\n    \"email\": \"docs-1794339200@example.com\",\n    \"phone\": \"+79001112233\"\n  },\n  \"restaurant_id\": 3,\n  \"rating\": 5,\n  \"comment\": \"Отличные хинкали, быстрое обслуживание\",\n  \"created_at\": \"2026-11-10T19:33:29.574Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Отзывы ресторана",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "restaurants",
+                "{{restaurant_id}}",
+                "reviews"
+              ]
+            },
+            "description": "Отзывы с именами авторов (review запрашивает их у auth-service).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/restaurants/3/reviews?limit=2",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"review_id\": 8,\n      \"user\": {\n        \"user_id\": 24,\n        \"name\": \"Анна Документова\",\n        \"email\": \"docs-1794339200@example.com\",\n        \"phone\": \"+79001112233\"\n      },\n      \"restaurant_id\": 3,\n      \"rating\": 5,\n      \"comment\": \"Отличные хинкали, быстрое обслуживание\",\n      \"created_at\": \"2026-11-10T19:33:29.574Z\"\n    },\n    {\n      \"review_id\": 3,\n      \"user\": {\n        \"user_id\": 1,\n        \"name\": \"Иван Иванов\",\n        \"email\": \"ivan@example.com\",\n        \"phone\": \"+79001234567\"\n      },\n      \"restaurant_id\": 3,\n      \"rating\": 5,\n      \"comment\": \"Лучшие хинкали в Москве.\",\n      \"created_at\": \"2026-11-10T17:47:45.925Z\"\n    }\n  ],\n  \"total\": 2,\n  \"average_rating\": 5,\n  \"page\": 1,\n  \"limit\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Удалить отзыв",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\", () => pm.response.to.have.status(204));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reviews",
+                "{{review_id}}"
+              ]
+            },
+            "description": "Удаляет свой отзыв; чужой — `403`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Уведомления и отмена",
+      "item": [
+        {
+          "name": "Уведомления",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 1500); // даём событию дойти через брокер"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));",
+                  "pm.test(\"Есть уведомление о брони\", () => pm.expect(pm.response.json().data.map(n => n.type)).to.include(\"reservation.created\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications"
+              ]
+            },
+            "description": "Уведомления, созданные notification-service из событий RabbitMQ (бронь, отмена, отзыв). Появляются асинхронно, обычно за доли секунды."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/notifications",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"notification_id\": 1985,\n      \"type\": \"review.created\",\n      \"title\": \"Спасибо за отзыв\",\n      \"message\": \"Ваш отзыв на ресторан #3 (оценка 5/5) опубликован.\",\n      \"created_at\": \"2026-11-10T19:33:29.577Z\"\n    },\n    {\n      \"notification_id\": 1984,\n      \"type\": \"reservation.created\",\n      \"title\": \"Бронирование подтверждено\",\n      \"message\": \"Столик #6 забронирован на 2027-03-08 19:00 (гостей: 2).\",\n      \"created_at\": \"2026-11-10T19:33:28.122Z\"\n    }\n  ],\n  \"total\": 2,\n  \"page\": 1,\n  \"limit\": 20\n}"
+            }
+          ]
+        },
+        {
+          "name": "Отменить бронь",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\", () => pm.response.to.have.status(204));",
+                  "pm.test(\"Время ответа < 3 с (с учётом сети до стенда)\", () => pm.expect(pm.response.responseTime).to.be.below(3000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reservations/{{reservation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reservations",
+                "{{reservation_id}}"
+              ]
+            },
+            "description": "Отмена брони (`status=cancelled`), слот освобождается; публикуется `reservation.cancelled`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "user_name",
+      "value": "Тестовый Пользователь"
+    },
+    {
+      "key": "user_password",
+      "value": "postman-pass-123"
+    },
+    {
+      "key": "user_email",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "cuisine_id",
+      "value": ""
+    },
+    {
+      "key": "restaurant_id",
+      "value": "1"
+    },
+    {
+      "key": "table_id",
+      "value": ""
+    },
+    {
+      "key": "reservation_id",
+      "value": ""
+    },
+    {
+      "key": "reservation_date",
+      "value": "2027-06-01"
+    },
+    {
+      "key": "reservation_time",
+      "value": "19:30"
+    },
+    {
+      "key": "review_id",
+      "value": ""
+    }
+  ]
+}

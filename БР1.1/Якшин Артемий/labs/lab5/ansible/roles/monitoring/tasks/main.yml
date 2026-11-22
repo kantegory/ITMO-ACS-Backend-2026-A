@@ -1,0 +1,45 @@
+# ЛР6: стек мониторинга rb-mon (Prometheus, Grafana, Loki, Promtail, exporters).
+- name: Каталог стека мониторинга
+  ansible.builtin.file: { path: "{{ rb_root }}/mon", state: directory, owner: root, group: root, mode: "0750" }
+
+- name: Конфигурация стека из репозитория (labs/lab6/monitoring)
+  ansible.builtin.copy:
+    src: "{{ rb_local }}/labs/lab6/monitoring/"
+    dest: "{{ rb_root }}/mon/"
+    owner: root
+    group: root
+    mode: "u=rwX,g=rX,o=rX"
+  notify: Restart monitoring stack
+
+- name: Секреты Grafana (пароль генерируется один раз; адрес — только на сервере)
+  ansible.builtin.template:
+    src: mon.env.j2
+    dest: "{{ rb_root }}/mon/.env"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+
+- name: Стек мониторинга запущен
+  community.docker.docker_compose_v2:
+    project_src: "{{ rb_root }}/mon"
+    state: present
+    pull: missing
+    wait: true
+    wait_timeout: 180
+
+- name: Prometheus видит все цели
+  ansible.builtin.command: >-
+    docker exec rb-mon-prometheus-1 wget -qO- http://localhost:9090/api/v1/targets?state=active
+  register: monitoring_targets
+  changed_when: false
+  check_mode: false
+  retries: 6
+  delay: 10
+  until: >-
+    (monitoring_targets.stdout | from_json).data.activeTargets | length > 0 and
+    ((monitoring_targets.stdout | from_json).data.activeTargets | selectattr('health', 'ne', 'up') | list | length) == 0
+
+- name: Сводка по целям Prometheus
+  ansible.builtin.debug:
+    msg: "{{ (monitoring_targets.stdout | from_json).data.activeTargets | map(attribute='labels.job') | list | community.general.counter }}"

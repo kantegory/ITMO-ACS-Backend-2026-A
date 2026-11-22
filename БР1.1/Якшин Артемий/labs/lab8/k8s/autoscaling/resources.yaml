@@ -1,0 +1,88 @@
+# ЛР8: requests/limits по результатам нагрузочных испытаний (см. README ЛР8, раздел «Оптимизация»).
+# Принципы: requests ~ потребление на номинальной нагрузке (50 RPS) -> HPA (70 %) включается при 1.4-2x;
+# сумма requests x maxReplicas <= реального потолка узла (1.5 CPU); CPU-лимиты у CPU-ёмких сервисов = 1 ядро
+# (Node.js однопоточен, лимит 500m давал CFS-троттлинг на всплесках); память — по факту (рабочий набор <= 64 МиБ) x 2.
+---
+# gateway: на номинале ~40m/под -> 53 % от requests; HPA 2-3
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests: { cpu: 75m, memory: 80Mi }
+            limits: { cpu: "500m", memory: 160Mi }
+---
+# auth-service: bcrypt: ~40 мс CPU на вход; 100m на номинале, всплески до 1 ядра (при 500m — троттлинг 15 %); HPA 1-3
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests: { cpu: 150m, memory: 80Mi }
+            limits: { cpu: "1", memory: 160Mi }
+---
+# catalog-service: ~1.6 мс CPU на запрос, 100m на номинале; HPA 1-2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests: { cpu: 150m, memory: 96Mi }
+            limits: { cpu: "1", memory: 192Mi }
+---
+# review-service: ~0.8 мс CPU на запрос, 40m на номинале; HPA 1-2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests: { cpu: 50m, memory: 80Mi }
+            limits: { cpu: "500m", memory: 160Mi }
+---
+# reservation-service: 20-35m даже на пике; без HPA (1 реплика)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests: { cpu: 50m, memory: 80Mi }
+            limits: { cpu: "500m", memory: 160Mi }
+---
+# notification-service: 5-10m: только обработка событий
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: "250m", memory: 128Mi }

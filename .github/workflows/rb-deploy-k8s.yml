@@ -1,0 +1,122 @@
+# ДЗ8 (Якшин Артемий, БР1.1): CI/CD микросервисного приложения в облачную инфраструктуру (k3d-кластер, ЛР7).
+#
+# Триггер: push в main (код сервисов или манифесты Kubernetes) + ручной запуск.
+# Конвейер: validate (kustomize + kubeconform) → build (образы в GHCR) → deploy (SSH "k8s <sha>") → smoke.
+# На сервере deploy.sh: импорт образов в containerd узла, kubectl diff/apply -k (тег = SHA),
+# ожидание rollout всех Deployment, проверка версии через Ingress, при сбое — kubectl rollout undo.
+name: rb-deploy-k8s
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/labs/lab2/**"
+      - "**/labs/lab7/k8s/**"
+      - "**/labs/lab8/k8s/**"
+      - ".github/workflows/rb-deploy-k8s.yml"
+      - ".github/workflows/rb-build-images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-k8s
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  K8S_DIR: "БР1.1/Якшин Артемий/labs/lab7/k8s"
+  K8S_VERSION: "1.36.0"
+
+jobs:
+  validate:
+    if: github.repository == 'cicada-pops/itmo-backend-sem2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install kubectl & kubeconform
+        run: |
+          curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
+          echo "$(curl -fsSL https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c -
+          chmod +x /usr/local/bin/kubectl
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+
+      - name: Render manifests (kustomize)
+        run: kubectl kustomize "$K8S_DIR/overlays/prod" > rendered.yaml && grep -c '^kind:' rendered.yaml
+
+      - name: Validate against Kubernetes ${{ env.K8S_VERSION }} schemas
+        run: kubeconform -strict -summary -kubernetes-version "$K8S_VERSION" rendered.yaml
+
+      - name: Policy checks
+        run: |
+          set -e
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet --user --break-system-packages pyyaml
+          # у каждого контейнера приложения есть requests/limits и все три пробы
+          python3 - <<'PY'
+          import yaml, sys
+          bad = []
+          for d in yaml.safe_load_all(open("rendered.yaml")):
+              if not d or d.get("kind") not in ("Deployment", "StatefulSet"):
+                  continue
+              for c in d["spec"]["template"]["spec"]["containers"]:
+                  name = f'{d["kind"]}/{d["metadata"]["name"]}'
+                  r = c.get("resources", {})
+                  if not r.get("requests") or not r.get("limits"):
+                      bad.append(f"{name}: no requests/limits")
+                  if "readinessProbe" not in c or "livenessProbe" not in c:
+                      bad.append(f"{name}: no readiness/liveness probe")
+                  if d["kind"] == "Deployment" and not c.get("securityContext", {}).get("readOnlyRootFilesystem"):
+                      bad.append(f"{name}: root filesystem is writable")
+          print("\n".join(bad) or "policy: OK")
+          sys.exit(1 if bad else 0)
+          PY
+
+  build:
+    needs: validate
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/rb-build-images.yml
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: production-k8s
+    permissions:
+      contents: read
+      packages: read   # токен job'а сервер использует для docker pull из GHCR
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy release ${{ github.sha }} to k3d
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s\n' "$TOKEN" | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "rb-deploy@$HOST" "k8s ${{ github.sha }}"
+
+      - name: Smoke test через Ingress (/k8s/)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -e
+          curl -fsS --retry 5 --retry-delay 3 "http://$HOST:8088/k8s/health" | tee /dev/stderr \
+            | grep -q '"version":"${{ github.sha }}"'
+          for p in "api/v1/restaurants?limit=1" "api/v1/cuisines" "api/docs/"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://$HOST:8088/k8s/$p")
+            echo "GET /k8s/$p -> $code"; test "$code" = 200
+          done
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

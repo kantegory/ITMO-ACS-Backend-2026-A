@@ -1,0 +1,77 @@
+# ЛР6: сбор метрик стенда.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stand: restaurant-booking
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # CPU, память, диск, load average ВМ
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels: { instance: vm }
+
+  # сеть ВМ (корневой cgroup id="/") и ресурсы контейнеров стенда
+  - job_name: cadvisor
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels: { instance: vm }
+    metric_relabel_configs:
+      # сервер общий: метрики чужих контейнеров не сохраняем — только вся ВМ и контейнеры стенда
+      - source_labels: [id, name]
+        separator: ";"
+        regex: "/;.*|.*;(rb-|k3d-rb|buildx_buildkit_rb).*"
+        action: keep
+
+  # метрики самих сервисов (prom-client): RPS, задержки, ресурсы процессов Node.js
+  - job_name: services
+    static_configs:
+      - targets:
+          - gateway:3000
+          - auth-service:8081
+          - catalog-service:8082
+          - reservation-service:8083
+          - review-service:8084
+          - notification-service:8085
+
+  # healthcheck: HTTP GET /health каждого сервиса, ответ должен содержать "status":"ok"
+  - job_name: health
+    metrics_path: /probe
+    params: { module: [http_health] }
+    static_configs:
+      - targets: ["http://rb-edge-nginx:8080/health"]
+        labels: { service: edge-nginx }
+      - targets: ["http://gateway:3000/health"]
+        labels: { service: api-gateway }
+      - targets: ["http://auth-service:8081/health"]
+        labels: { service: auth-service }
+      - targets: ["http://catalog-service:8082/health"]
+        labels: { service: catalog-service }
+      - targets: ["http://reservation-service:8083/health"]
+        labels: { service: reservation-service }
+      - targets: ["http://review-service:8084/health"]
+        labels: { service: review-service }
+      - targets: ["http://notification-service:8085/health"]
+        labels: { service: notification-service }
+    relabel_configs: &blackbox_relabel
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # брокер сообщений: TCP-проверка порта AMQP
+  - job_name: health-tcp
+    metrics_path: /probe
+    params: { module: [tcp_connect] }
+    static_configs:
+      - targets: ["rabbitmq:5672"]
+        labels: { service: rabbitmq }
+    relabel_configs: *blackbox_relabel

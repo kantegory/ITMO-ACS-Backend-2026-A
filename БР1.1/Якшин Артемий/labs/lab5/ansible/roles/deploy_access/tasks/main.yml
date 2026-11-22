@@ -1,0 +1,34 @@
+# Доступ CI (ДЗ6): пользователь без shell-доступа, ключ с forced command, sudo на один скрипт.
+- name: Пользователь rb-deploy (пароль заблокирован)
+  ansible.builtin.user:
+    name: rb-deploy
+    system: true
+    create_home: true
+    shell: /bin/bash
+    comment: CI deploy (forced command)
+    password_lock: true
+
+- name: Скрипты деплоя (принадлежат root, CI изменить их не может)
+  ansible.builtin.copy:
+    src: "{{ rb_local }}/homeworks/hw6/server/{{ item }}"
+    dest: "{{ rb_root }}/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [deploy.sh, deploy-gate.sh]
+
+- name: Sudo-правило только на deploy.sh (проверка синтаксиса visudo перед установкой)
+  ansible.builtin.copy:
+    content: "rb-deploy ALL=(root) NOPASSWD: {{ rb_root }}/bin/deploy.sh\n"
+    dest: /etc/sudoers.d/rb-deploy
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+
+- name: Ключ CI — только forced command, без pty и пробросов
+  ansible.posix.authorized_key:
+    user: rb-deploy
+    key: "{{ rb_ci_deploy_pubkey }}"
+    key_options: 'restrict,command="{{ rb_root }}/bin/deploy-gate.sh"'
+    exclusive: true

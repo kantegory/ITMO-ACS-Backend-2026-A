@@ -1,0 +1,101 @@
+# ЛР7: k3d-кластер на общем сервере — изолирован в контейнере, ограничен по CPU/RAM,
+# API на 127.0.0.1, kubeconfig вне ~/.kube (не трогаем окружение root), Secret из файла вне git.
+- name: Каталоги платформы
+  ansible.builtin.file: { path: "{{ item }}", state: directory, owner: root, group: root, mode: "0700" }
+  loop: ["{{ rb_root }}/k3d", "{{ k3d_storage }}", "{{ rb_root }}/k8s"]
+
+- name: Бинарник k3d (проверка закреплённого sha256)
+  ansible.builtin.get_url:
+    url: "https://github.com/k3d-io/k3d/releases/download/{{ k3d_version }}/k3d-linux-amd64"
+    checksum: "sha256:{{ k3d_sha256 }}"
+    dest: "{{ rb_root }}/bin/k3d"
+    mode: "0755"
+
+- name: Бинарник kubectl (проверка sha256)
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/{{ k3d_kubectl_version }}/bin/linux/amd64/kubectl"
+    checksum: "sha256:https://dl.k8s.io/release/{{ k3d_kubectl_version }}/bin/linux/amd64/kubectl.sha256"
+    dest: "{{ rb_root }}/bin/kubectl"
+    mode: "0755"
+
+- name: Существует ли кластер
+  ansible.builtin.command: "{{ rb_root }}/bin/k3d cluster get {{ k3d_cluster }}"
+  register: k3d_cluster_get
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Создать кластер (1 узел, сеть rb-edge, без публикации 80/443 на хост)
+  ansible.builtin.command: >-
+    {{ rb_root }}/bin/k3d cluster create {{ k3d_cluster }}
+    --servers 1 --agents 0 --no-lb
+    --image {{ k3d_k3s_image }}
+    --network {{ rb_edge_network }}
+    --api-port {{ k3d_api }}
+    --servers-memory {{ k3d_memory }}
+    --volume {{ k3d_storage }}:/var/lib/rancher/k3s/storage@server:0
+    --kubeconfig-update-default=false --kubeconfig-switch-context=false
+    --wait --timeout 300s
+  when: k3d_cluster_get.rc != 0
+  changed_when: true
+
+- name: Текущие ограничения узла
+  ansible.builtin.command: docker inspect -f '{{ "{{" }}.HostConfig.CpusetCpus{{ "}}" }} {{ "{{" }}.HostConfig.NanoCpus{{ "}}" }}' {{ k3d_node }}
+  register: k3d_limits
+  changed_when: false
+  check_mode: false
+
+- name: Ограничить CPU узла — cpuset и потолок ядер {{ k3d_cpus }}
+  ansible.builtin.command: docker update --cpuset-cpus {{ rb_cpuset }} --cpus {{ k3d_cpus }} {{ k3d_node }}
+  when: k3d_limits.stdout != rb_cpuset ~ ' ' ~ ((k3d_cpus | float * 1e9) | int)
+  changed_when: true
+
+- name: Вернуть параметры ядра хоста, изменённые kubelet (только runtime, без файлов в /etc)
+  ansible.builtin.shell: |
+    cur=$(sysctl -n {{ item.key }})
+    if [ "$cur" != "{{ item.value }}" ]; then sysctl -qw {{ item.key }}={{ item.value }}; echo "restored $cur -> {{ item.value }}"; fi
+  loop: "{{ k3d_host_sysctl_restore | dict2items }}"
+  loop_control: { label: "{{ item.key }}={{ item.value }}" }
+  register: k3d_sysctl
+  changed_when: "'restored' in k3d_sysctl.stdout"
+
+- name: Kubeconfig вне ~/.kube
+  ansible.builtin.shell: |
+    set -o pipefail
+    new=$({{ rb_root }}/bin/k3d kubeconfig get {{ k3d_cluster }})
+    if [ ! -f {{ k3d_kubeconfig }} ] || [ "$new" != "$(cat {{ k3d_kubeconfig }})" ]; then
+      umask 077; printf '%s\n' "$new" > {{ k3d_kubeconfig }}; echo updated
+    fi
+  args: { executable: /bin/bash }
+  register: k3d_kubeconfig_write
+  changed_when: "'updated' in k3d_kubeconfig_write.stdout"
+
+- name: Секреты кластера (генерируются один раз, в git не попадают)
+  ansible.builtin.template:
+    src: secrets.env.j2
+    dest: "{{ rb_root }}/k8s/secrets.env"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+
+- name: Namespace и Secret rb-secrets
+  ansible.builtin.shell: |
+    set -o pipefail
+    K="{{ rb_root }}/bin/kubectl --kubeconfig {{ k3d_kubeconfig }}"
+    # namespace только создаётся: его метки (Pod Security) задаёт манифест приложения, apply здесь их бы снял
+    $K get namespace {{ k3d_namespace }} >/dev/null 2>&1 || $K create namespace {{ k3d_namespace }}
+    $K -n {{ k3d_namespace }} create secret generic rb-secrets --from-env-file={{ rb_root }}/k8s/secrets.env \
+      --dry-run=client -o yaml | $K apply -f -
+  args: { executable: /bin/bash }
+  register: k3d_secret
+  changed_when: "'created' in k3d_secret.stdout or 'configured' in k3d_secret.stdout"
+
+- name: Состояние узла
+  ansible.builtin.command: "{{ rb_root }}/bin/kubectl --kubeconfig {{ k3d_kubeconfig }} get nodes -o wide"
+  register: k3d_nodes
+  changed_when: false
+  check_mode: false
+
+- name: Узел кластера
+  ansible.builtin.debug: { msg: "{{ k3d_nodes.stdout_lines }}" }
