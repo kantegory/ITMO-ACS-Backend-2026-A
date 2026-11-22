@@ -1,0 +1,49 @@
+services:
+  prometheus:
+    image: mirror.gcr.io/prom/prometheus:v2.53.3
+    restart: unless-stopped
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=3d"]
+    volumes: ["./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro", "prometheus-data:/prometheus"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [monitoring, app]
+  node-exporter:
+    image: mirror.gcr.io/prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command: ["--path.rootfs=/host"]
+    volumes: ["/:/host:ro,rslave"]
+  blackbox-exporter:
+    image: mirror.gcr.io/prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes: ["./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro"]
+    networks: [monitoring, app]
+  loki:
+    image: mirror.gcr.io/grafana/loki:2.9.10
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes: ["loki-data:/loki"]
+    networks: [monitoring]
+  alloy:
+    image: mirror.gcr.io/grafana/alloy:v1.5.1
+    restart: unless-stopped
+    command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    volumes: ["./alloy/config.alloy:/etc/alloy/config.alloy:ro", "/var/run/docker.sock:/var/run/docker.sock:ro", "alloy-data:/var/lib/alloy/data"]
+    networks: [monitoring]
+  grafana:
+    image: mirror.gcr.io/grafana/grafana:11.3.0
+    restart: unless-stopped
+    ports: ["3030:3000"]
+    volumes: ["./grafana/provisioning:/etc/grafana/provisioning:ro", "./grafana/dashboards:/var/lib/grafana/dashboards:ro", "grafana-data:/var/lib/grafana"]
+    networks: [monitoring]
+volumes:
+  prometheus-data:
+  loki-data:
+  alloy-data:
+  grafana-data:
+networks:
+  monitoring:
+  app:
+    external: true
+    name: restaurant-booking_default
