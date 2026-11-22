@@ -1,0 +1,50 @@
+# Запуск сценария из ДЗ10 внутри кластера.
+# __PROFILE__ и __TARGET__ подставляются командой sed перед kubectl apply.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-__PROFILE__
+  namespace: loadtest
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: k6
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:1.4.2
+          args:
+            - run
+            - --out=experimental-prometheus-rw
+            - --tag=testid=__PROFILE__
+            - /scripts/restaurant.js
+          env:
+            - name: PROFILE
+              value: __PROFILE__
+            - name: BASE_URL
+              value: __TARGET__
+            - name: NO_COLOR
+              value: "1"
+            - name: K6_PROMETHEUS_RW_SERVER_URL
+              value: http://kps-prometheus.monitoring:9090/api/v1/write
+            - name: K6_PROMETHEUS_RW_TREND_STATS
+              value: "p(95),p(99),avg"
+          resources:
+            requests: { cpu: 500m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+            - name: results
+              mountPath: /home/k6/results
+          workingDir: /home/k6
+      volumes:
+        - name: script
+          configMap:
+            name: k6-script
+        - name: results
+          emptyDir: {}

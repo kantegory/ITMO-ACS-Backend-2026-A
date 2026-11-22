@@ -1,0 +1,1239 @@
+{
+  "info": {
+    "name": "Restaurant Booking — микросервисы (ЛР2)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Коллекция запросов к API платформы бронирования ресторанов.\n\nВсе запросы идут через **api-gateway**. Адрес задаётся переменной окружения `base_url`:\n\n* окружение **Local** — `http://localhost:3000/api/v1` (Docker Compose);\n* окружение **EKS** — адрес балансировщика ALB в AWS.\n\nПапки выполняются по порядку и образуют сквозной сценарий. Скрипты тестов сохраняют токены и идентификаторы созданных объектов в переменные коллекции, поэтому коллекцию можно запустить целиком через Collection Runner или Newman.\n\nДля запроса верификации ресторана нужен администратор, созданный в базе заранее (см. раздел «Сценарии работы» документации)."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "restaurant_id",
+      "value": ""
+    },
+    {
+      "key": "table_id",
+      "value": ""
+    },
+    {
+      "key": "reservation_id",
+      "value": ""
+    },
+    {
+      "key": "menu_id",
+      "value": ""
+    },
+    {
+      "key": "menu_item_id",
+      "value": ""
+    },
+    {
+      "key": "review_id",
+      "value": ""
+    },
+    {
+      "key": "cuisine_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Register user",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('test_email', 'testuser_' + Date.now() + '@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has accessToken', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('accessToken');",
+                  "  pm.collectionVariables.set('token', json.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"password123\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"User\",\n  \"phone\": \"+79001234567\"\n}"
+            },
+            "description": "Регистрация нового пользователя.\n\n`POST /auth/register`\n\nПроверки: Status 201; Has accessToken."
+          }
+        },
+        {
+          "name": "Register admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 or 400 (already exists)', () => {",
+                  "  pm.expect([201, 400]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"admin123\",\n  \"first_name\": \"Admin\",\n  \"last_name\": \"Root\"\n}"
+            },
+            "description": "Регистрация нового пользователя.\n\n`POST /auth/register`\n\nПроверки: Status 201 or 400 (already exists)."
+          }
+        },
+        {
+          "name": "Login user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has accessToken', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('accessToken');",
+                  "  pm.collectionVariables.set('token', json.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"password123\"\n}"
+            },
+            "description": "Вход в систему.\n\n`POST /auth/login`\n\nПроверки: Status 200; Has accessToken."
+          }
+        },
+        {
+          "name": "Login admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has accessToken', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('accessToken');",
+                  "  pm.collectionVariables.set('admin_token', json.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"admin123\"\n}"
+            },
+            "description": "Вход в систему.\n\n`POST /auth/login`\n\nПроверки: Status 200; Has accessToken."
+          }
+        },
+        {
+          "name": "Get my profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has user_id and email', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('user_id');",
+                  "  pm.expect(json).to.have.property('email');",
+                  "  pm.expect(json).to.not.have.property('password_hash');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Получить профиль текущего пользователя.\n\n`GET /users/me`\n\nПроверки: Status 200; Has user_id and email."
+          }
+        },
+        {
+          "name": "Update my profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Phone updated', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.phone).to.eql('+79999999999');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+79999999999\"\n}"
+            },
+            "description": "Обновить профиль текущего пользователя.\n\n`PATCH /users/me`\n\nПроверки: Status 200; Phone updated."
+          }
+        },
+        {
+          "name": "Login wrong password (expect error)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns error message', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "description": "Вход в систему.\n\n`POST /auth/login`\n\nПроверки: Returns error message."
+          }
+        }
+      ],
+      "description": "Регистрация и вход. Тесты сохраняют `token` обычного пользователя и `admin_token` администратора."
+    },
+    {
+      "name": "2. Cuisines",
+      "item": [
+        {
+          "name": "Get all cuisines",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => {",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/cuisines",
+            "description": "Получить список кухонь.\n\n`GET /cuisines`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Get cuisines",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => {",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/cuisines",
+            "description": "Получить список кухонь.\n\n`GET /cuisines`\n\nПроверки: Status 200; Returns array."
+          }
+        }
+      ],
+      "description": "Справочник кухонь. Первый найденный идентификатор сохраняется в `cuisine_id`."
+    },
+    {
+      "name": "3. Restaurants",
+      "item": [
+        {
+          "name": "Create restaurant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has restaurant_id and status Pending', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('restaurant_id');",
+                  "  pm.expect(json.status).to.eql('Pending');",
+                  "  pm.collectionVariables.set('restaurant_id', json.restaurant_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/restaurants",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Restaurant\",\n  \"description\": \"A great place\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Moscow\",\n  \"price\": \"$$\"\n}"
+            },
+            "description": "Создать ресторан.\n\n`POST /restaurants`\n\nПроверки: Status 201; Has restaurant_id and status Pending."
+          }
+        },
+        {
+          "name": "Get all restaurants (only Verified)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.be.an('array');",
+                  "  json.forEach(r => pm.expect(r.status).to.eql('Verified'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants",
+            "description": "Получить список ресторанов.\n\n`GET /restaurants`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Get restaurant by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has restaurant_id', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('restaurant_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}",
+            "description": "Получить ресторан по ID.\n\n`GET /restaurants/{id}`\n\nПроверки: Status 200; Has restaurant_id."
+          }
+        },
+        {
+          "name": "Update restaurant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('City updated', () => {",
+                  "  pm.expect(pm.response.json().city).to.eql('Saint Petersburg');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"city\": \"Saint Petersburg\"\n}"
+            },
+            "description": "Обновить ресторан.\n\n`PATCH /restaurants/{id}`\n\nПроверки: Status 200; City updated."
+          }
+        },
+        {
+          "name": "Verify restaurant (admin token — requires DB-seeded admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has status field or forbidden message', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.satisfy(r => r.status === 'Verified' || typeof r.message === 'string');",
+                  "  if (json.status === 'Verified') pm.collectionVariables.set('restaurant_verified', 'true');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/verify",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "description": "Верифицировать ресторан (только Admin).\n\n`PATCH /restaurants/{id}/verify`\n\nПроверки: Status 200; Has status field or forbidden message."
+          }
+        },
+        {
+          "name": "Verify restaurant (non-admin, expect forbidden)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns forbidden message', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/verify",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Верифицировать ресторан (только Admin).\n\n`PATCH /restaurants/{id}/verify`\n\nПроверки: Returns forbidden message."
+          }
+        },
+        {
+          "name": "Get restaurant photos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/photos",
+            "description": "Получить фотографии ресторана.\n\n`GET /restaurants/{id}/photos`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Add photo to restaurant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has photo_id', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('photo_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/photos",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/photo.jpg\"\n}"
+            },
+            "description": "Добавить фотографию ресторана.\n\n`POST /restaurants/{id}/photos`\n\nПроверки: Status 201; Has photo_id."
+          }
+        },
+        {
+          "name": "Get restaurant menus",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/menus",
+            "description": "Получить список меню ресторана.\n\n`GET /restaurants/{id}/menus`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Get restaurant tables",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/tables",
+            "description": "`GET /restaurants/{id}/tables`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Get restaurant reviews",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+            "description": "Получить отзывы ресторана.\n\n`GET /restaurants/{id}/reviews`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Filter restaurants by city",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants?city=Saint%20Petersburg",
+            "description": "Получить список ресторанов.\n\n`GET /restaurants`\n\nПроверки: Status 200; Returns array."
+          }
+        }
+      ],
+      "description": "Создание, изменение, верификация и фильтрация ресторанов. Идентификатор нового ресторана сохраняется в `restaurant_id`."
+    },
+    {
+      "name": "4. Tables",
+      "item": [
+        {
+          "name": "Create table",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has table_id', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('table_id');",
+                  "  pm.collectionVariables.set('table_id', json.table_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/tables",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": {{restaurant_id}},\n  \"capacity\": 4\n}"
+            },
+            "description": "Создать столик.\n\n`POST /tables`\n\nПроверки: Status 201; Has table_id."
+          }
+        },
+        {
+          "name": "Update table capacity",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/tables/{{table_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capacity\": 6\n}"
+            },
+            "description": "Обновить столик.\n\n`PATCH /tables/{id}`\n\nПроверки: Status 200."
+          }
+        }
+      ],
+      "description": "Столики ресторана. Идентификатор сохраняется в `table_id`."
+    },
+    {
+      "name": "5. Reservations",
+      "item": [
+        {
+          "name": "Create reservation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has reservation_id and status Pending', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('reservation_id');",
+                  "  pm.expect(json.status).to.eql('Pending');",
+                  "  pm.collectionVariables.set('reservation_id', json.reservation_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/reservations",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table_id\": {{table_id}},\n  \"start_time\": \"2027-01-15T18:00:00\",\n  \"end_time\": \"2027-01-15T20:00:00\",\n  \"guest_number\": 2\n}"
+            },
+            "description": "Создать бронирование.\n\n`POST /reservations`\n\nПроверки: Status 201; Has reservation_id and status Pending."
+          }
+        },
+        {
+          "name": "Get reservation by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has reservation_id', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('reservation_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/reservations/{{reservation_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Получить бронирование по ID.\n\n`GET /reservations/{id}`\n\nПроверки: Status 200; Has reservation_id."
+          }
+        },
+        {
+          "name": "Create conflicting reservation (expect 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns conflict error', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/reservations",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"table_id\": {{table_id}},\n  \"start_time\": \"2027-01-15T18:30:00\",\n  \"end_time\": \"2027-01-15T20:30:00\",\n  \"guest_number\": 2\n}"
+            },
+            "description": "Создать бронирование.\n\n`POST /reservations`\n\nПроверки: Returns conflict error."
+          }
+        },
+        {
+          "name": "Get my reservations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/me/reservations",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Получить все бронирования текущего пользователя.\n\n`GET /users/me/reservations`\n\nПроверки: Status 200; Returns array."
+          }
+        },
+        {
+          "name": "Cancel reservation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/reservations/{{reservation_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Отменить бронирование.\n\n`DELETE /reservations/{id}`\n\nПроверки: Status 200."
+          }
+        }
+      ],
+      "description": "Бронирования, включая проверку конфликта по времени (ожидается 409)."
+    },
+    {
+      "name": "6. Menus",
+      "item": [
+        {
+          "name": "Create menu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has menu_id', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('menu_id');",
+                  "  pm.collectionVariables.set('menu_id', json.menu_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/menus",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": {{restaurant_id}},\n  \"name\": \"Dinner Menu\"\n}"
+            },
+            "description": "`POST /menus`\n\nПроверки: Status 201; Has menu_id."
+          }
+        },
+        {
+          "name": "Create menu item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has item_id', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('item_id');",
+                  "  pm.collectionVariables.set('menu_item_id', json.item_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/menu-items",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"menu_id\": {{menu_id}},\n  \"name\": \"Pasta Carbonara\",\n  \"description\": \"Classic Italian pasta\",\n  \"price\": 650.00\n}"
+            },
+            "description": "Создать позицию меню.\n\n`POST /menu-items`\n\nПроверки: Status 201; Has item_id."
+          }
+        },
+        {
+          "name": "Update menu item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/menu-items/{{menu_item_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 700.00\n}"
+            },
+            "description": "Обновить позицию меню.\n\n`PATCH /menu-items/{id}`\n\nПроверки: Status 200."
+          }
+        },
+        {
+          "name": "Get full menu with items",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array with items', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.be.an('array');",
+                  "  if (json.length > 0) pm.expect(json[0]).to.have.property('items');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/menu",
+            "description": "Получить меню ресторана с позициями.\n\n`GET /restaurants/{id}/menu`\n\nПроверки: Status 200; Returns array with items."
+          }
+        },
+        {
+          "name": "Delete menu item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/menu-items/{{menu_item_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Удалить позицию меню.\n\n`DELETE /menu-items/{id}`\n\nПроверки: Status 200."
+          }
+        }
+      ],
+      "description": "Меню ресторана и позиции меню."
+    },
+    {
+      "name": "7. Reviews",
+      "item": [
+        {
+          "name": "Create review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has review_id', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('review_id');",
+                  "  pm.collectionVariables.set('review_id', json.review_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/reviews",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": {{restaurant_id}},\n  \"rating\": 5,\n  \"comment\": \"Excellent food and service!\"\n}"
+            },
+            "description": "`POST /reviews`\n\nПроверки: Status 201; Has review_id."
+          }
+        },
+        {
+          "name": "Update review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/reviews/{{review_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"comment\": \"Good, but a bit noisy\"\n}"
+            },
+            "description": "Обновить отзыв.\n\n`PATCH /reviews/{id}`\n\nПроверки: Status 200."
+          }
+        },
+        {
+          "name": "Get restaurant reviews (rating should update)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array with reviews', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.be.an('array');",
+                  "  pm.expect(json.length).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+            "description": "Получить отзывы ресторана.\n\n`GET /restaurants/{id}/reviews`\n\nПроверки: Status 200; Returns array with reviews."
+          }
+        },
+        {
+          "name": "Delete review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/reviews/{{review_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "description": "Удалить отзыв.\n\n`DELETE /reviews/{id}`\n\nПроверки: Status 200."
+          }
+        }
+      ],
+      "description": "Отзывы. После создания отзыва проверяется пересчёт рейтинга ресторана."
+    },
+    {
+      "name": "8. Access Control",
+      "item": [
+        {
+          "name": "Access protected route without token (expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 or error', () => {",
+                  "  pm.expect([401, 403]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/me",
+            "description": "Получить профиль текущего пользователя.\n\n`GET /users/me`\n\nПроверки: Returns 401 or error."
+          }
+        },
+        {
+          "name": "Delete another user's restaurant (expect forbidden)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns forbidden or not found', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/restaurants/{{restaurant_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "description": "Удалить ресторан.\n\n`DELETE /restaurants/{id}`\n\nПроверки: Returns forbidden or not found."
+          }
+        }
+      ],
+      "description": "Негативные проверки прав доступа: запрос без токена и попытка удалить чужой ресторан."
+    },
+    {
+      "name": "9. Health Check",
+      "item": [
+        {
+          "name": "API Gateway health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status ok', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:3000/health",
+            "description": "`GET http://localhost:3000/health`\n\nПроверки: Status 200; Status ok."
+          }
+        }
+      ],
+      "description": "Проверка доступности api-gateway."
+    }
+  ]
+}
