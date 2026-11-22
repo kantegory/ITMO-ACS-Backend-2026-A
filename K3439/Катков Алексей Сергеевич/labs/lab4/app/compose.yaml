@@ -1,0 +1,147 @@
+name: recipes
+
+x-postgres: &postgres
+  image: postgres:16-alpine
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+    interval: 3s
+    timeout: 3s
+    retries: 20
+
+x-app: &app
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.APP_PORT+'/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 5s
+    timeout: 4s
+    start_period: 20s
+    retries: 10
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres-auth:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: recipes
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: auth_users_db
+    volumes:
+      - auth-data:/var/lib/postgresql/data
+  postgres-recipe:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: recipes
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: recipes_db
+    volumes:
+      - recipe-data:/var/lib/postgresql/data
+  postgres-social:
+    <<: *postgres
+    environment:
+      POSTGRES_USER: recipes
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: social_db
+    volumes:
+      - social-data:/var/lib/postgresql/data
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: recipes
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 12
+
+  auth-service:
+    <<: *app
+    build: ./auth-service
+    image: ${IMAGE_PREFIX:-recipes}/auth-service:${IMAGE_TAG:-local}
+    environment:
+      APP_PORT: 8001
+      APP_API_PREFIX: /api
+      DB_HOST: postgres-auth
+      DB_PORT: 5432
+      DB_NAME: auth_users_db
+      DB_USER: recipes
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+  recipe-service:
+    <<: *app
+    build: ./recipe-service
+    image: ${IMAGE_PREFIX:-recipes}/recipe-service:${IMAGE_TAG:-local}
+    environment:
+      APP_PORT: 8002
+      APP_API_PREFIX: /api
+      DB_HOST: postgres-recipe
+      DB_PORT: 5432
+      DB_NAME: recipes_db
+      DB_USER: recipes
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      RABBITMQ_URL: amqp://recipes:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      postgres-recipe:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  social-service:
+    <<: *app
+    build: ./social-service
+    image: ${IMAGE_PREFIX:-recipes}/social-service:${IMAGE_TAG:-local}
+    environment:
+      APP_PORT: 8003
+      APP_API_PREFIX: /api
+      DB_HOST: postgres-social
+      DB_PORT: 5432
+      DB_NAME: social_db
+      DB_USER: recipes
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      RABBITMQ_URL: amqp://recipes:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}@rabbitmq:5672
+      RECIPE_SERVICE_URL: http://recipe-service:8002/api
+    depends_on:
+      postgres-social:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+  api-gateway:
+    <<: *app
+    build: ./api-gateway
+    image: ${IMAGE_PREFIX:-recipes}/api-gateway:${IMAGE_TAG:-local}
+    environment:
+      APP_PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RECIPE_SERVICE_URL: http://recipe-service:8002
+      SOCIAL_SERVICE_URL: http://social-service:8003
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-18000}:8000"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      recipe-service:
+        condition: service_healthy
+      social-service:
+        condition: service_healthy
+
+volumes:
+  auth-data:
+  recipe-data:
+  social-data:
+  rabbitmq-data:

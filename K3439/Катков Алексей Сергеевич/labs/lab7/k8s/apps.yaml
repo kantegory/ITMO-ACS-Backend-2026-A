@@ -1,0 +1,374 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: recipes
+spec:
+  progressDeadlineSeconds: 300
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: recipes/api-gateway:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 3
+            failureThreshold: 45
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            timeoutSeconds: 4
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          env:
+            - name: APP_PORT
+              value: "8000"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:8001"
+            - name: RECIPE_SERVICE_URL
+              value: "http://recipe-service:8002"
+            - name: SOCIAL_SERVICE_URL
+              value: "http://social-service:8003"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: recipes
+spec:
+  progressDeadlineSeconds: 300
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: recipes/auth-service:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 3
+            failureThreshold: 45
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            timeoutSeconds: 4
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          env:
+            - name: APP_PORT
+              value: "8001"
+            - name: APP_API_PREFIX
+              value: "/api"
+            - name: DB_HOST
+              value: "postgres-auth"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "auth_users_db"
+            - name: DB_USER
+              value: "recipes"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: DB_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: JWT_SECRET_KEY
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recipe-service
+  namespace: recipes
+spec:
+  progressDeadlineSeconds: 300
+  selector:
+    matchLabels:
+      app: recipe-service
+  template:
+    metadata:
+      labels:
+        app: recipe-service
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: recipes/recipe-service:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8002
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 3
+            failureThreshold: 45
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            timeoutSeconds: 4
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          env:
+            - name: APP_PORT
+              value: "8002"
+            - name: APP_API_PREFIX
+              value: "/api"
+            - name: DB_HOST
+              value: "postgres-recipe"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "recipes_db"
+            - name: DB_USER
+              value: "recipes"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: DB_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: JWT_SECRET_KEY
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_URL
+              value: "amqp://recipes:$(RABBITMQ_PASSWORD)@rabbitmq:5672"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: social-service
+  namespace: recipes
+spec:
+  progressDeadlineSeconds: 300
+  selector:
+    matchLabels:
+      app: social-service
+  template:
+    metadata:
+      labels:
+        app: social-service
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: recipes/social-service:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8003
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 3
+            failureThreshold: 45
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            timeoutSeconds: 4
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          env:
+            - name: APP_PORT
+              value: "8003"
+            - name: APP_API_PREFIX
+              value: "/api"
+            - name: DB_HOST
+              value: "postgres-social"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "social_db"
+            - name: DB_USER
+              value: "recipes"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: DB_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: JWT_SECRET_KEY
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: recipes-config
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_URL
+              value: "amqp://recipes:$(RABBITMQ_PASSWORD)@rabbitmq:5672"
+            - name: RECIPE_SERVICE_URL
+              value: "http://recipe-service:8002/api"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: recipes
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: recipes
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recipe-service
+  namespace: recipes
+spec:
+  selector:
+    app: recipe-service
+  ports:
+    - name: http
+      port: 8002
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: social-service
+  namespace: recipes
+spec:
+  selector:
+    app: social-service
+  ports:
+    - name: http
+      port: 8003
+      targetPort: http
