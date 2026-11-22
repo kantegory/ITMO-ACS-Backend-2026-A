@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobseeker
+  namespace: lab2
+  labels:
+    app: jobseeker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jobseeker
+  template:
+    metadata:
+      labels:
+        app: jobseeker
+    spec:
+      containers:
+        - name: jobseeker
+          image: lab2/jobseeker:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3003
+          env:
+            - name: PORT
+              value: "3003"
+            - name: DATABASE_URL
+              value: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_jobseeker?schema=public
+            - name: CATALOG_SERVICE_URL
+              value: http://catalog:3002
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRES_IN
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_EXPIRES_IN
+            - name: INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INTERNAL_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobseeker
+  namespace: lab2
+spec:
+  selector:
+    app: jobseeker
+  ports:
+    - port: 3003
+      targetPort: 3003

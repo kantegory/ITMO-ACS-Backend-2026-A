@@ -104,6 +104,28 @@ docker compose exec auth bun run prisma/seed.ts
 | `INTERNAL_SECRET` | общий секрет микросервисов (`x-internal-secret`) |
 | `JWT_EXPIRES_IN` | *опционально* — TTL access-токена в секундах; если секрет не задан, переменную на сервере сбрасываем → дефолт из `docker-compose.yml` |
 
+## Kubernetes (ДЗ7 / ЛР7)
+
+Контур: **kind** + манифесты в [`k8s/`](./k8s/), конфиг [`kind/config.yaml`](./kind/config.yaml).
+
+```powershell
+# Docker Desktop + kind в PATH (или %USERPROFILE%\bin\kind.exe)
+Set-Location путь\к\labs\lab2
+.\scripts\k8s-up.ps1
+# API: http://localhost:8080/health
+kubectl -n lab2 get all
+```
+
+Скрипт создаёт кластер `lab2`, ставит ingress-nginx, собирает образы `lab2/<svc>:local`, грузит в kind и применяет манифесты.
+
+### CI/CD в kind (ДЗ8)
+
+- Deploy: [`.github/workflows/deploy-lab2-k8s.yml`](../../../../.github/workflows/deploy-lab2-k8s.yml) — matrix build, `kind load`, `kubectl set image`, `rollout status`.
+- Rollback: [`.github/workflows/rollback-lab2-k8s.yml`](../../../../.github/workflows/rollback-lab2-k8s.yml) — `workflow_dispatch` + `rollout undo`.
+- Локально без Actions: `.\scripts\k8s-deploy-images.ps1 [tag]`.
+
+Нужен **self-hosted** runner с label `lab2-kind` на ПК с Docker/kind/kubectl. Секреты облака не требуются.
+
 ## Мониторинг (ЛР6)
 
 ```powershell

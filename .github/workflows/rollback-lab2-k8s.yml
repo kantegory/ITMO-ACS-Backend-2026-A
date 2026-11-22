@@ -1,0 +1,35 @@
+name: Rollback lab2 K8s
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Deployment to roll back
+        required: true
+        type: choice
+        options:
+          - auth
+          - catalog
+          - jobseeker
+          - employer
+          - application
+          - gateway
+
+env:
+  NAMESPACE: lab2
+
+jobs:
+  rollback:
+    runs-on: [self-hosted, lab2-kind]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Rollout undo
+        run: |
+          $svc = "${{ inputs.service }}"
+          Write-Host "kubectl -n $env:NAMESPACE rollout undo deploy/$svc"
+          kubectl -n $env:NAMESPACE rollout undo "deploy/$svc"
+          if ($LASTEXITCODE -ne 0) { throw "rollout undo failed" }
+          kubectl -n $env:NAMESPACE rollout status "deploy/$svc" --timeout=180s
+          if ($LASTEXITCODE -ne 0) { throw "rollout status failed after undo" }

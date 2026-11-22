@@ -1,0 +1,58 @@
+name: Deploy lab2 K8s
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "БР1.1/Филатов_Арсений/labs/lab2/**"
+      - ".github/workflows/deploy-lab2-k8s.yml"
+  workflow_dispatch:
+
+env:
+  LAB2: БР1.1/Филатов_Арсений/labs/lab2
+  CLUSTER: lab2
+  NAMESPACE: lab2
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, lab2-kind]
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth
+          - catalog
+          - jobseeker
+          - employer
+          - application
+          - gateway
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        working-directory: ${{ env.LAB2 }}
+        run: |
+          $tag = "lab2/${{ matrix.service }}:${{ github.sha }}"
+          Write-Host "Building $tag"
+          docker build --target "${{ matrix.service }}" -t $tag .
+          if ($LASTEXITCODE -ne 0) { throw "docker build failed" }
+
+      - name: Load image into kind
+        run: |
+          $tag = "lab2/${{ matrix.service }}:${{ github.sha }}"
+          kind load docker-image $tag --name $env:CLUSTER
+          if ($LASTEXITCODE -ne 0) { throw "kind load failed" }
+
+      - name: Set image and wait rollout
+        run: |
+          $svc = "${{ matrix.service }}"
+          $tag = "lab2/${{ matrix.service }}:${{ github.sha }}"
+          kubectl -n $env:NAMESPACE set image "deploy/$svc" "${svc}=$tag"
+          if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed" }
+          kubectl -n $env:NAMESPACE rollout status "deploy/$svc" --timeout=180s
+          if ($LASTEXITCODE -ne 0) { throw "rollout failed for $svc" }

@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: application
+  namespace: lab2
+  labels:
+    app: application
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: application
+  template:
+    metadata:
+      labels:
+        app: application
+    spec:
+      containers:
+        - name: application
+          image: lab2/application:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3005
+          env:
+            - name: PORT
+              value: "3005"
+            - name: DATABASE_URL
+              value: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_application?schema=public
+            - name: EMPLOYER_SERVICE_URL
+              value: http://employer:3004
+            - name: JOBSEEKER_SERVICE_URL
+              value: http://jobseeker:3003
+            - name: RABBITMQ_URL
+              value: amqp://lab2_mq:lab2_mq_pass@rabbitmq:5672
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRES_IN
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_EXPIRES_IN
+            - name: INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: INTERNAL_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: application
+  namespace: lab2
+spec:
+  selector:
+    app: application
+  ports:
+    - port: 3005
+      targetPort: 3005
