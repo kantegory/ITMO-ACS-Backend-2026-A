@@ -126,6 +126,24 @@ kubectl -n lab2 get all
 
 Нужен **self-hosted** runner с label `lab2-kind` на ПК с Docker/kind/kubectl. Секреты облака не требуются.
 
+## Документация (ДЗ9)
+
+```powershell
+pip install mkdocs-material
+mkdocs serve
+```
+
+Сайт: `http://127.0.0.1:8000`. Источники: `docs/`, OpenAPI у сервисов, Postman в `postman/`.
+
+## Нагрузка и HPA (ДЗ10 / ЛР8)
+
+```powershell
+$env:BASE_URL = "http://localhost:8080"
+k6 run load/health.js
+.\scripts\k8s-metrics-server.ps1
+kubectl apply -f k8s/30-hpa.yaml
+```
+
 ## Мониторинг (ЛР6)
 
 ```powershell
