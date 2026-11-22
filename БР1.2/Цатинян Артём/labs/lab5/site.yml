@@ -1,0 +1,19 @@
+---
+- name: Configure restaurant booking server
+  hosts: app_servers
+  become: true
+  roles:
+    - common
+    - docker
+    - nginx
+    - app
+  post_tasks:
+    - name: Check all services through nginx
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/{{ item.name }}/v3/api-docs"
+        status_code: 200
+      loop: "{{ app_services }}"
+      register: api_check
+      retries: 36
+      delay: 10
+      until: api_check.status | default(0) == 200

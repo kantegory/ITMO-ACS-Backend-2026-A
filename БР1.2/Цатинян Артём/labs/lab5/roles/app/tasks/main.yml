@@ -1,0 +1,60 @@
+---
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy application source to VM
+  ansible.posix.synchronize:
+    src: "{{ app_src }}"
+    dest: "{{ app_dir }}/"
+    rsync_opts:
+      - '--exclude=.gradle/'
+      - '--exclude=.gradle-home/'
+      - '--exclude=build/'
+      - '--exclude=*.log'
+      - '--exclude=*.pdf'
+      - '--exclude=*.tex'
+      - '--exclude=docker-compose.yml'
+      - '--exclude=Dockerfile'
+      - '--exclude=/gradlew'
+  register: app_copy
+
+- name: Copy Compose and Dockerfiles using accessible image registry
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.file', app_src ~ item) | replace('public.ecr.aws/docker/library/', 'mirror.gcr.io/library/') }}\n"
+    dest: "{{ app_dir }}/{{ item }}"
+    mode: '0644'
+  loop:
+    - docker-compose.yml
+    - identity-service/Dockerfile
+    - catalog-service/Dockerfile
+    - booking-service/Dockerfile
+    - review-service/Dockerfile
+  register: image_configs
+
+- name: Copy Gradle wrapper with Unix line endings
+  ansible.builtin.copy:
+    content: |
+      {{ lookup('ansible.builtin.file', app_src ~ 'gradlew') | replace('\r\n', '\n') }}
+    dest: "{{ app_dir }}/gradlew"
+    mode: '0755'
+  register: gradle_wrapper
+
+- name: Remove Windows carriage returns from Gradle wrapper
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "from pathlib import Path; p = Path(__import__('sys').argv[1]); data = p.read_bytes(); normalized = data.replace(bytes([13, 10]), bytes([10])); p.write_bytes(normalized) if data != normalized else None; print('normalized' if data != normalized else 'unchanged')"
+      - "{{ app_dir }}/gradlew"
+  register: gradle_line_endings
+  changed_when: gradle_line_endings.stdout == 'normalized'
+
+- name: Build and start application containers
+  ansible.builtin.command:
+    argv: [docker, compose, up, -d, --build]
+    chdir: "{{ app_dir }}"
+  register: compose_up
+  changed_when: app_copy.changed or image_configs.changed or gradle_wrapper.changed or gradle_line_endings.changed or ('Started' in compose_up.stderr) or ('Created' in compose_up.stderr)
