@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmploymentType {
+  full_time
+  part_time
+  contract
+}
+
+enum VacancyStatus {
+  draft
+  published
+  closed
+}
+
+enum ApplicationStatus {
+  new
+  viewed
+  rejected
+  invited
+}
+
+model Role {
+  id    Int    @id @default(autoincrement())
+  code  String @unique
+  name  String
+  users User[]
+}
+
+model User {
+  id           Int                 @id @default(autoincrement())
+  email        String              @unique
+  passwordHash String
+  roleId       Int
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  role         Role                @relation(fields: [roleId], references: [id])
+  profile      JobSeekerProfile?
+  resumes      Resume[]
+  memberships  EmployerMembership[]
+  refreshToken RefreshToken[]
+  applications Application[]
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Industry {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  companies Company[]
+  vacancies Vacancy[]
+}
+
+model ExperienceLevel {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique
+  name       String
+  sortOrder  Int
+  vacancies  Vacancy[]
+}
+
+model Skill {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  resumeSkills  ResumeSkill[]
+  vacancySkills VacancySkill[]
+}
+
+model JobSeekerProfile {
+  userId     Int    @id
+  firstName  String
+  lastName   String
+  phone      String?
+  city       String?
+  bio        String?
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Resume {
+  id             Int                 @id @default(autoincrement())
+  userId         Int
+  title          String
+  summary        String?
+  isPublic       Boolean             @default(false)
+  updatedAt      DateTime            @updatedAt
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  education      ResumeEducation[]
+  workExperience ResumeWorkExperience[]
+  skills         ResumeSkill[]
+  applications   Application[]
+}
+
+model ResumeEducation {
+  id          Int     @id @default(autoincrement())
+  resumeId    Int
+  institution String
+  degree      String?
+  yearFrom    Int?
+  yearTo      Int?
+  resume      Resume  @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+}
+
+model ResumeWorkExperience {
+  id          Int     @id @default(autoincrement())
+  resumeId    Int
+  companyName String
+  position    String
+  description String?
+  dateFrom    String?
+  dateTo      String?
+  resume      Resume  @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+}
+
+model ResumeSkill {
+  resumeId Int
+  skillId  Int
+  resume   Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([resumeId, skillId])
+}
+
+model Company {
+  id          Int                  @id @default(autoincrement())
+  industryId  Int
+  name        String
+  description String?
+  website     String?
+  legalName   String?
+  createdAt   DateTime             @default(now())
+  industry    Industry             @relation(fields: [industryId], references: [id])
+  memberships EmployerMembership[]
+  vacancies   Vacancy[]
+}
+
+model EmployerMembership {
+  id            Int     @id @default(autoincrement())
+  userId        Int
+  companyId     Int
+  positionTitle String?
+  isOwner       Boolean @default(false)
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+}
+
+model Vacancy {
+  id                Int            @id @default(autoincrement())
+  companyId         Int
+  industryId        Int
+  experienceLevelId Int
+  title             String
+  description       String
+  requirements      String?
+  salaryMin         Int?
+  salaryMax         Int?
+  currency          String
+  employmentType    EmploymentType
+  status            VacancyStatus
+  publishedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  industry          Industry       @relation(fields: [industryId], references: [id])
+  experienceLevel   ExperienceLevel @relation(fields: [experienceLevelId], references: [id])
+  skills            VacancySkill[]
+  applications      Application[]
+}
+
+model VacancySkill {
+  vacancyId Int
+  skillId   Int
+  vacancy   Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  skill     Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([vacancyId, skillId])
+}
+
+model Application {
+  id        Int               @id @default(autoincrement())
+  vacancyId Int
+  userId    Int
+  resumeId  Int
+  status    ApplicationStatus
+  createdAt DateTime          @default(now())
+  vacancy   Vacancy  @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@unique([vacancyId, userId])
+}

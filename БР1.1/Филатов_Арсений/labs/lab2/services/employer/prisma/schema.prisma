@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmploymentType {
+  full_time
+  part_time
+  contract
+}
+
+enum VacancyStatus {
+  draft
+  published
+  closed
+}
+
+model Company {
+  id          Int                  @id @default(autoincrement())
+  industryId  Int
+  name        String
+  description String?
+  website     String?
+  legalName   String?
+  createdAt   DateTime             @default(now())
+  memberships EmployerMembership[]
+  vacancies   Vacancy[]
+}
+
+model EmployerMembership {
+  id            Int     @id @default(autoincrement())
+  userId        Int
+  companyId     Int
+  positionTitle String?
+  isOwner       Boolean @default(false)
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+}
+
+model Vacancy {
+  id                Int            @id @default(autoincrement())
+  companyId         Int
+  industryId        Int
+  experienceLevelId Int
+  title             String
+  description       String
+  requirements      String?
+  salaryMin         Int?
+  salaryMax         Int?
+  currency          String
+  employmentType    EmploymentType
+  status            VacancyStatus
+  publishedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  skills            VacancySkill[]
+}
+
+model VacancySkill {
+  vacancyId Int
+  skillId   Int
+  vacancy   Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@id([vacancyId, skillId])
+}

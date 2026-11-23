@@ -1,0 +1,43 @@
+---
+- name: Каталог
+  ansible.builtin.file:
+    path: "{{ deploy_root }}"
+    state: directory
+    mode: "0755"
+
+- name: Репозиторий
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ deploy_root }}"
+    version: "{{ repo_branch }}"
+    update: true
+
+- name: Каталог lab2
+  ansible.builtin.set_fact:
+    lab2_dir: "{{ deploy_root }}/{{ lab2_rel }}"
+
+- name: Секреты
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ lab2_dir }}/.env"
+    mode: "0600"
+
+- name: Контейнеры
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - up
+      - -d
+      - --build
+    chdir: "{{ lab2_dir }}"
+  register: app_up
+  changed_when: app_up.stdout is search('Started|Created|Recreated') or app_up.stderr is search('Started|Created|Recreated')
+
+- name: Gateway отвечает на /health
+  ansible.builtin.command: curl -fsS http://127.0.0.1:3000/health
+  register: gateway_health
+  changed_when: false
+  retries: 36
+  delay: 10
+  until: gateway_health.rc == 0

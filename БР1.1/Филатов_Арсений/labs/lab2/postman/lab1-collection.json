@@ -1,0 +1,406 @@
+{
+  "info": {
+    "_postman_id": "c8f3a1b2-9e4d-4c7a-b5f1-2d8e6a0b4c5d",
+    "name": "Lab1 — сценарий соискателя (E2E API)",
+    "description": "Комплексный сценарий для HR-платформы: регистрация кандидата → вход → справочник отраслей → список вакансий → фильтрация → просмотр вакансии → профиль соискателя → создание резюме → отклик → список «мои отклики».\n\n**Перед прогоном:** поднимите API (`bun run dev`), выполните миграции и желательно `bunx prisma db seed`, чтобы в списке были опубликованные вакансии.\n\nПеременная коллекции `baseUrl` по умолчанию: `http://localhost:3000`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "candidateEmail",
+      "value": ""
+    },
+    {
+      "key": "candidatePassword",
+      "value": "password123"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "industryIdForFilter",
+      "value": ""
+    },
+    {
+      "key": "vacancyId",
+      "value": ""
+    },
+    {
+      "key": "resumeId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Регистрация кандидата",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const stamp = Date.now();",
+              "pm.collectionVariables.set('candidateEmail', `pm_candidate_${stamp}@test.local`);",
+              "pm.collectionVariables.set('candidatePassword', 'password123');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 201 Created', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Тело: user, accessToken, tokenType Bearer', function () {",
+              "    pm.expect(json).to.have.property('user');",
+              "    pm.expect(json.user.role.code).to.eql('candidate');",
+              "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+              "    pm.expect(json.tokenType).to.eql('Bearer');",
+              "});",
+              "pm.collectionVariables.set('accessToken', json.accessToken);",
+              "pm.collectionVariables.set('refreshToken', json.refreshToken);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{candidateEmail}}\",\n  \"password\": \"{{candidatePassword}}\",\n  \"roleCode\": \"candidate\"\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/auth/register",
+        "description": "Создаёт пользователя с ролью candidate и возвращает пару токенов."
+      }
+    },
+    {
+      "name": "2. Вход (логин)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Выданы токены и пользователь', function () {",
+              "    pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+              "    pm.expect(json.user.email).to.eql(pm.collectionVariables.get('candidateEmail'));",
+              "});",
+              "pm.collectionVariables.set('accessToken', json.accessToken);",
+              "pm.collectionVariables.set('refreshToken', json.refreshToken);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{candidateEmail}}\",\n  \"password\": \"{{candidatePassword}}\"\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/auth/login",
+        "description": "Повторная аутентификация теми же учётными данными (как в типичном UX после регистрации)."
+      }
+    },
+    {
+      "name": "3. Текущий пользователь (GET /me)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const u = pm.response.json();",
+              "pm.test('Роль candidate и email совпадают', function () {",
+              "    pm.expect(u.role.code).to.eql('candidate');",
+              "    pm.expect(u.email).to.eql(pm.collectionVariables.get('candidateEmail'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+        },
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/me"
+      }
+    },
+    {
+      "name": "4. Справочник отраслей",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Есть элементы industries', function () {",
+              "    pm.expect(json.items).to.be.an('array');",
+              "    pm.expect(json.items.length).to.be.at.least(1, 'Нужны отрасли в БД (seed)');",
+              "});",
+              "pm.collectionVariables.set('industryIdForFilter', String(json.items[0].id));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/industries"
+      }
+    },
+    {
+      "name": "5. Список вакансий (без фильтра)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Пагинация: items, total, page', function () {",
+              "    pm.expect(json).to.include.keys('items', 'total', 'page', 'pageSize');",
+              "});",
+              "pm.test('В БД есть опубликованные вакансии (рекомендуется seed)', function () {",
+              "    pm.expect(json.total).to.be.at.least(1, 'Запустите: bunx prisma db seed');",
+              "    pm.expect(json.items.length).to.be.at.least(1);",
+              "});",
+              "const items = json.items;",
+              "const idx = Math.floor(Math.random() * items.length);",
+              "pm.collectionVariables.set('vacancyId', String(items[idx].id));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/vacancies?page=1&pageSize=20"
+      }
+    },
+    {
+      "name": "6. Фильтрация вакансий (отрасль + поиск)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Результат фильтра — массив', function () {",
+              "    pm.expect(json.items).to.be.an('array');",
+              "});",
+              "const indId = Number(pm.collectionVariables.get('industryIdForFilter'));",
+              "json.items.forEach(function (v) {",
+              "    pm.expect(v.industryId).to.eql(indId);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/vacancies?industryId={{industryIdForFilter}}&q=Backend&page=1&pageSize=20"
+      }
+    },
+    {
+      "name": "7. Карточка вакансии по id",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const v = pm.response.json();",
+              "pm.test('Полные поля вакансии', function () {",
+              "    pm.expect(v.id).to.eql(Number(pm.collectionVariables.get('vacancyId')));",
+              "    pm.expect(v).to.include.keys('title', 'description', 'companyId', 'status');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}"
+      }
+    },
+    {
+      "name": "8. Профиль соискателя (upsert)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const p = pm.response.json();",
+              "pm.test('Имя и userId', function () {",
+              "    pm.expect(p.firstName).to.eql('Пётр');",
+              "    pm.expect(p.userId).to.be.a('number');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+        },
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Пётр\",\n  \"lastName\": \"Постманов\",\n  \"city\": \"Санкт-Петербург\",\n  \"bio\": \"E2E через Postman\"\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/job-seeker/profile"
+      }
+    },
+    {
+      "name": "9. Создать резюме",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const r = pm.response.json();",
+              "pm.test('resumeId сохранён', function () {",
+              "    pm.expect(r.id).to.be.a('number');",
+              "});",
+              "pm.collectionVariables.set('resumeId', String(r.id));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Backend Postman\",\n  \"summary\": \"Создано в E2E-сценарии\",\n  \"isPublic\": true\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/resumes"
+      }
+    },
+    {
+      "name": "10. Отклик на вакансию",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "const a = pm.response.json();",
+              "pm.test('Отклик привязан к вакансии и резюме', function () {",
+              "    pm.expect(a.vacancyId).to.eql(Number(pm.collectionVariables.get('vacancyId')));",
+              "    pm.expect(a.resumeId).to.eql(Number(pm.collectionVariables.get('resumeId')));",
+              "    pm.expect(a.status).to.eql('new');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"resumeId\": {{resumeId}}\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/vacancies/{{vacancyId}}/applications"
+      }
+    },
+    {
+      "name": "11. Мои отклики",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Статус 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Новый отклик в списке', function () {",
+              "    pm.expect(json.items).to.be.an('array');",
+              "    const vid = Number(pm.collectionVariables.get('vacancyId'));",
+              "    const rid = Number(pm.collectionVariables.get('resumeId'));",
+              "    const found = json.items.some(function (x) {",
+              "        return x.vacancyId === vid && x.resumeId === rid;",
+              "    });",
+              "    pm.expect(found).to.be.true;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+        },
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/me/applications?page=1&pageSize=20"
+      }
+    }
+  ]
+}
