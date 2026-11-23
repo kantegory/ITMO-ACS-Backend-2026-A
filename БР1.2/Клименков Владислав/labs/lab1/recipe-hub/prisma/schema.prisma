@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// ========== ENUMS ==========
+
+
+enum Role {
+  user
+  admin
+}
+
+
+enum Difficulty {
+  hard
+  medium
+  easy
+}
+
+
+enum MediaType {
+  photo
+  video
+}
+
+
+// ========== MODELS ==========
+
+
+model User {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique @db.VarChar(255)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  firstName     String    @map("first_name") @db.VarChar(255)
+  lastName      String    @map("last_name") @db.VarChar(255)
+  about         String?   @db.Text
+  role          Role      @default(user)
+  createdAt     DateTime  @map("created_at") @default(now())
+  updatedAt     DateTime  @map("updated_at") @updatedAt
+
+  recipes        Recipe[]
+  savedRecipes   SavedRecipe[]
+  subscriptions  Subscription[]  @relation("subscriber")
+  subscribers    Subscription[]  @relation("subscribedTo")
+  comments       Comment[]
+  commentLikes   CommentLike[]
+  recipeRatings  RecipeRating[]
+
+  @@map("users")
+}
+
+
+model Recipe { 
+  id           Int          @id @default(autoincrement())
+  authorId     Int          @map("author_id")
+  title        String       @db.VarChar(255)
+  description  String?      @db.Text
+  difficulty   Difficulty?
+  createdAt    DateTime     @map("created_at") @default(now())
+  updatedAt    DateTime     @map("updated_at") @updatedAt
+  isPublished  Boolean      @map("is_published") @default(false)
+
+  author             User                @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  recipeDishTypes    RecipeDishType[]
+  savedBy            SavedRecipe[]
+  comments           Comment[]
+  recipeIngredients  RecipeIngredient[]  
+  ratings            RecipeRating[]
+  steps              RecipeStep[]
+  media              RecipeMedia[]
+
+  @@map("recipes")
+}
+
+
+model RecipeMedia {
+  id         Int        @id @default(autoincrement())
+  recipeId   Int        @map("recipe_id")
+  sortOrder  Int        @map("sort_order")
+  mediaType  MediaType  @map("media_type")
+  mediaUrl   String     @map("media_url") @db.VarChar(2048)
+  createdAt  DateTime   @map("created_at") @default(now())
+  updatedAt  DateTime   @map("updated_at") @updatedAt
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_media")
+}
+
+
+model DishType {
+  id         Int       @id @default(autoincrement())
+  title      String    @unique @db.VarChar(255)
+  createdAt  DateTime  @map("created_at") @default(now())
+  updatedAt  DateTime  @map("updated_at") @updatedAt
+
+  recipeDishTypes RecipeDishType[]
+
+  @@map("dish_types")
+}
+
+
+model RecipeDishType {
+  id          Int  @id @default(autoincrement())
+  dishTypeId  Int  @map("dish_type_id")
+  recipeId    Int  @map("recipe_id")
+
+  dishType  DishType  @relation(fields: [dishTypeId], references: [id], onDelete: Cascade)
+  recipe    Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([dishTypeId, recipeId])
+  @@map("recipe_dish_types")
+}
+
+
+model Ingredient {
+  id         Int       @id @default(autoincrement())
+  title      String    @unique @db.VarChar(255)
+  createdAt  DateTime  @map("created_at") @default(now())
+  updatedAt  DateTime  @map("updated_at") @updatedAt
+
+  recipeIngredients RecipeIngredient[]
+
+  @@map("ingredients")
+}
+
+
+model RecipeIngredient {
+  id            Int  @id @default(autoincrement())
+  ingredientId  Int  @map("ingredient_id")
+  recipeId      Int  @map("recipe_id")
+  
+  ingredient  Ingredient  @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  recipe      Recipe      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_ingredients")
+}
+
+
+model RecipeStep {
+  id           Int       @id @default(autoincrement())
+  recipeId     Int       @map("recipe_id")
+  number       Int
+  title        String    @db.VarChar(255)
+  description  String?   @db.Text
+  createdAt    DateTime  @map("created_at") @default(now())
+  updatedAt    DateTime  @map("updated_at") @updatedAt
+
+  recipe  Recipe             @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  media   RecipeStepMedia[]
+
+  @@map("recipe_steps")
+}
+
+
+model RecipeStepMedia {
+  id            Int        @id @default(autoincrement())
+  recipeStepId  Int        @map("recipe_step_id")
+  sortOrder     Int        @map("sort_order")
+  mediaType     MediaType  @map("media_type")
+  mediaUrl      String     @map("media_url") @db.VarChar(2048)
+  createdAt     DateTime   @map("created_at") @default(now())
+  updatedAt     DateTime   @map("updated_at") @updatedAt
+
+  recipeStep RecipeStep @relation(fields: [recipeStepId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_step_media")
+}
+
+
+model SavedRecipe {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  recipeId  Int       @map("recipe_id")
+  savedAt   DateTime  @map("saved_at") @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe  Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+  @@map("saved_recipes")
+}
+
+
+model Comment {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  recipeId   Int       @map("recipe_id")
+  text       String    @db.Text
+  createdAt  DateTime  @map("created_at") @default(now())
+  updatedAt  DateTime  @map("updated_at") @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe   Recipe         @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  likes    CommentLike[]
+
+  @@map("comments")
+}
+
+
+model CommentLike {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  commentId  Int       @map("comment_id")
+  likedAt    DateTime  @map("liked_at") @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment  Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+  @@map("comment_likes")
+}
+
+
+model RecipeRating {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  recipeId  Int       @map("recipe_id")
+  rating    Int  
+  ratedAt   DateTime  @map("rated_at") @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe  Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+  @@map("recipe_ratings")
+}
+
+
+model Subscription {
+  id              Int       @id @default(autoincrement())
+  subscriberId    Int       @map("subscriber_id")
+  subscribedToId  Int       @map("subscribed_to_id")
+  subscribedAt    DateTime  @map("subscribed_at") @default(now())
+
+  subscriber    User  @relation("subscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscribedTo  User  @relation("subscribedTo", fields: [subscribedToId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriberId, subscribedToId])
+  @@map("subscriptions")
+}

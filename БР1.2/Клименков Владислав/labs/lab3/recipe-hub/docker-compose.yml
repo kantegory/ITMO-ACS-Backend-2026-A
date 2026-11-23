@@ -1,0 +1,122 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    container_name: recipe-hub-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-db:
+    image: postgres:18.3-alpine
+    container_name: user-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_db
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d user_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  recipe-db:
+    image: postgres:18.3-alpine
+    container_name: recipe-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: recipe_db
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    volumes:
+      - recipe_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d recipe_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  recipe-service:
+    build: ./services/recipe
+    env_file:
+      - ./services/recipe/.env
+    depends_on:
+      recipe-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  user-service:
+    build: ./services/user
+    env_file:
+      - ./services/user/.env
+    depends_on:
+      user-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+  
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./services/api-gateway/.env
+    depends_on:
+      user-service:
+        condition: service_started
+      recipe-service:
+        condition: service_started
+    restart: on-failure
+  
+  prisma-studio-user:
+    build: ./services/user
+    container_name: prisma-studio-user
+    command: ["npx", "prisma", "studio", "--port", "5555"]
+    ports:
+      - "5555:5555"
+    environment:
+      - BROWSER=none
+    env_file:
+      - ./services/user/.env
+    depends_on:
+      user-db:
+        condition: service_healthy
+    profiles:
+      - prisma-studio
+  
+  prisma-studio-recipe:
+    build: ./services/recipe
+    container_name: prisma-studio-recipe
+    command: ["npx", "prisma", "studio", "--port", "5556"]
+    ports:
+      - "5556:5556"
+    environment:
+      - BROWSER=none
+    env_file:
+      - ./services/recipe/.env
+    depends_on:
+      recipe-db:
+        condition: service_healthy
+    profiles:
+      - prisma-studio
+
+volumes:
+  user_db_data:
+  recipe_db_data:
