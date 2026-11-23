@@ -9,6 +9,11 @@
   ansible.posix.synchronize:
     src: "{{ app_src }}"
     dest: "{{ app_dir }}/"
+    checksum: true
+    perms: false
+    owner: false
+    group: false
+    times: false
     rsync_opts:
       - '--exclude=.gradle/'
       - '--exclude=.gradle-home/'
@@ -35,26 +40,29 @@
   register: image_configs
 
 - name: Copy Gradle wrapper with Unix line endings
-  ansible.builtin.copy:
-    content: |
-      {{ lookup('ansible.builtin.file', app_src ~ 'gradlew') | replace('\r\n', '\n') }}
-    dest: "{{ app_dir }}/gradlew"
-    mode: '0755'
-  register: gradle_wrapper
-
-- name: Remove Windows carriage returns from Gradle wrapper
   ansible.builtin.command:
     argv:
       - python3
       - -c
-      - "from pathlib import Path; p = Path(__import__('sys').argv[1]); data = p.read_bytes(); normalized = data.replace(bytes([13, 10]), bytes([10])); p.write_bytes(normalized) if data != normalized else None; print('normalized' if data != normalized else 'unchanged')"
+      - "import base64, pathlib, sys; p=pathlib.Path(sys.argv[1]); data=base64.b64decode(sys.argv[2]).replace(bytes([13,10]),bytes([10])).rstrip(bytes([10]))+bytes([10]); old=p.read_bytes() if p.exists() else None; p.write_bytes(data) if old != data else None; print('updated' if old != data else 'unchanged')"
       - "{{ app_dir }}/gradlew"
-  register: gradle_line_endings
-  changed_when: gradle_line_endings.stdout == 'normalized'
+      - "{{ lookup('ansible.builtin.file', app_src ~ 'gradlew') | b64encode }}"
+  register: gradle_wrapper
+  changed_when: gradle_wrapper.stdout == 'updated'
+
+- name: Set Gradle wrapper permissions
+  ansible.builtin.file:
+    path: "{{ app_dir }}/gradlew"
+    mode: '0755'
 
 - name: Build and start application containers
   ansible.builtin.command:
-    argv: [docker, compose, up, -d, --build]
+    argv:
+      - bash
+      - -o
+      - pipefail
+      - -c
+      - 'docker compose --progress plain up -d --build 2>&1 | tee /var/log/lab5-compose.log'
     chdir: "{{ app_dir }}"
   register: compose_up
-  changed_when: app_copy.changed or image_configs.changed or gradle_wrapper.changed or gradle_line_endings.changed or ('Started' in compose_up.stderr) or ('Created' in compose_up.stderr)
+  changed_when: app_copy.changed or image_configs.changed or gradle_wrapper.changed or ('Started' in compose_up.stdout) or ('Created' in compose_up.stdout)
