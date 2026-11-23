@@ -1,0 +1,36 @@
+---
+- name: Установить Docker и плагин Compose
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+    state: present
+  tags: [packages]
+
+- name: Включить и запустить службу Docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  tags: [services]
+
+- name: Добавить пользователя приложения в группу docker
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    groups: docker
+    append: true
+  tags: [environment]
+
+- name: Проверить версии Docker и Compose
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - docker --version
+    - docker compose version
+  register: docker_versions
+  changed_when: false
+  tags: [check]
+
+- name: Показать версии
+  ansible.builtin.debug:
+    msg: "{{ docker_versions.results | map(attribute='stdout') | list }}"
+  tags: [check]

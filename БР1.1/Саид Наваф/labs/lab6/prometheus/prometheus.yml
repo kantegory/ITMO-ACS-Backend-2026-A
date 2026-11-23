@@ -1,0 +1,54 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Метрики ВМ (node-exporter работает в host-сети)
+  - job_name: node
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+        labels: {instance: vm}
+
+  # Healthcheck по HTTP
+  - job_name: healthcheck-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ['http://job-search-api:8080/api/v1/categories']
+        labels: {service: api}
+      - targets: ['http://host.docker.internal:8080/api/v1/categories']
+        labels: {service: nginx}
+      - targets: ['http://grafana:3000/grafana/api/health']
+        labels: {service: grafana}
+      - targets: ['http://prometheus:9090/-/healthy']
+        labels: {service: prometheus}
+      - targets: ['http://loki:3100/ready']
+        labels: {service: loki}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # Healthcheck по TCP (PostgreSQL)
+  - job_name: healthcheck-tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ['job-search-db:5432']
+        labels: {service: postgres}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
