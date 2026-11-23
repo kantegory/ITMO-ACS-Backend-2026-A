@@ -63,6 +63,7 @@ project(":common") {
     dependencies {
         add("implementation", "org.springframework.boot:spring-boot-starter-web")
         add("implementation", "org.springdoc:springdoc-openapi-starter-webmvc-ui:${rootProject.property("springdocVersion")}")
+        add("implementation", "io.sentry:sentry-spring-boot-starter-jakarta:8.65.0")
     }
 
     tasks.withType<Jar>().configureEach {

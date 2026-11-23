@@ -1,6 +1,7 @@
 package ru.itmo.restaurantbooking.lab2.common.exception
 
 import jakarta.servlet.http.HttpServletRequest
+import io.sentry.Sentry
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -49,8 +50,9 @@ class GlobalExceptionHandler {
     fun handleUnexpected(
         exception: Exception,
         request: HttpServletRequest
-    ): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    ): ResponseEntity<ErrorResponse> {
+        Sentry.captureException(exception)
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(
                 ErrorResponse(
                     status = HttpStatus.INTERNAL_SERVER_ERROR.value(),
@@ -59,4 +61,5 @@ class GlobalExceptionHandler {
                     path = request.requestURI
                 )
             )
+    }
 }

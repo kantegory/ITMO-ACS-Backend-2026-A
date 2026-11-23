@@ -65,6 +65,30 @@ Node Exporter запущен с сетевым пространством вир
 
 В Grafana Explore дополнительно выполнен запрос к Loki с фильтром по контейнеру identity-service. В результате получены записи запуска приложения, работы Liquibase и обработки запросов, что подтверждает поступление журналов этого сервиса в Loki.
 \begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/identity-logs.png}\caption{Журналы identity-service в Grafana Explore}\end{figure}
+\subsection{Уведомления о недоступности сервиса}
+Для дополнительного задания настроено правило Grafana Alerting. Оно анализирует метрику probe\_success для каждого сервиса. Если проверка возвращает ноль в течение одной минуты, создаётся уведомление о недоступности. Правило проверяется каждые 30 секунд и хранится в файле provisioning/alerting/rules.yml.
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/alert-rule.png}\caption{Правило контроля доступности}\end{figure}
+
+Для отправки писем включён SMTP, создана точка доставки Gmail и назначена политике уведомлений. Учётные данные находятся в локальном файле .env, который не включается в репозиторий. Настройки SMTP передаются через дополнительный compose-файл.
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/alert-policy.png}\caption{Политика маршрутизации уведомлений}\end{figure}
+
+Для проверки контейнер review-service временно остановлен. На дашборде он перешёл в состояние «Недоступен», после чего на почту поступило уведомление Firing. Остальные сервисы продолжили отображаться доступными.
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/service-down.png}\caption{Состояние дашборда после остановки сервиса}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/alert-firing.png}\caption{Письмо о недоступности сервиса}\end{figure}
+
+После повторного запуска контейнера проверка снова стала успешной, а Grafana отправила письмо Resolved. Таким образом, проверены оба перехода состояния.
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/service-up.png}\caption{Дашборд после восстановления сервиса}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/alert-resolved.png}\caption{Письмо о восстановлении сервиса}\end{figure}
+\subsection{Self-hosted Sentry}
+Для дополнительного задания развёрнут собственный экземпляр Sentry версии 26.10.1 в отдельной среде Ubuntu 24.04. Из-за ограниченного объёма оперативной памяти выбран профиль errors-only, предназначенный для сбора ошибок. Для установки использован официальный проект self-hosted, а для хранения среды выделено место на диске. Компоненты запускаются через Docker Compose; проверка запуска показала работоспособность контейнеров.
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/sentry-containers.png}\caption{Запуск компонентов self-hosted Sentry}\end{figure}
+
+В Sentry создан проект restaurant-booking с платформой Spring Boot. В общий модуль приложения добавлен SDK Sentry; обработчик непредвиденных исключений передаёт события через captureException. DSN задаётся переменной окружения и не включён в репозиторий. Для связи приложения и Sentry использована локальная переадресация порта.
+
+Для проверки временно включён диагностический эндпоинт identity-service, создающий тестовое исключение. После запроса к нему в Sentry появилась ошибка IllegalStateException с сообщением Sentry monitoring test error. На странице события отображаются запрос, стек вызовов и сведения о среде выполнения. Тестовый эндпоинт включается отдельным параметром и по умолчанию выключен.
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/sentry-issues.png}\caption{Тестовая ошибка в списке событий Sentry}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/sentry-error.png}\caption{Детали ошибки и стек вызовов}\end{figure}
+\begin{figure}[H]\centering\includegraphics[width=\textwidth]{screenshots/sentry-details.png}\caption{Контекст тестового HTTP-запроса}\end{figure}
 \section{Вывод}
-Развёрнута система мониторинга на базе Prometheus, Grafana, Loki и Alloy. Подготовленный дашборд отображает ресурсы виртуальной машины, доступность четырёх микросервисов и журналы контейнеров. Подключение обоих источников данных и работоспособность дашборда проверены на виртуальной машине.
+Развёрнута система мониторинга на базе Prometheus, Grafana, Loki и Alloy. Подготовленный дашборд отображает ресурсы виртуальной машины, доступность четырёх микросервисов и журналы контейнеров. Проверены отправка почтовых уведомлений при отказе и восстановлении сервиса, а также приём ошибки приложения собственным экземпляром Sentry.
 \end{document}
