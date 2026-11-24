@@ -16,7 +16,9 @@ Prometheus ограничен 24 часами и 256 MB хранения, Loki �
 
 # Проверка
 
-`promtool check config` успешно проверяет prometheus.yml и файл с двумя alert rules. Автоматическая проверка сопоставляет набор scrape targets с десятью приложениями. Runtime-проверки, доступность Loki и Grafana указаны в `../../semester2-verification.md`.
+`promtool check config` успешно проверяет prometheus.yml и файл с двумя alert rules. Автоматическая проверка сопоставляет набор scrape targets с десятью приложениями. На ВМ HTTP API Grafana сообщил database=ok. Provisioning загрузил дашборд с десятью панелями. Метрика node_memory_MemAvailable_bytes вернула значение с node-exporter. Loki вернул метки семи запущенных контейнеров на момент проверки. VPN использует Docker logging driver none, поэтому у Docker нет доступных логов этого контейнера.
+
+На локальном стенде up для десяти микросервисов был равен 1. При остановке notification-service Prometheus показал up=0, после запуска вернул up=1.
 
 Важно различать scrape health (`up`), readiness приложения и готовность бизнес-процесса. Readiness проверяет readinessState; общая health включает доступные Spring indicators. Сквозная проверка выполняется Postman.
 

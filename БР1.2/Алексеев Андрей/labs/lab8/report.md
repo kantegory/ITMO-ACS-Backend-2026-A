@@ -6,6 +6,8 @@
 
 Подготовлены k6-профили ДЗ10, Grafana panels CPU/RAM/HTTP RPS/p95/5xx и autoscaling/v2 HPA для api-gateway и search-service. HPA использует CPU averageUtilization=65%, minReplicas=1, maxReplicas=3 и stabilizationWindowSeconds=180 для scale-down. У приложений requests=100m CPU/256Mi, limits=1000m/512Mi; это исходные параметры, требующие измерения.
 
+Для измерений в Kubernetes подготовлены отдельные Prometheus и Grafana в monitoring.yml. Prometheus обнаруживает реплики через DNS SRV, а Grafana строит графики CPU процесса, JVM heap, RPS, p95 и 5xx. Потребление контейнеров сверяется с kubectl top.
+
 План эксперимента: baseline на фиксированной выборке → stress при наблюдении Grafana/kubectl top → фиксация роста replicas → снижение нагрузки и наблюдение стабилизации → изменение requests/limits по измерениям → повтор того же профиля. Записываются p95/p99, RPS, error rate, OOM/throttling, количество pod и фактическое время масштабирования.
 
 # Проверка и ограничения

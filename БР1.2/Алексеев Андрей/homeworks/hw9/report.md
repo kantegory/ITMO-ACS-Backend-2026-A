@@ -18,7 +18,7 @@ mkdocs serve -f infra/semester2/mkdocs.yml
 
 # Проверка
 
-MkDocs успешно собран с --strict. Проверки конфигурации включены в validate job. Результат фактического runtime Swagger и Postman фиксируется отдельно в ../../semester2-verification.md.
+MkDocs успешно собран с --strict. Проверки конфигурации включены в validate job. Через локальный nginx Swagger UI и девять схем OpenAPI 3.1.0 вернули HTTP 200. Newman дважды выполнил по 65 запросов и 65 проверок без ошибок. Уникальные e-mail и телефоны из runSuffix позволяют повторять коллекцию на тех же БД.
 
 # Вывод
 

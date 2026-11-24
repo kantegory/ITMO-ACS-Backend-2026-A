@@ -16,7 +16,9 @@ Rollback выполняется тем же скриптом с предыдущ
 
 # Проверка и необходимые настройки
 
-Статус фактического CI указан в `../../semester2-verification.md`. Для VM environment требуются S2_SSH_HOST, S2_SSH_USER, S2_SSH_KEY, S2_KNOWN_HOSTS; текущий root-пароль не записывается в GitHub. При private GHCR серверу нужен read:packages credential либо публичные images. Автодеплой нельзя считать проверенным до первого успешного deploy job и HTTP-проверки.
+На прежнем сервере автодеплой уже выполнялся. [Запуск Lab23 Deploy от 31.05.2026](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/26723466788) завершился успешно. Для новой ВМ используется отдельное окружение.
+
+Статус нового CI указан в `../../semester2-verification.md`. Для VM environment требуются S2_SSH_HOST, S2_SSH_USER, S2_SSH_KEY, S2_KNOWN_HOSTS; текущий root-пароль не записывается в GitHub. При private GHCR серверу нужен read:packages credential либо публичные images. Автодеплой нельзя считать проверенным до первого успешного deploy job и HTTP-проверки.
 
 # Вывод
 
