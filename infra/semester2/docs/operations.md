@@ -55,14 +55,6 @@ bash scripts/semester2/compose.sh down
 
 Команда сохраняет volumes. Чтобы временно остановить стенд без удаления контейнеров, используйте `bash scripts/semester2/compose.sh stop`. Удаление с `-v` уничтожит учебные данные; для обычной остановки этот флаг не нужен.
 
-## Публичный HTTPS через Caddy
+## Стенд авторизации с публичным HTTPS
 
-На ВМ с существующим Caddy используйте отдельный блок для учебного хоста. Пример находится в `infra/semester2/caddy/ab.pxdkxvan.lol.caddy`. Он передаёт в nginx только GET-запросы к двум справочникам. Остальные маршруты, включая регистрацию и управление приложением, можно демонстрировать через SSH-туннель после запуска нужных сервисов.
-
-Для сокращённого стенда нужны `api-gateway`, `vacancy-service` и `nginx`. Compose поднимет Kafka и PostgreSQL для vacancy-service. Перед применением блока проверьте ответ nginx на loopback. Проверьте объединённую конфигурацию через `caddy validate --adapter caddyfile` и примените её через `caddy reload`. Затем проверьте публичный HTTPS и существующие сайты.
-
-```bash
-bash scripts/semester2/compose.sh up -d --no-build --wait --wait-timeout 240 api-gateway vacancy-service nginx
-curl -fsS http://127.0.0.1:18080/api/v1/industries
-curl -fsS https://ab.pxdkxvan.lol/api/v1/industries
-```
+Запуск, команды проверки, API и мониторинг описаны на странице [Стенд авторизации](auth.md). Файл `infra/semester2/caddy/ab.pxdkxvan.lol.caddy` содержит маршруты авторизации и Swagger для профиля Docker Compose. Публичные запросы идут через существующий Caddy и отдельный nginx на loopback. Установку нового блока предваряет `caddy validate`.

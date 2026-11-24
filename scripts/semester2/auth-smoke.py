@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("base")
 parser.add_argument("--prefix", default="/api/v1")
+parser.add_argument("--timeout", type=int, default=55)
 args = parser.parse_args()
 suffix = str(time.time_ns())[-8:]
 login = {"email": f"auth-smoke-{suffix}@example.test", "password": secrets.token_urlsafe(24)}
@@ -22,7 +23,7 @@ def call(route, status, body=None, *, api=True):
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urlopen(request, timeout=15) as res:
+        with urlopen(request, timeout=args.timeout) as res:
             actual, response = res.status, json.load(res)
     except HTTPError as error:
         actual, response = error.code, {}

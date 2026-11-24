@@ -1,19 +1,17 @@
 # Задача
 
-Реализовать CI/CD компонентов микросервисного приложения в целевую облачную инфраструктуру.
+Автоматизировать доставку образа авторизации в Kubernetes.
 
 # Ход работы
 
-Cloud delivery включён в semester2.yml после validate и matrix build. Автоматический триггер — push в semester2-cloud; также доступен workflow_dispatch с deploy=cloud. Environment semester2-cloud отделяет credentials облака от VM.
+Workflow Auth release слушает push в auth-cloud, собирает Docker-образ с тегом полного SHA и передаёт его по SSH. Ограниченный обработчик загружает образ в Docker, импортирует его в k3d, меняет образ Deployment и ждёт kubectl rollout status. Финальный smoke вызывает регистрацию, вход, ротацию токена и проверяет OpenAPI.
 
-Образы публикуются в GHCR с полным SHA. Job получает namespace-scoped kubeconfig из S2_KUBECONFIG, context и host из environment vars S2_KUBE_CONTEXT/S2_INGRESS_HOST. Credentials записываются в файл с umask 077. deploy-kubernetes.sh выполняет server-side dry-run и rollout health gate, затем HTTP-проверку через ingress.
+При неудачном релизе используется предыдущий SHA. PostgreSQL сохраняет PVC. Изменения схемы выпускаются так, чтобы предыдущий образ мог работать с обновлённой базой.
 
-Rollback: kubectl rollout undo deployment/SERVICE -n itmo-backend; для согласованного release всего приложения повторно доставить предыдущий SHA всех images. Состояние БД и Liquibase-миграции требуют отдельного rollback-плана.
+# Проверка
 
-# Проверка и ограничения
-
-Конфигурации пайплайна, shell scripts и Kubernetes schema проверяются CI. Реальная доставка в облако пока не запускалась: отсутствуют cluster credentials, DNS и целевая инфраструктура ЛР7. Успешная сборка image не равна успешному deploy.
+Ветка auth-cloud. [Прогон №45504316942](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/45504316942) завершился успешно. После доставки smoke подтвердил регистрацию, отказ с неверным паролем, вход, ротацию refresh token и чтение OpenAPI.
 
 # Вывод
 
-Cloud pipeline реализован. Для подтверждения ДЗ8 нужен успешный deploy-cloud job и HTTP/Postman-проверка на облачном endpoint после завершения ЛР7.
+Pipeline проверяет доставку конкретной версии от коммита до работающего auth API в Kubernetes.
