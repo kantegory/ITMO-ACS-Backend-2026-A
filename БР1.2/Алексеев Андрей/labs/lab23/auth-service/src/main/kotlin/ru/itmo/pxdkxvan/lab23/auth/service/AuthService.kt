@@ -3,9 +3,8 @@ package ru.itmo.pxdkxvan.lab23.auth.service
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import ru.itmo.pxdkxvan.lab23.auth.client.UserClient
 import ru.itmo.pxdkxvan.lab23.auth.common.normalizedEmail
-import ru.itmo.pxdkxvan.lab23.auth.config.AuthProperties
+import ru.itmo.pxdkxvan.lab23.auth.dto.AuthContextResponse
 import ru.itmo.pxdkxvan.lab23.auth.dto.LoginRequest
 import ru.itmo.pxdkxvan.lab23.auth.dto.RefreshRequest
 import ru.itmo.pxdkxvan.lab23.auth.dto.RegisterRequest
@@ -18,31 +17,33 @@ import java.util.UUID
 @Service
 class AuthService(
     private val credentialRepository: CredentialRepository,
-    private val userClient: UserClient,
+    private val identities: IdentityDirectory,
     private val passwordEncoder: PasswordEncoder,
     private val accessTokenService: AccessTokenService,
-    private val authProperties: AuthProperties,
 ) {
     @Transactional
-    fun register(request: RegisterRequest) = userClient.createUser(
-        authProperties.security.serviceToken,
-        UserRegistrationRequest(
-            firstName = request.firstName.trim(),
-            lastName = request.lastName.trim(),
-            middleName = request.middleName?.trim()?.ifBlank { null },
-            email = request.email.normalizedEmail(),
-            phone = request.phone.trim(),
-            role = request.role.trim().uppercase(),
-        ),
-    ).also {
-        check(!credentialRepository.existsByEmailIgnoreCase(request.email.normalizedEmail())) { "Email is already in use" }
+    fun register(request: RegisterRequest): AuthContextResponse {
+        val email = request.email.normalizedEmail()
+        require(email.isNotBlank() && request.password.isNotBlank()) { "Email and password are required" }
+        check(!credentialRepository.existsByEmailIgnoreCase(email)) { "Email is already in use" }
+        val identity = identities.create(
+            UserRegistrationRequest(
+                firstName = request.firstName.trim(),
+                lastName = request.lastName.trim(),
+                middleName = request.middleName?.trim()?.ifBlank { null },
+                email = email,
+                phone = request.phone.trim(),
+                role = request.role.trim().uppercase(),
+            ),
+        )
         credentialRepository.save(
             CredentialEntity(
-                userId = it.userId,
-                email = request.email.normalizedEmail(),
+                userId = identity.userId,
+                email = email,
                 passwordHash = passwordEncoder.encode(request.password),
             ),
         )
+        return identity
     }
 
     @Transactional
@@ -51,7 +52,7 @@ class AuthService(
             ?: error("Invalid email or password")
         check(passwordEncoder.matches(request.password, credential.passwordHash)) { "Invalid email or password" }
 
-        val user = userClient.getAuthContext(authProperties.security.serviceToken, credential.userId!!)
+        val user = identities.find(checkNotNull(credential.userId))
         check(user.active) { "User is inactive" }
 
         val refreshToken = UUID.randomUUID().toString()
@@ -70,7 +71,8 @@ class AuthService(
     fun refresh(request: RefreshRequest): TokenResponse {
         val credential = credentialRepository.findByRefreshToken(request.refreshToken)
             ?: error("Invalid refresh token")
-        val user = userClient.getAuthContext(authProperties.security.serviceToken, credential.userId!!)
+        val user = identities.find(checkNotNull(credential.userId))
+        check(user.active) { "User is inactive" }
 
         val refreshToken = UUID.randomUUID().toString()
         credential.refreshToken = refreshToken

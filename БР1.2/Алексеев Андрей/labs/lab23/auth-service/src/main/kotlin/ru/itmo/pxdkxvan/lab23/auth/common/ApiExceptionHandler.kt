@@ -17,8 +17,8 @@ class ApiExceptionHandler {
         response(resolveStatus(ex.message), ex.message ?: "Request failed")
 
     @ExceptionHandler(DataIntegrityViolationException::class)
-    fun handleConflict(ex: DataIntegrityViolationException): ResponseEntity<Map<String, String>> =
-        response(HttpStatus.CONFLICT, ex.mostSpecificCause.message ?: "Conflict")
+    fun handleConflict(): ResponseEntity<Map<String, String>> =
+        response(HttpStatus.CONFLICT, "Account data already in use")
 
     private fun response(status: HttpStatus, message: String) = ResponseEntity.status(status).body(mapOf("message" to message))
 
