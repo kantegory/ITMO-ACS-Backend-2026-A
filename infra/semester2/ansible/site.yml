@@ -1,0 +1,78 @@
+- name: Configure isolated backend lab host
+  hosts: backend
+  become: true
+  vars:
+    app_root: /opt/itmo-backend
+    deploy_app: false
+  tasks:
+  - name: Require supported Ubuntu host
+    ansible.builtin.assert:
+      that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_major_version'] | int >= 24
+      fail_msg: Playbook targets Ubuntu 24.04+
+  - name: Install system packages without upgrading the host
+    ansible.builtin.apt:
+      name:
+      - ca-certificates
+      - curl
+      - git
+      - python3
+      state: present
+      update_cache: true
+      cache_valid_time: 3600
+  - name: Check existing Docker installation
+    ansible.builtin.command: docker --version
+    register: docker_check
+    changed_when: false
+    failed_when: false
+  - name: Install Ubuntu Docker only on fresh hosts
+    ansible.builtin.apt:
+      name:
+      - docker.io
+      - docker-compose-v2
+      state: present
+    when: docker_check.rc != 0
+  - name: Enable Docker service
+    ansible.builtin.service:
+      name: docker
+      enabled: true
+      state: started
+  - name: Create isolated application directory
+    ansible.builtin.file:
+      path: '{{ app_root }}'
+      state: directory
+      owner: root
+      group: root
+      mode: '0750'
+  - name: Verify Compose plugin
+    ansible.builtin.command: docker compose version
+    changed_when: false
+  - name: Check secret file supplied outside Git
+    ansible.builtin.stat:
+      path: '{{ app_root }}/infra/semester2/secrets.env'
+    register: secret_file
+    when: deploy_app | bool
+  - name: Require secrets before starting services
+    ansible.builtin.assert:
+      that:
+      - secret_file.stat.exists
+      fail_msg: Copy release and private secrets.env before deploy_app=true
+    when: deploy_app | bool
+  - name: Protect deployment environment
+    ansible.builtin.file:
+      path: '{{ app_root }}/infra/semester2/secrets.env'
+      mode: '0600'
+    when: deploy_app | bool
+  - name: Start application and monitoring from prebuilt images
+    ansible.builtin.command:
+      cmd: bash scripts/semester2/compose.sh up -d --no-build --wait --wait-timeout
+        600
+      chdir: '{{ app_root }}'
+    environment:
+      IMAGE_PREFIX: '{{ image_prefix | default("itmo-backend") }}'
+      IMAGE_TAG: '{{ image_tag | default("local") }}'
+    register: compose_result
+    changed_when: '''Started'' in compose_result.stderr or ''Created'' in compose_result.stderr
+      or ''Recreated'' in compose_result.stderr'
+    when: deploy_app | bool

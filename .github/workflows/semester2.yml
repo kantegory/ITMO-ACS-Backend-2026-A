@@ -1,0 +1,149 @@
+name: Semester 2 CI and delivery
+'on':
+  push:
+    branches:
+    - feat/semester-2-infrastructure
+    - semester2
+    - semester2-cloud
+    paths:
+    - infra/semester2/**
+    - scripts/semester2/**
+    - БР1.2/Алексеев Андрей/**
+    - .github/workflows/semester2.yml
+  pull_request: {}
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy to configured environment
+        type: choice
+        options:
+        - none
+        - vm
+        - cloud
+        default: none
+permissions:
+  contents: read
+concurrency:
+  group: semester2-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: pip install -r infra/semester2/requirements.txt
+    - run: 'python scripts/semester2/init-env.py
+
+        python scripts/semester2/validate.py
+
+        ansible-playbook -i infra/semester2/ansible/inventory.example.yml infra/semester2/ansible/site.yml
+        --syntax-check
+
+        mkdocs build --strict -f infra/semester2/mkdocs.yml'
+    - name: Validate Prometheus configuration
+      run: docker run --rm --entrypoint promtool -v "$PWD/infra/semester2/monitoring:/etc/prometheus:ro"
+        prom/prometheus:v3.2.1 check config /etc/prometheus/prometheus.yml
+    - name: Validate Kubernetes schemas
+      run: 'curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+        | tar -xz kubeconform
+
+        ./kubeconform -strict -summary infra/semester2/kubernetes/*.yml'
+  images:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        service:
+        - application-service
+        - auth-service
+        - company-service
+        - interaction-service
+        - notification-service
+        - resume-service
+        - search-service
+        - user-service
+        - vacancy-service
+        - api-gateway
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/setup-buildx-action@v3
+    - uses: docker/login-action@v3
+      if: github.event_name != 'pull_request'
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - uses: docker/build-push-action@v6
+      with:
+        context: БР1.2/Алексеев Андрей/labs/lab23/${{ matrix.service }}
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ghcr.io/${{ github.repository_owner }}/itmo-backend/${{ matrix.service }}:${{ github.sha }}
+        cache-from: type=gha,scope=${{ matrix.service }}
+        cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+  deploy-vm:
+    if: github.ref == 'refs/heads/semester2' || (github.event_name == 'workflow_dispatch'
+      && inputs.deploy == 'vm')
+    needs: images
+    runs-on: ubuntu-latest
+    environment: semester2-vm
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure verified SSH host
+      env:
+        SSH_KEY: ${{ secrets.S2_SSH_KEY }}
+        KNOWN_HOSTS: ${{ secrets.S2_KNOWN_HOSTS }}
+      run: 'install -d -m 700 ~/.ssh
+
+        printf "%s\n" "$SSH_KEY" > ~/.ssh/id_ed25519
+
+        chmod 600 ~/.ssh/id_ed25519
+
+        printf "%s\n" "$KNOWN_HOSTS" > ~/.ssh/known_hosts'
+    - name: Copy release and deploy commit
+      env:
+        SSH_HOST: ${{ secrets.S2_SSH_HOST }}
+        SSH_USER: ${{ secrets.S2_SSH_USER }}
+        IMAGE_TAG: ${{ github.sha }}
+        IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/itmo-backend
+      run: 'test -n "$SSH_HOST" && test -n "$SSH_USER"
+
+        tar --exclude=secrets.env --exclude=site --exclude=inventory.local.yml -czf
+        /tmp/release.tgz infra/semester2 scripts/semester2
+
+        scp /tmp/release.tgz "$SSH_USER@$SSH_HOST:/tmp/itmo-backend-release.tgz"
+
+        ssh "$SSH_USER@$SSH_HOST" "mkdir -p /opt/itmo-backend && tar -xzf /tmp/itmo-backend-release.tgz
+        -C /opt/itmo-backend && IMAGE_PREFIX=$IMAGE_PREFIX IMAGE_TAG=$IMAGE_TAG bash
+        /opt/itmo-backend/scripts/semester2/deploy.sh"'
+  deploy-cloud:
+    if: github.ref == 'refs/heads/semester2-cloud' || (github.event_name == 'workflow_dispatch'
+      && inputs.deploy == 'cloud')
+    needs: images
+    runs-on: ubuntu-latest
+    environment: semester2-cloud
+    steps:
+    - uses: actions/checkout@v4
+    - uses: azure/setup-kubectl@v4
+      with:
+        version: v1.34.1
+    - name: Deploy to explicitly selected cluster
+      env:
+        KUBE_CONFIG: ${{ secrets.S2_KUBECONFIG }}
+        KUBE_CONTEXT: ${{ vars.S2_KUBE_CONTEXT }}
+        INGRESS_HOST: ${{ vars.S2_INGRESS_HOST }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: 'umask 077
+
+        mkdir -p ~/.kube
+
+        printf ''%s'' "$KUBE_CONFIG" > ~/.kube/config
+
+        bash scripts/semester2/deploy-kubernetes.sh'

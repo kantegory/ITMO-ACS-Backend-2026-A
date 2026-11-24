@@ -1,0 +1,2616 @@
+{
+  "info": {
+    "_postman_id": "9c3c3d0b-8d4a-49d7-8c4c-7a45f7623001",
+    "name": "сценарии API lab23 на основе hw3",
+    "description": "Сквозные, негативные и поисковые сценарии тестирования API для lab23 через api-gateway. Коллекция собрана на базе hw3 и адаптирована под микросервисную архитектуру.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const suffix = pm.collectionVariables.get('runSuffix') || String(Date.now()).slice(-8);",
+          "pm.collectionVariables.set('runSuffix', suffix);",
+          "pm.collectionVariables.set('editorEmail', 'lab23-editor@itmo.ru');",
+          "pm.collectionVariables.set('editorPassword', 'lab23-editor-123');",
+          "pm.collectionVariables.set('editorPhone', '+79990000001');",
+          "pm.collectionVariables.set('applicantEmail', 'lab23-applicant@itmo.ru');",
+          "pm.collectionVariables.set('applicantPassword', 'lab23-applicant-123');",
+          "pm.collectionVariables.set('applicantPhone', '+79990000002');",
+          "pm.collectionVariables.set('employer1Email', 'lab23-employer1@itmo.ru');",
+          "pm.collectionVariables.set('employer1Password', 'lab23-employer1-123');",
+          "pm.collectionVariables.set('employer1Phone', '+79990000003');",
+          "pm.collectionVariables.set('employer2Email', 'lab23-employer2@itmo.ru');",
+          "pm.collectionVariables.set('employer2Password', 'lab23-employer2-123');",
+          "pm.collectionVariables.set('employer2Phone', '+79990000004');",
+          "pm.collectionVariables.set('companyTitle', `ИТМО QA Lab ${suffix}`);",
+          "pm.collectionVariables.set('resumeTitle', `Резюме QA ${suffix}`);",
+          "pm.collectionVariables.set('vacancyTitle', `Инженер QA ${suffix}`);",
+          "pm.collectionVariables.set('searchVacancyTitle', `Search vacancy ${suffix}`);",
+          "pm.collectionVariables.set('industryCode', `qa-${suffix}`);",
+          "pm.collectionVariables.set('industryName', `QA Industry ${suffix}`);",
+          "pm.collectionVariables.set('experienceCode', `middle-${suffix}`);",
+          "pm.collectionVariables.set('experienceName', `Middle ${suffix}`);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "runSuffix",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "00 подготовка и авторизация",
+      "item": [
+        {
+          "name": "сброс переменных запуска",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.clear();",
+                  "[",
+                  "  'editorToken',",
+                  "  'applicantToken',",
+                  "  'applicantRefreshToken',",
+                  "  'employer1Token',",
+                  "  'employer2Token',",
+                  "  'companyId',",
+                  "  'vacancyId',",
+                  "  'resumeId',",
+                  "  'applicationId',",
+                  "  'assignmentId',",
+                  "  'notificationId',",
+                  "  'applicantUserId',",
+                  "  'employer1UserId',",
+                  "  'employer2UserId',",
+                  "  'employer1ProfileId',",
+                  "  'employer2ProfileId'",
+                  "].forEach((key) => pm.environment.unset(key));",
+                  "pm.collectionVariables.set('runSuffix', String(Date.now()).slice(-8));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Gateway доступен', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/industries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "industries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "регистрация редактора справочников",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Редактор справочников зарегистрирован', function () {",
+                  "  pm.expect([200, 409]).to.include(pm.response.code);",
+                  "  if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.email).to.eql(pm.collectionVariables.get('editorEmail'));",
+                  "    pm.expect(body.roles).to.include('DICTIONARY_EDITOR');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"DICTIONARY_EDITOR\",\n  \"first_name\": \"Dictionary\",\n  \"last_name\": \"Editor\",\n  \"middle_name\": \"QA\",\n  \"email\": \"{{editorEmail}}\",\n  \"password\": \"{{editorPassword}}\",\n  \"phone\": \"{{editorPhone}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "регистрация соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель зарегистрирован', function () { if (pm.response.code === 200) { pm.expect(pm.response.json().roles).to.include('APPLICANT'); } else { pm.expect(pm.response.code).to.eql(409); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"APPLICANT\",\n  \"first_name\": \"Applicant\",\n  \"last_name\": \"One\",\n  \"middle_name\": \"QA\",\n  \"email\": \"{{applicantEmail}}\",\n  \"password\": \"{{applicantPassword}}\",\n  \"phone\": \"{{applicantPhone}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "регистрация работодателя 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Работодатель 1 зарегистрирован', function () { if (pm.response.code === 200) { pm.expect(pm.response.json().roles).to.include('EMPLOYER'); } else { pm.expect(pm.response.code).to.eql(409); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"EMPLOYER\",\n  \"first_name\": \"Employer\",\n  \"last_name\": \"One\",\n  \"middle_name\": \"HR\",\n  \"email\": \"{{employer1Email}}\",\n  \"password\": \"{{employer1Password}}\",\n  \"phone\": \"{{employer1Phone}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "регистрация работодателя 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Работодатель 2 зарегистрирован', function () { if (pm.response.code === 200) { pm.expect(pm.response.json().roles).to.include('EMPLOYER'); } else { pm.expect(pm.response.code).to.eql(409); } });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"EMPLOYER\",\n  \"first_name\": \"Employer\",\n  \"last_name\": \"Two\",\n  \"middle_name\": \"HR\",\n  \"email\": \"{{employer2Email}}\",\n  \"password\": \"{{employer2Password}}\",\n  \"phone\": \"{{employer2Phone}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "вход редактора справочников",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Редактор вошел в систему', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('editorToken', body.access_token);",
+                  "  pm.environment.set('editorToken', body.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{editorEmail}}\",\n  \"password\": \"{{editorPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "вход соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель вошел в систему', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('applicantToken', body.access_token);",
+                  "  pm.environment.set('applicantToken', body.access_token);",
+                  "  pm.collectionVariables.set('applicantRefreshToken', body.refresh_token);",
+                  "  pm.environment.set('applicantRefreshToken', body.refresh_token);",
+                  "  pm.collectionVariables.set('applicantUserId', body.user.user_id);",
+                  "  pm.environment.set('applicantUserId', body.user.user_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{applicantEmail}}\",\n  \"password\": \"{{applicantPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "вход работодателя 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Работодатель 1 вошел в систему', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('employer1Token', body.access_token);",
+                  "  pm.environment.set('employer1Token', body.access_token);",
+                  "  pm.collectionVariables.set('employer1UserId', body.user.user_id);",
+                  "  pm.environment.set('employer1UserId', body.user.user_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employer1Email}}\",\n  \"password\": \"{{employer1Password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "вход работодателя 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Работодатель 2 вошел в систему', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('employer2Token', body.access_token);",
+                  "  pm.environment.set('employer2Token', body.access_token);",
+                  "  pm.collectionVariables.set('employer2UserId', body.user.user_id);",
+                  "  pm.environment.set('employer2UserId', body.user.user_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employer2Email}}\",\n  \"password\": \"{{employer2Password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "обновить access token по refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Refresh отработал', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.access_token).to.be.a('string');",
+                  "  pm.collectionVariables.set('applicantToken', body.access_token);",
+                  "  pm.environment.set('applicantToken', body.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{applicantRefreshToken}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 сценарий работодателя и вакансии",
+      "item": [
+        {
+          "name": "создать индустрию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Индустрия создана', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().code).to.eql(pm.collectionVariables.get('industryCode')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/industries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "industries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{industryCode}}\",\n  \"display_name\": \"{{industryName}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "создать уровень опыта",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Уровень опыта создан', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().code).to.eql(pm.collectionVariables.get('experienceCode')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/experience-levels",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "experience-levels"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{experienceCode}}\",\n  \"display_name\": \"{{experienceName}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "получить список индустрий",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список индустрий получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/industries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "industries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить список уровней опыта",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список уровней опыта получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/experience-levels",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "experience-levels"
+              ]
+            }
+          }
+        },
+        {
+          "name": "создать компанию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Компания создана', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('companyId', body.id); pm.expect(body.title).to.eql(pm.collectionVariables.get('companyTitle')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{companyTitle}}\",\n  \"description\": \"Internal testing company\",\n  \"website\": \"https://itmo.example\",\n  \"industry_hint\": \"qa\",\n  \"address\": \"Kronverkskiy 49\",\n  \"employee_count\": 100\n}"
+            }
+          }
+        },
+        {
+          "name": "создать профиль работодателя 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль работодателя 1 создан', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('employer1ProfileId', body.id); pm.expect(body.company_id).to.eql(pm.collectionVariables.get('companyId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer-profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employer-profiles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_id\": \"{{companyId}}\",\n  \"position\": \"HR Lead\"\n}"
+            }
+          }
+        },
+        {
+          "name": "получить профиль работодателя 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль работодателя 1 получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().company_id).to.eql(pm.collectionVariables.get('companyId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer-profiles/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employer-profiles",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "создать профиль работодателя 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль работодателя 2 создан', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('employer2ProfileId', body.id); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer2Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employer-profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employer-profiles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_id\": \"{{companyId}}\",\n  \"position\": \"Recruiter\"\n}"
+            }
+          }
+        },
+        {
+          "name": "обновить компанию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Компания обновлена', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().employee_count).to.eql(120); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{companyTitle}}\",\n  \"description\": \"Internal testing company updated\",\n  \"website\": \"https://itmo.example\",\n  \"industry_hint\": \"qa-automation\",\n  \"address\": \"Kronverkskiy 49\",\n  \"employee_count\": 120\n}"
+            }
+          }
+        },
+        {
+          "name": "получить компанию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Компания получена', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('companyId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "создать вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Вакансия создана', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('vacancyId', body.id); pm.expect(body.title).to.eql(pm.collectionVariables.get('vacancyTitle')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{vacancyTitle}}\",\n  \"description\": \"Тестировать backend и API\",\n  \"country\": \"Россия\",\n  \"city\": \"Санкт-Петербург\",\n  \"metro\": \"Горьковская\",\n  \"salary_from\": 120000,\n  \"salary_to\": 180000,\n  \"currency\": \"RUB\",\n  \"industry_code\": \"{{industryCode}}\",\n  \"experience_level_code\": \"{{experienceCode}}\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"REMOTE\",\n  \"status\": \"PUBLISHED\",\n  \"education_level\": \"HIGHER\",\n  \"skill_codes\": [\"kotlin\", \"spring\", \"qa\"],\n  \"accepts_applications\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "получить мои вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список вакансий работодателя получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/my?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "my"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить публичную вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Публичная вакансия получена', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('vacancyId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "обновить вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Вакансия обновлена', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().title).to.eql(`Senior ${pm.collectionVariables.get('vacancyTitle')}`); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Senior {{vacancyTitle}}\",\n  \"description\": \"Тестировать backend и API и писать автотесты\",\n  \"country\": \"Россия\",\n  \"city\": \"Санкт-Петербург\",\n  \"metro\": \"Горьковская\",\n  \"salary_from\": 120000,\n  \"salary_to\": 190000,\n  \"currency\": \"RUB\",\n  \"industry_code\": \"{{industryCode}}\",\n  \"experience_level_code\": \"{{experienceCode}}\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"REMOTE\",\n  \"status\": \"PUBLISHED\",\n  \"education_level\": \"HIGHER\",\n  \"skill_codes\": [\"kotlin\", \"spring\", \"qa\"],\n  \"accepts_applications\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "получить назначения вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Назначения получены', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}/assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}",
+                "assignments"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 сценарий соискателя и отклика",
+      "item": [
+        {
+          "name": "получить профиль пользователя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль соискателя получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('applicantEmail')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "обновить профиль пользователя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Профиль соискателя обновлен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().first_name).to.eql('Applicant Updated'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Applicant Updated\"\n}"
+            }
+          }
+        },
+        {
+          "name": "создать резюме",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Резюме создано', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('resumeId', body.id); pm.expect(body.title).to.eql(pm.collectionVariables.get('resumeTitle')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{resumeTitle}}\",\n  \"desired_position\": \"Инженер QA\",\n  \"about_me\": \"Тестирую API\",\n  \"salary_expectation\": 150000,\n  \"city\": \"Санкт-Петербург\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"REMOTE\",\n  \"status\": \"ACTIVE\",\n  \"education_level\": \"HIGHER\",\n  \"experience_level_code\": \"{{experienceCode}}\",\n  \"skill_codes\": [\"kotlin\", \"spring\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "получить список резюме",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список резюме получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить резюме по id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Резюме получено', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('resumeId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{resumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes",
+                "{{resumeId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "обновить резюме",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Резюме обновлено', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().desired_position).to.eql('Старший инженер QA'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{resumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes",
+                "{{resumeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{resumeTitle}}\",\n  \"desired_position\": \"Старший инженер QA\",\n  \"about_me\": \"Тестирую API и микросервисы\",\n  \"salary_expectation\": 170000,\n  \"city\": \"Санкт-Петербург\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"REMOTE\",\n  \"status\": \"ACTIVE\",\n  \"education_level\": \"HIGHER\",\n  \"experience_level_code\": \"{{experienceCode}}\",\n  \"skill_codes\": [\"kotlin\", \"spring\", \"qa\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "добавить просмотр вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Просмотр вакансии сохранен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/history/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "history",
+                "{{vacancyId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить историю просмотров",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('История просмотров получена', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/history?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "добавить вакансию в избранное",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Вакансия добавлена в избранное', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/favorites/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "favorites",
+                "{{vacancyId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить избранные вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Избранные вакансии получены', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/favorites?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "favorites"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "создать отклик",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Отклик создан', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('applicationId', body.id); pm.expect(body.resume_id).to.eql(pm.collectionVariables.get('resumeId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}/applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}",
+                "applications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resume_id\": \"{{resumeId}}\",\n  \"cover_letter\": \"Готов пройти интервью\"\n}"
+            }
+          }
+        },
+        {
+          "name": "получить мои отклики",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Список откликов соискателя получен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/my?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "my"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 обработка откликов работодателем",
+      "item": [
+        {
+          "name": "получить отклики по вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Работодатель получил отклики по вакансии', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.be.greaterThan(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}/applications?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "изменить статус отклика",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус отклика изменен', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('REVIEW'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"REVIEW\"\n}"
+            }
+          }
+        },
+        {
+          "name": "создать приглашение на собеседование",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Приглашение на собеседование создано', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().application_id).to.eql(pm.collectionVariables.get('applicationId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/interview-invitations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "interview-invitations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduled_at\": \"2026-06-01T10:00:00+03:00\",\n  \"format\": \"ONLINE\",\n  \"notes\": \"Встреча с тимлидом\"\n}"
+            }
+          }
+        },
+        {
+          "name": "получить уведомления соискателя",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Уведомления соискателя доступны', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.items).to.be.an('array'); pm.expect(body.items.length).to.be.greaterThan(0); pm.collectionVariables.set('notificationId', body.items[0].id); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "пометить все уведомления как прочитанные",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Все уведомления помечены как прочитанные', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().updated).to.be.a('number'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить уведомления повторно",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Повторное чтение уведомлений работает', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.items).to.be.an('array'); body.items.forEach(item => pm.expect(item.read_at).to.not.eql(null)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 негативные сценарии",
+      "item": [
+        {
+          "name": "получить профиль без токена",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Без токена доступ запрещен', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "создать индустрию работодателем",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Работодатель не может создавать справочники', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/industries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "industries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"forbidden-{{runSuffix}}\",\n  \"display_name\": \"Forbidden\"\n}"
+            }
+          }
+        },
+        {
+          "name": "создать вакансию соискателем",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель не может создавать вакансии', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad vacancy\",\n  \"description\": \"forbidden\",\n  \"country\": \"Россия\",\n  \"city\": \"Санкт-Петербург\",\n  \"metro\": null,\n  \"salary_from\": 1,\n  \"salary_to\": 2,\n  \"currency\": \"RUB\",\n  \"industry_code\": \"{{industryCode}}\",\n  \"experience_level_code\": \"{{experienceCode}}\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"REMOTE\",\n  \"status\": \"PUBLISHED\",\n  \"education_level\": \"HIGHER\",\n  \"skill_codes\": [],\n  \"accepts_applications\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "получить роли редактором справочников",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Не-админ не может читать роли', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{editorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles"
+              ]
+            }
+          }
+        },
+        {
+          "name": "получить отклики по вакансии соискателем",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Соискатель не может читать отклики работодателя', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}/applications?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "добавить вакансию в избранное без токена",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Без токена нельзя работать с избранным', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/favorites/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "favorites",
+                "{{vacancyId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "обновить компанию чужим работодателем",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Чужой работодатель не может обновить компанию', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer2Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{companyTitle}}\",\n  \"description\": \"hack\",\n  \"website\": \"https://hack.example\",\n  \"industry_hint\": \"hack\",\n  \"address\": \"hack\",\n  \"employee_count\": 1\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 расширенный поиск вакансий",
+      "item": [
+        {
+          "name": "поиск вакансий по тексту",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Поиск по тексту отработал', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies?text={{vacancyTitle}}&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "text",
+                  "value": "{{vacancyTitle}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "явный поиск через /search/vacancies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Явная поисковая ручка работает', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/vacancies?text={{vacancyTitle}}&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "text",
+                  "value": "{{vacancyTitle}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "поиск по городу и формату",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Поиск по городу и формату отработал', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/vacancies?city=Санкт-Петербург&workFormat=REMOTE&employmentType=FULL_TIME&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Санкт-Петербург"
+                },
+                {
+                  "key": "workFormat",
+                  "value": "REMOTE"
+                },
+                {
+                  "key": "employmentType",
+                  "value": "FULL_TIME"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "поиск по минимальной зарплате",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Поиск по зарплате отработал', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/vacancies?salaryFrom=150000&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "salaryFrom",
+                  "value": "150000"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "поиск только с указанной зарплатой",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Фильтр onlyWithSalary отработал', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/vacancies?onlyWithSalary=true&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "onlyWithSalary",
+                  "value": "true"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "поиск с сортировкой по зарплате",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Сортировка по зарплате отработала', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/vacancies?sort=salary_desc&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "salary_desc"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "поиск с сортировкой по популярности",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Сортировка по популярности отработала', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/vacancies?sort=popularity&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "vacancies"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "popularity"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 дополнительное покрытие",
+      "item": [
+        {
+          "name": "создать назначение вакансии для работодателя 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Назначение для работодателя 2 создано', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.collectionVariables.set('assignmentId', body.id); pm.expect(body.employer_profile_id).to.eql(pm.collectionVariables.get('employer2ProfileId')); pm.expect(body.assignment_role).to.eql('RECRUITER'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}/assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}",
+                "assignments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employer_profile_id\": \"{{employer2ProfileId}}\",\n  \"assignment_role\": \"RECRUITER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "обновить назначение вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Назначение вакансии обновлено', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.id).to.eql(pm.collectionVariables.get('assignmentId')); pm.expect(body.assignment_role).to.eql('INTERVIEWER'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancy-assignments/{{assignmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancy-assignments",
+                "{{assignmentId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employer_profile_id\": \"{{employer2ProfileId}}\",\n  \"assignment_role\": \"INTERVIEWER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "удалить назначение вакансии",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Назначение вакансии удалено', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancy-assignments/{{assignmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancy-assignments",
+                "{{assignmentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "пометить уведомление по id как прочитанное",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Одно уведомление помечено как прочитанное', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.id).to.eql(pm.collectionVariables.get('notificationId')); pm.expect(body.read_at).to.not.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            }
+          }
+        },
+        {
+          "name": "удалить вакансию из избранного",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Вакансия удалена из избранного', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/favorites/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "favorites",
+                "{{vacancyId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "проверить что избранное пустое после удаления",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('После удаления избранное пустое', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.items).to.be.an('array'); pm.expect(body.items.find(item => item.vacancy_id === pm.collectionVariables.get('vacancyId'))).to.eql(undefined); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/favorites?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "favorites"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "удалить резюме",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Резюме удалено', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{applicantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{resumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes",
+                "{{resumeId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "удалить вакансию",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Вакансия удалена', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employer1Token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacancies/{{vacancyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacancies",
+                "{{vacancyId}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -34,6 +34,7 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it
+                    .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
                     .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/vacancies/favorites", "/vacancies/history").authenticated()
                     .requestMatchers(HttpMethod.POST, "/vacancies/favorites/*", "/vacancies/history/*").authenticated()

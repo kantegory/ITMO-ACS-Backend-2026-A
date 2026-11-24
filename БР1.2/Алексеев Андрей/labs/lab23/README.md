@@ -43,8 +43,8 @@ docker compose logs -f
 
 Postman:
 
-- коллекция: [postman/lab23-microservices.postman_collection.json](/home/pxdkxvan/Projects/ITMO/BACK/ITMO-ACS-Backend-2026-A/БР1.2/Алексеев Андрей/labs/lab23/postman/lab23-microservices.postman_collection.json:1)
-- environment: [postman/lab23-local.postman_environment.json](/home/pxdkxvan/Projects/ITMO/BACK/ITMO-ACS-Backend-2026-A/БР1.2/Алексеев Андрей/labs/lab23/postman/lab23-local.postman_environment.json:1)
+- коллекция: [postman/lab23-microservices.postman_collection.json](postman/lab23-microservices.postman_collection.json)
+- environment: [postman/lab23-local.postman_environment.json](postman/lab23-local.postman_environment.json)
 
 Автопрогон коллекции:
 
@@ -56,3 +56,7 @@ docker run --rm --network host \
 ```
 
 Все сервисы, включая `bootJar`, теперь собираются внутри соответствующих `Dockerfile`; предварительно запускать Gradle-скрипты на хосте не нужно.
+
+## Второй семестр
+
+Изолированный запуск, Ansible, мониторинг, Kubernetes, CI/CD и документация: [infra/semester2](../../../../infra/semester2/README.md).

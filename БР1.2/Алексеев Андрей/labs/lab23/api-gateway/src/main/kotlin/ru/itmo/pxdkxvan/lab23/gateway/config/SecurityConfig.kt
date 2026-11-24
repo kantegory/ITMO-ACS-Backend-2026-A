@@ -25,6 +25,7 @@ class SecurityConfig(
             .csrf { it.disable() }
             .authorizeExchange {
                 it
+                    .pathMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
                     .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                     .pathMatchers(
                         "/auth-docs/v3/api-docs",
