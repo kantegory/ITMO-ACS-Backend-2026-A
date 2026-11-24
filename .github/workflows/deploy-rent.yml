@@ -1,0 +1,79 @@
+name: Развёртывание бэкенда
+
+on:
+  push:
+    branches: [lab3]
+    paths:
+      - 'БР1.2/Губанов Егор/labs/lab2/**'
+      - 'БР1.2/Губанов Егор/labs/lab3/docker-compose.yml'
+      - 'БР1.2/Губанов Егор/labs/lab4/**'
+      - '!БР1.2/Губанов Егор/labs/lab4/**/*.pdf'
+      - '!БР1.2/Губанов Егор/labs/lab4/**/*.docx'
+      - '!БР1.2/Губанов Егор/labs/lab4/evidence/**'
+      - '.github/workflows/deploy-rent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rent-lab4-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Проверка конфигурации и сборка образа
+        shell: bash
+        env:
+          JWT_SECRET: validation-only
+          INTERNAL_KEY: validation-only
+          DB_PASSWORD: validation-only
+          RABBITMQ_PASSWORD: validation-only
+        run: |
+          set -euo pipefail
+          lab4_dir='БР1.2/Губанов Егор/labs/lab4'
+          for script in "$lab4_dir"/*.sh 'БР1.2/Губанов Егор/homeworks/hw6/rent-ci-dispatch'; do
+            bash -n "$script"
+          done
+          APP_ENV_FILE="$lab4_dir/.env.example" bash "$lab4_dir/compose.sh" config --quiet
+          docker build -f "$lab4_dir/Dockerfile" -t rent-lab4-app:check 'БР1.2/Губанов Егор/labs'
+
+  deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/lab3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Развёртывание по SSH и проверка версии
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          install -d -m 0700 "$HOME/.ssh"
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/rent_deploy"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            -p "${DEPLOY_PORT:-22}" -i "$HOME/.ssh/rent_deploy" \
+            "root@$DEPLOY_HOST" "deploy $GITHUB_SHA"
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+            "http://$DEPLOY_HOST:8081/deployment.json" -o "$RUNNER_TEMP/deployment.json"
+          python3 - "$RUNNER_TEMP/deployment.json" "$GITHUB_SHA" <<'PY'
+          import json, sys
+          with open(sys.argv[1]) as stream:
+              deployment = json.load(stream)
+          assert deployment['revision'] == sys.argv[2], deployment
+          print('OK: the public server runs commit', deployment['revision'])
+          PY

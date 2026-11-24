@@ -1,0 +1,245 @@
+- name: Развёртывание приложения
+  hosts: backend
+  become: true
+  gather_facts: true
+  serial: 1
+
+  vars:
+    rent_root: /opt/rent-lab5
+    rent_repo: "{{ rent_root }}/repository"
+    rent_labs: "{{ rent_repo }}/БР1.2/Губанов Егор/labs"
+    rent_env: /etc/rent-lab5/app.env
+    rent_compose_files:
+      - repository/БР1.2/Губанов Егор/labs/lab3/docker-compose.yml
+      - repository/БР1.2/Губанов Егор/labs/lab4/compose.production.yml
+      - compose.lab5.yml
+
+  tasks:
+    - name: Проверить память виртуалки
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['memtotal_mb'] | int >= 1536
+        fail_msg: Выдели виртуалке минимум 2 ГБ оперативной памяти, лучше 4 ГБ.
+
+    - name: Установить Git
+      ansible.builtin.apt:
+        name: git
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Создать каталог приложения
+      ansible.builtin.file:
+        path: "{{ rent_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Создать каталог секретов
+      ansible.builtin.file:
+        path: /etc/rent-lab5
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Скачать ветку lab5
+      ansible.builtin.git:
+        repo: https://github.com/egorr-gubanov/ITMO-ACS-Backend-2026-A.git
+        dest: "{{ rent_repo }}"
+        version: lab5
+        depth: 1
+        single_branch: true
+        recursive: false
+        update: true
+        force: false
+      environment:
+        GIT_TERMINAL_PROMPT: '0'
+      register: rent_checkout
+
+    - name: Определить название образа
+      ansible.builtin.set_fact:
+        rent_image: "rent-lab5-app:{{ rent_checkout.after }}"
+
+    - name: Создать секреты при первом запуске
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import os
+            import secrets
+            os.umask(0o077)
+            keys = ("JWT_SECRET", "INTERNAL_KEY", "DB_PASSWORD", "RABBITMQ_PASSWORD")
+            with open("/etc/rent-lab5/app.env", "x") as stream:
+                for key in keys:
+                    stream.write(f"{key}={secrets.token_hex(32)}\n")
+        creates: "{{ rent_env }}"
+      no_log: true
+
+    - name: Ограничить доступ к секретам
+      ansible.builtin.file:
+        path: "{{ rent_env }}"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Подготовить Compose для ЛР5
+      ansible.builtin.template:
+        src: templates/compose.lab5.yml.j2
+        dest: "{{ rent_root }}/compose.lab5.yml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Создать команду управления контейнерами
+      ansible.builtin.copy:
+        dest: "{{ rent_root }}/compose.sh"
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker compose --project-name rent-lab5 \
+            --env-file "{{ rent_env }}" \
+            -f "{{ rent_labs }}/lab3/docker-compose.yml" \
+            -f "{{ rent_labs }}/lab4/compose.production.yml" \
+            -f "{{ rent_root }}/compose.lab5.yml" "$@"
+
+    - name: Проверить конфигурацию Compose
+      ansible.builtin.command:
+        argv: ["{{ rent_root }}/compose.sh", config, --quiet]
+      changed_when: false
+
+    - name: Проверить наличие образа
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ rent_image }}"]
+      register: rent_existing_image
+      changed_when: false
+      failed_when: false
+
+    - name: Проверить место для сборки
+      ansible.builtin.assert:
+        that:
+          - (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | first)['size_available'] | int >= 2147483648
+        fail_msg: Для сборки нужно минимум 2 ГБ свободного места внутри Debian.
+      when: rent_existing_image.rc != 0
+
+    - name: Собрать общий образ приложения
+      ansible.builtin.command:
+        argv:
+          - docker
+          - build
+          - --tag
+          - "{{ rent_image }}"
+          - --file
+          - "{{ rent_labs }}/lab4/Dockerfile"
+          - "{{ rent_labs }}"
+      when: rent_existing_image.rc != 0
+      changed_when: true
+
+    - name: Запустить контейнеры и дождаться готовности
+      community.docker.docker_compose_v2:
+        project_src: "{{ rent_root }}"
+        project_name: rent-lab5
+        files: "{{ rent_compose_files }}"
+        env_files:
+          - "{{ rent_env }}"
+        state: present
+        build: never
+        pull: missing
+        recreate: auto
+        remove_orphans: false
+        remove_volumes: false
+        wait: true
+        wait_timeout: 600
+      environment:
+        COMPOSE_PARALLEL_LIMIT: '1'
+      no_log: true
+
+    - name: Установить конфигурацию nginx
+      ansible.builtin.copy:
+        src: files/nginx.conf
+        dest: /etc/nginx/sites-available/rent-lab5
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Перезагрузить nginx
+
+    - name: Подключить сайт приложения
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/rent-lab5
+        dest: /etc/nginx/sites-enabled/rent-lab5
+        state: link
+      notify: Перезагрузить nginx
+
+    - name: Отключить стандартный сайт nginx
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Перезагрузить nginx
+
+    - name: Проверить конфигурацию nginx
+      ansible.builtin.command:
+        argv: [nginx, -t]
+      changed_when: false
+
+    - name: Включить nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Применить настройки nginx
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить gateway через nginx
+      ansible.builtin.uri:
+        url: http://127.0.0.1/api/v1/
+        status_code: 200
+        return_content: true
+        use_proxy: false
+      register: rent_gateway
+      until: rent_gateway.status == 200 and rent_gateway.json.service | default('') == 'rent-gateway'
+      retries: 12
+      delay: 5
+
+    - name: Проверить справочник из базы
+      ansible.builtin.uri:
+        url: http://127.0.0.1/api/v1/property-types/
+        status_code: 200
+        return_content: true
+        use_proxy: false
+      register: rent_catalog
+
+    - name: Проверить наличие данных
+      ansible.builtin.assert:
+        that:
+          - rent_catalog.json | type_debug == 'list'
+          - rent_catalog.json | length >= 3
+
+    - name: Проверить маршрут без авторизации
+      ansible.builtin.uri:
+        url: http://127.0.0.1/api/v1/me/
+        status_code: 401
+        use_proxy: false
+
+    - name: Получить список контейнеров
+      ansible.builtin.command:
+        argv: ["{{ rent_root }}/compose.sh", ps]
+      register: rent_status
+      changed_when: false
+
+    - name: Показать контейнеры и версию
+      ansible.builtin.debug:
+        msg:
+          - "{{ rent_status.stdout_lines }}"
+          - "Коммит приложения: {{ rent_checkout.after }}"
+
+  handlers:
+    - name: Перезагрузить nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded

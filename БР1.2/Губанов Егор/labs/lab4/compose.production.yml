@@ -1,0 +1,116 @@
+x-app: &app
+  image: rent-lab4-app:${APP_VERSION:-manual}
+  build:
+    context: ..
+    dockerfile: lab4/Dockerfile
+  restart: unless-stopped
+  init: true
+  environment: &app-env
+    JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+    INTERNAL_KEY: ${INTERNAL_KEY:?INTERNAL_KEY is required}
+    NODE_OPTIONS: --max-old-space-size=128
+  logging: &logs
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "2"
+
+services:
+  rabbitmq:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rent
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: +S 1:1 +sbwt none +sbwtdcpu none +sbwtdio none
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
+    hostname: rent-lab4-rabbitmq
+    logging: *logs
+
+  auth-db:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    logging: *logs
+  catalog-db:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    logging: *logs
+  deals-db:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    logging: *logs
+  messaging-db:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    logging: *logs
+
+  auth:
+    <<: *app
+    working_dir: /app/services/auth
+    ports: !reset []
+    environment:
+      <<: *app-env
+      AUTH_DB_PASS: ${DB_PASSWORD:?DB_PASSWORD is required}
+    healthcheck: &health-auth
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:3001/api/v1/me/',r=>process.exit(r.statusCode===401?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+  catalog:
+    <<: *app
+    working_dir: /app/services/catalog
+    ports: !reset []
+    environment:
+      <<: *app-env
+      CATALOG_DB_PASS: ${DB_PASSWORD:?DB_PASSWORD is required}
+    healthcheck:
+      <<: *health-auth
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:3002/api/v1/property-types/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+  deals:
+    <<: *app
+    working_dir: /app/services/deals
+    ports: !reset []
+    environment:
+      <<: *app-env
+      DEALS_DB_PASS: ${DB_PASSWORD:?DB_PASSWORD is required}
+      RABBITMQ_URL: amqp://rent:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672
+    healthcheck:
+      <<: *health-auth
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:3003/api/v1/me/renting/',r=>process.exit(r.statusCode===401?0:1)).on('error',()=>process.exit(1))"]
+  messaging:
+    <<: *app
+    working_dir: /app/services/messaging
+    ports: !reset []
+    environment:
+      <<: *app-env
+      MESSAGING_DB_PASS: ${DB_PASSWORD:?DB_PASSWORD is required}
+      RABBITMQ_URL: amqp://rent:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672
+    healthcheck:
+      <<: *health-auth
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:3004/api/v1/messages/',r=>process.exit(r.statusCode===401?0:1)).on('error',()=>process.exit(1))"]
+  gateway:
+    <<: *app
+    working_dir: /app/services/gateway
+    ports: !override
+      - 127.0.0.1:13000:3000
+    environment:
+      <<: *app-env
+    healthcheck:
+      <<: *health-auth
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:3000/api/v1/property-types/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+
+networks:
+  default:
+    name: rent-lab4
+volumes:
+  rabbit_data:
