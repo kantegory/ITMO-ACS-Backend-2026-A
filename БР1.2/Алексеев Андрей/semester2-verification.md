@@ -18,4 +18,5 @@
 | GitHub Actions, прежняя ВМ | [Lab23 Deploy](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/26723466788), deploy успешно завершился |
 | GitHub Actions, второй семестр | [Первый](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/45482983203) и [повторный](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/45484728657) прогоны прошли. В каждом опубликованы 10 образов в GHCR. Задания доставки пропущены на рабочей ветке |
 | Данные и приложение на общей ВМ | Восемь PostgreSQL и Kafka достигли healthy. Elasticsearch не прошёл healthcheck за ограниченное время. Запущены gateway, auth-service и user-service. HTTP-проверка через nginx на ВМ не завершилась в пределах прогона |
+| Публичный HTTPS, повторный ограниченный прогон 25.11.2026 | На той же ВМ запущены gateway, vacancy-service, nginx, Kafka и PostgreSQL вакансий. [Отрасли](https://ab.pxdkxvan.lol/api/v1/industries) и [уровни опыта](https://ab.pxdkxvan.lol/api/v1/experience-levels) вернули 200. POST и /actuator/health вернули 404. FinPlan продолжил отвечать |
 | Cloud delivery и HPA под нагрузкой | Нужны облачный проект, кластер с metrics-server и DNS |
