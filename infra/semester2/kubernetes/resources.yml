@@ -1,0 +1,1898 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: itmo-backend
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: kafka
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: kafka
+        image: apache/kafka:3.8.0
+        env:
+        - name: KAFKA_NODE_ID
+          value: '1'
+        - name: KAFKA_HEAP_OPTS
+          value: -Xms192m -Xmx192m
+        - name: KAFKA_LOG_CLEANER_ENABLE
+          value: 'false'
+        - name: KAFKA_PROCESS_ROLES
+          value: broker,controller
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: 1@kafka:9093
+        - name: KAFKA_LISTENERS
+          value: PLAINTEXT://:9092,CONTROLLER://:9093
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: PLAINTEXT://kafka:9092
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: CONTROLLER
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: PLAINTEXT
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: 'true'
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: '1'
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: '1'
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: '1'
+        - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+          value: '0'
+        - name: CLUSTER_ID
+          value: MkU3OEVBNTcwNTJENDM2Qk
+        - name: KAFKA_LOG_DIRS
+          value: /tmp/kraft-combined-logs
+        ports:
+        - containerPort: 9092
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        volumeMounts:
+        - name: data
+          mountPath: /tmp/kraft-combined-logs
+        readinessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 20
+          periodSeconds: 10
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: itmo-backend
+spec:
+  selector:
+    app: kafka
+  ports:
+  - name: tcp
+    port: 9092
+    targetPort: 9092
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: application-db
+  namespace: itmo-backend
+spec:
+  serviceName: application-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: application-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: application-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: application_db
+        - name: POSTGRES_USER
+          value: application
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: application-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: application-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: application-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: application-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: application-service
+        image: ghcr.io/pxdkxvan/itmo-backend/application-service:REPLACE_SHA
+        ports:
+        - containerPort: 8087
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8087'
+        - name: DB_URL
+          value: jdbc:postgresql://application-db:5432/application_db
+        - name: DB_USERNAME
+          value: application
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka:9092
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: RESUME_URL
+          value: http://resume-service:8086
+        - name: VACANCY_URL
+          value: http://vacancy-service:8084
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: application-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: application-service
+  ports:
+  - name: http
+    port: 8087
+    targetPort: 8087
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: auth-db
+  namespace: itmo-backend
+spec:
+  serviceName: auth-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: auth-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: auth-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: auth_db
+        - name: POSTGRES_USER
+          value: auth
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: auth-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: auth-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: auth-service
+        image: ghcr.io/pxdkxvan/itmo-backend/auth-service:REPLACE_SHA
+        ports:
+        - containerPort: 8081
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8081'
+        - name: DB_URL
+          value: jdbc:postgresql://auth-db:5432/auth_db
+        - name: DB_USERNAME
+          value: auth
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: USER_URL
+          value: http://user-service:8082
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: auth-service
+  ports:
+  - name: http
+    port: 8081
+    targetPort: 8081
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: company-db
+  namespace: itmo-backend
+spec:
+  serviceName: company-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: company-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: company-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: company_db
+        - name: POSTGRES_USER
+          value: company
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: company-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: company-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: company-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: company-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: company-service
+        image: ghcr.io/pxdkxvan/itmo-backend/company-service:REPLACE_SHA
+        ports:
+        - containerPort: 8083
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8083'
+        - name: DB_URL
+          value: jdbc:postgresql://company-db:5432/company_db
+        - name: DB_USERNAME
+          value: company
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka:9092
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: company-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: company-service
+  ports:
+  - name: http
+    port: 8083
+    targetPort: 8083
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: interaction-db
+  namespace: itmo-backend
+spec:
+  serviceName: interaction-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: interaction-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: interaction-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: interaction_db
+        - name: POSTGRES_USER
+          value: interaction
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: interaction-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: interaction-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: interaction-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: interaction-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: interaction-service
+        image: ghcr.io/pxdkxvan/itmo-backend/interaction-service:REPLACE_SHA
+        ports:
+        - containerPort: 8088
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8088'
+        - name: DB_URL
+          value: jdbc:postgresql://interaction-db:5432/interaction_db
+        - name: DB_USERNAME
+          value: interaction
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka:9092
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: VACANCY_URL
+          value: http://vacancy-service:8084
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: interaction-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: interaction-service
+  ports:
+  - name: http
+    port: 8088
+    targetPort: 8088
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: notification-db
+  namespace: itmo-backend
+spec:
+  serviceName: notification-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: notification-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: notification-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: notification_db
+        - name: POSTGRES_USER
+          value: notification
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: notification-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: notification-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: notification-service
+        image: ghcr.io/pxdkxvan/itmo-backend/notification-service:REPLACE_SHA
+        ports:
+        - containerPort: 8089
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8089'
+        - name: DB_URL
+          value: jdbc:postgresql://notification-db:5432/notification_db
+        - name: DB_USERNAME
+          value: notification
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka:9092
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: IDENTITY_URL
+          value: http://user-service:8082
+        - name: RESUME_URL
+          value: http://resume-service:8086
+        - name: INTERACTION_URL
+          value: http://interaction-service:8088
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: notification-service
+  ports:
+  - name: http
+    port: 8089
+    targetPort: 8089
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: resume-db
+  namespace: itmo-backend
+spec:
+  serviceName: resume-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: resume-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: resume-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: resume_db
+        - name: POSTGRES_USER
+          value: resume
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resume-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: resume-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: resume-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: resume-service
+        image: ghcr.io/pxdkxvan/itmo-backend/resume-service:REPLACE_SHA
+        ports:
+        - containerPort: 8086
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8086'
+        - name: DB_URL
+          value: jdbc:postgresql://resume-db:5432/resume_db
+        - name: DB_USERNAME
+          value: resume
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resume-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: resume-service
+  ports:
+  - name: http
+    port: 8086
+    targetPort: 8086
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: itmo-backend
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: elasticsearch
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: node.roles
+          value: master,data,ingest
+        - name: node.store.allow_mmap
+          value: 'false'
+        - name: xpack.security.enabled
+          value: 'false'
+        - name: xpack.ml.enabled
+          value: 'false'
+        - name: xpack.watcher.enabled
+          value: 'false'
+        - name: xpack.profiling.enabled
+          value: 'false'
+        - name: xpack.apm_data.enabled
+          value: 'false'
+        - name: xpack.monitoring.collection.enabled
+          value: 'false'
+        - name: ingest.geoip.downloader.enabled
+          value: 'false'
+        - name: cluster.routing.allocation.disk.threshold_enabled
+          value: 'false'
+        - name: bootstrap.memory_lock
+          value: 'false'
+        - name: ES_JAVA_OPTS
+          value: -Xms192m -Xmx192m -XX:MaxDirectMemorySize=64m -Dorg.elasticsearch.nativeaccess.enableVectorLibrary=false
+        ports:
+        - containerPort: 9200
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        readinessProbe:
+          tcpSocket:
+            port: 9200
+          initialDelaySeconds: 20
+          periodSeconds: 10
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: itmo-backend
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+  - name: tcp
+    port: 9200
+    targetPort: 9200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-service
+  namespace: itmo-backend
+spec:
+  selector:
+    matchLabels: &id001
+      app: search-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: search-service
+        image: ghcr.io/pxdkxvan/itmo-backend/search-service:REPLACE_SHA
+        ports:
+        - containerPort: 8085
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8085'
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka:9092
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: ELASTICSEARCH_URIS
+          value: http://elasticsearch:9200
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: search-service
+  ports:
+  - name: http
+    port: 8085
+    targetPort: 8085
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: search-service
+  namespace: itmo-backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: search-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 180
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: user-db
+  namespace: itmo-backend
+spec:
+  serviceName: user-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: user-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: user-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: user_db
+        - name: POSTGRES_USER
+          value: user_service
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: user-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: user-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: user-service
+        image: ghcr.io/pxdkxvan/itmo-backend/user-service:REPLACE_SHA
+        ports:
+        - containerPort: 8082
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8082'
+        - name: DB_URL
+          value: jdbc:postgresql://user-db:5432/user_db
+        - name: DB_USERNAME
+          value: user_service
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: user-service
+  ports:
+  - name: http
+    port: 8082
+    targetPort: 8082
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vacancy-db
+  namespace: itmo-backend
+spec:
+  serviceName: vacancy-db
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: vacancy-db
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: vacancy-db
+        image: postgres:17
+        env:
+        - name: POSTGRES_DB
+          value: vacancy_db
+        - name: POSTGRES_USER
+          value: vacancy
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        args:
+        - -c
+        - shared_buffers=16MB
+        - -c
+        - max_connections=30
+      automountServiceAccountToken: false
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vacancy-db
+  namespace: itmo-backend
+spec:
+  selector:
+    app: vacancy-db
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vacancy-service
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: vacancy-service
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: vacancy-service
+        image: ghcr.io/pxdkxvan/itmo-backend/vacancy-service:REPLACE_SHA
+        ports:
+        - containerPort: 8084
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8084'
+        - name: DB_URL
+          value: jdbc:postgresql://vacancy-db:5432/vacancy_db
+        - name: DB_USERNAME
+          value: vacancy
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: DB_PASSWORD
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka:9092
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: SERVICE_TOKEN
+        - name: COMPANY_URL
+          value: http://company-service:8083
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vacancy-service
+  namespace: itmo-backend
+spec:
+  selector:
+    app: vacancy-service
+  ports:
+  - name: http
+    port: 8084
+    targetPort: 8084
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: itmo-backend
+spec:
+  selector:
+    matchLabels: &id001
+      app: api-gateway
+      metrics: spring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: api-gateway
+        image: ghcr.io/pxdkxvan/itmo-backend/api-gateway:REPLACE_SHA
+        ports:
+        - containerPort: 8080
+        - name: management
+          containerPort: 9091
+        env:
+        - name: SERVER_PORT
+          value: '8080'
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: JWT_SECRET
+        - name: AUTH_URL
+          value: http://auth-service:8081
+        - name: USER_URL
+          value: http://user-service:8082
+        - name: COMPANY_URL
+          value: http://company-service:8083
+        - name: VACANCY_URL
+          value: http://vacancy-service:8084
+        - name: SEARCH_URL
+          value: http://search-service:8085
+        - name: RESUME_URL
+          value: http://resume-service:8086
+        - name: APPLICATION_URL
+          value: http://application-service:8087
+        - name: INTERACTION_URL
+          value: http://interaction-service:8088
+        - name: NOTIFICATION_URL
+          value: http://notification-service:8089
+        - name: MANAGEMENT_SERVER_PORT
+          value: '9091'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9091
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 9091
+          periodSeconds: 15
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: itmo-backend
+spec:
+  selector:
+    app: api-gateway
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: management
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway
+  namespace: itmo-backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 180
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend
+  namespace: itmo-backend
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: backend.example.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-isolation
+  namespace: itmo-backend
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector: {}
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: traefik
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector: {}
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53

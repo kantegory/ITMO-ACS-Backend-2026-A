@@ -1,0 +1,90 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.retention.time=24h
+    - --storage.tsdb.retention.size=256MB
+    volumes:
+    - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    - prometheus-data:/prometheus
+    ports:
+    - 127.0.0.1:19090:9090
+    mem_limit: 192m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+  node-exporter:
+    image: prom/node-exporter:v1.9.0
+    pid: host
+    command:
+    - --path.rootfs=/host
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)
+    volumes:
+    - /:/host:ro,rslave
+    mem_limit: 32m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+  loki:
+    image: grafana/loki:3.4.2
+    command:
+    - -config.file=/etc/loki/config.yml
+    volumes:
+    - ./monitoring/loki.yml:/etc/loki/config.yml:ro
+    - loki-data:/loki
+    mem_limit: 192m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+  alloy:
+    image: grafana/alloy:v1.8.1
+    command:
+    - run
+    - --storage.path=/var/lib/alloy/data
+    - /etc/alloy/config.alloy
+    volumes:
+    - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - alloy-data:/var/lib/alloy/data
+    mem_limit: 128m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+    - 127.0.0.1:13000:3000
+    volumes:
+    - ./monitoring/provisioning:/etc/grafana/provisioning:ro
+    - ./monitoring/dashboards:/var/lib/grafana/dashboards:ro
+    - grafana-data:/var/lib/grafana
+    mem_limit: 192m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+volumes:
+  prometheus-data: {}
+  loki-data: {}
+  alloy-data: {}
+  grafana-data: {}

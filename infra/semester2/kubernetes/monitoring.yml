@@ -1,0 +1,343 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-metrics
+  namespace: itmo-backend
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    metrics: spring
+  ports:
+  - name: metrics
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-prometheus
+  namespace: itmo-backend
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+    - job_name: microservices
+      metrics_path: /actuator/prometheus
+      dns_sd_configs:
+      - names:
+        - _metrics._tcp.backend-metrics.itmo-backend.svc
+        type: SRV
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-prometheus
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-prometheus
+  template:
+    metadata:
+      labels:
+        app: backend-prometheus
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v3.2.1
+        args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=24h
+        - --storage.tsdb.retention.size=256MB
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+          readOnly: true
+        - name: data
+          mountPath: /prometheus
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 384Mi
+      volumes:
+      - name: config
+        configMap:
+          name: backend-prometheus
+      - name: data
+        emptyDir:
+          sizeLimit: 512Mi
+      securityContext:
+        fsGroup: 65534
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-prometheus
+  namespace: itmo-backend
+spec:
+  selector:
+    app: backend-prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-grafana
+  namespace: itmo-backend
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      uid: prometheus
+      type: prometheus
+      access: proxy
+      url: http://backend-prometheus:9090
+      isDefault: true
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+    - name: ITMO
+      type: file
+      options:
+        path: /var/lib/grafana/dashboards
+  kubernetes.json: |-
+    {
+      "uid": "itmo-cloud",
+      "title": "ITMO Backend · Kubernetes",
+      "schemaVersion": 40,
+      "refresh": "15s",
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "CPU процесса по pod",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * process_cpu_usage"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 2,
+          "title": "JVM heap по pod",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (application, instance) (jvm_memory_used_bytes{area=\"heap\"})"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "title": "Запросы в секунду",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by(application) (rate(http_server_requests_seconds_count{uri!~\"/actuator.*\"}[2m]))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "title": "HTTP p95",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by(application,le) (rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[2m])))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "title": "HTTP 5xx",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by(application) (rate(http_server_requests_seconds_count{status=~\"5..\"}[2m]))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "title": "Pod с доступными метриками",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by(application) (process_uptime_seconds > bool 0)"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          }
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-grafana
+  namespace: itmo-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-grafana
+  template:
+    metadata:
+      labels:
+        app: backend-grafana
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: grafana
+        image: grafana/grafana:11.6.0
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: GRAFANA_PASSWORD
+        volumeMounts:
+        - name: provision
+          mountPath: /etc/grafana/provisioning/datasources/default.yml
+          subPath: datasources.yml
+        - name: provision
+          mountPath: /etc/grafana/provisioning/dashboards/default.yml
+          subPath: dashboards.yml
+        - name: provision
+          mountPath: /var/lib/grafana/dashboards/kubernetes.json
+          subPath: kubernetes.json
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+      volumes:
+      - name: provision
+        configMap:
+          name: backend-grafana
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-grafana
+  namespace: itmo-backend
+spec:
+  selector:
+    app: backend-grafana
+  ports:
+  - port: 3000
+    targetPort: 3000

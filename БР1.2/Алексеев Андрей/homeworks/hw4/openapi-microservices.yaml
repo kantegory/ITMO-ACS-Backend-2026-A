@@ -1,0 +1,1993 @@
+openapi: 3.0.3
+info:
+  title: Job Search Microservices API
+  version: 2.0.0
+  description: |
+    Полная спецификация публичных и внутренних API для целевой микросервисной архитектуры
+    сервиса поиска работы. Архитектура состоит из 10 микросервисов: api-gateway,
+    auth-service, user-service, company-service, vacancy-service, search-service,
+    resume-service, application-service, interaction-service и notification-service.
+
+    Публичные endpoint'ы вызываются клиентами через api-gateway. Внутренние endpoint'ы
+    используются только для синхронного service-to-service взаимодействия. Асинхронная
+    интеграция между сервисами выполняется через Kafka events.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Public API through api-gateway
+  - url: http://auth-service:8080/internal
+    description: auth-service internal network
+  - url: http://user-service:8080/internal
+    description: user-service internal network
+  - url: http://company-service:8080/internal
+    description: company-service internal network
+  - url: http://vacancy-service:8080/internal
+    description: vacancy-service internal network
+  - url: http://resume-service:8080/internal
+    description: resume-service internal network
+  - url: http://search-service:8080/internal
+    description: search-service internal network
+  - url: http://notification-service:8080/internal
+    description: notification-service internal network
+
+tags:
+  - name: Auth Service
+    description: Регистрация, логин, обновление токена.
+  - name: User Service
+    description: Пользователи, роли, профиль текущего пользователя.
+  - name: Company Service
+    description: Компании и профили работодателей.
+  - name: Vacancy Service
+    description: Вакансии, назначения работодателей, справочники вакансий.
+  - name: Search Service
+    description: Поисковая read-модель опубликованных вакансий.
+  - name: Resume Service
+    description: Резюме соискателей.
+  - name: Application Service
+    description: Отклики, статусы откликов, приглашения на собеседование.
+  - name: Interaction Service
+    description: Избранное и история просмотров вакансий.
+  - name: Notification Service
+    description: Пользовательские уведомления.
+  - name: Internal API
+    description: Внутренние service-to-service endpoint'ы.
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth Service]
+      summary: Register applicant or employer
+      description: Создает учетную запись пользователя с ролью APPLICANT или EMPLOYER. После регистрации auth-service публикует событие UserRegistered.
+      security: []
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              applicant:
+                value:
+                  email: applicant@example.com
+                  phone: '+79990000001'
+                  password: strongPassword123
+                  fullName: Ivan Applicant
+                  role: APPLICANT
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      tags: [Auth Service]
+      summary: Login user
+      description: Проверяет учетные данные и выпускает JWT. Роли пользователя запрашиваются из user-service.
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: applicant@example.com
+              password: strongPassword123
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth Service]
+      summary: Refresh JWT pair
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Refreshed token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/me:
+    get:
+      tags: [User Service]
+      summary: Get current user profile
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+    patch:
+      tags: [User Service]
+      summary: Update current user profile
+      operationId: updateCurrentUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /roles:
+    get:
+      tags: [User Service]
+      summary: List roles
+      operationId: getRoles
+      responses:
+        '200':
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoleResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+    post:
+      tags: [User Service]
+      summary: Create role
+      operationId: createRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Created role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /users/{userId}/roles:
+    post:
+      tags: [User Service]
+      summary: Assign role to user
+      operationId: assignRoleToUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRoleRequest'
+      responses:
+        '200':
+          description: Updated user roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /companies:
+    post:
+      tags: [Company Service]
+      summary: Create company
+      operationId: createCompany
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        '201':
+          description: Created company
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /companies/{companyId}:
+    get:
+      tags: [Company Service]
+      summary: Get company by id
+      security: []
+      operationId: getCompany
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200':
+          description: Company
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyResponse'
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Company Service]
+      summary: Update company
+      operationId: updateCompany
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCompanyRequest'
+      responses:
+        '200':
+          description: Updated company
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /employer-profiles:
+    post:
+      tags: [Company Service]
+      summary: Create or relink current employer profile
+      operationId: createEmployerProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmployerProfileRequest'
+      responses:
+        '201':
+          description: Employer profile created or relinked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfileResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /employer-profiles/me:
+    get:
+      tags: [Company Service]
+      summary: Get current employer profile
+      operationId: getMyEmployerProfile
+      responses:
+        '200':
+          description: Employer profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfileResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Company Service]
+      summary: Update current employer profile
+      operationId: updateMyEmployerProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmployerProfileRequest'
+      responses:
+        '200':
+          description: Updated employer profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployerProfileResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /vacancies:
+    get:
+      tags: [Search Service]
+      summary: Search public vacancies
+      description: Публичная поисковая выдача вакансий. Внешний путь остается /vacancies, но gateway маршрутизирует GET-запрос в search-service.
+      security: []
+      operationId: searchVacancies
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: sort[created_at]
+          in: query
+          schema: { $ref: '#/components/schemas/SortDirection' }
+        - name: sort[updated_at]
+          in: query
+          schema: { $ref: '#/components/schemas/SortDirection' }
+        - name: sort[title]
+          in: query
+          schema: { $ref: '#/components/schemas/SortDirection' }
+        - name: sort[salary_from]
+          in: query
+          schema: { $ref: '#/components/schemas/SortDirection' }
+        - name: sort[salary_to]
+          in: query
+          schema: { $ref: '#/components/schemas/SortDirection' }
+        - name: sort[city]
+          in: query
+          schema: { $ref: '#/components/schemas/SortDirection' }
+        - name: search[title]
+          in: query
+          schema: { type: string }
+        - name: search[description]
+          in: query
+          schema: { type: string }
+        - name: search[company]
+          in: query
+          schema: { type: string }
+        - name: search[city]
+          in: query
+          schema: { type: string }
+        - name: search[industries]
+          in: query
+          schema: { type: string }
+        - name: search[experience_levels]
+          in: query
+          schema: { type: string }
+        - name: search[skills]
+          in: query
+          schema: { type: string }
+        - name: search[employment_types]
+          in: query
+          schema: { type: string }
+        - name: search[work_formats]
+          in: query
+          schema: { type: string }
+        - name: search[statuses]
+          in: query
+          schema: { type: string }
+        - name: salary_from
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: salary_to
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+      responses:
+        '200':
+          description: Vacancy search page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancySearchPageResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Vacancy Service]
+      summary: Create vacancy
+      description: Создает вакансию в vacancy-service. При создании автоматически создается primary assignment на текущего работодателя.
+      operationId: createVacancy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVacancyRequest'
+      responses:
+        '201':
+          description: Created vacancy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /search/vacancies:
+    get:
+      tags: [Search Service]
+      summary: Alternative explicit vacancy search endpoint
+      description: Дублирующий явный путь для поиска. Может использоваться клиентом вместо GET /vacancies.
+      security: []
+      operationId: searchVacanciesExplicit
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: city
+          in: query
+          schema: { type: string }
+        - name: skill
+          in: query
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: true
+        - name: salary_from
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: salary_to
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+      responses:
+        '200':
+          description: Vacancy search page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancySearchPageResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /vacancies/my:
+    get:
+      tags: [Vacancy Service]
+      summary: Get current employer vacancies
+      operationId: getMyVacancies
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Employer vacancy page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyPageResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /vacancies/{vacancyId}:
+    get:
+      tags: [Vacancy Service]
+      summary: Get vacancy card
+      description: Получает карточку вакансии из vacancy-service. Публично доступна только опубликованная вакансия.
+      security: []
+      operationId: getVacancy
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Vacancy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyResponse'
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Vacancy Service]
+      summary: Update vacancy
+      operationId: updateVacancy
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVacancyRequest'
+      responses:
+        '200':
+          description: Updated vacancy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacancyResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    delete:
+      tags: [Vacancy Service]
+      summary: Delete vacancy
+      operationId: deleteVacancy
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /vacancies/{vacancyId}/assignments:
+    get:
+      tags: [Vacancy Service]
+      summary: List vacancy assignments
+      operationId: getVacancyAssignments
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VacancyAssignmentResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    post:
+      tags: [Vacancy Service]
+      summary: Assign employer to vacancy
+      operationId: createVacancyAssignment
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateVacancyAssignmentRequest' }
+      responses:
+        '201':
+          description: Created assignment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancyAssignmentResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /vacancy-assignments/{assignmentId}:
+    patch:
+      tags: [Vacancy Service]
+      summary: Update vacancy assignment
+      operationId: updateVacancyAssignment
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateVacancyAssignmentRequest' }
+      responses:
+        '200':
+          description: Updated assignment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancyAssignmentResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    delete:
+      tags: [Vacancy Service]
+      summary: Delete vacancy assignment
+      operationId: deleteVacancyAssignment
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      responses:
+        '204': { description: Deleted }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /industries:
+    get:
+      tags: [Vacancy Service]
+      summary: List industries
+      security: []
+      operationId: getIndustries
+      responses:
+        '200':
+          description: Industries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DictionaryItemResponse' }
+    post:
+      tags: [Vacancy Service]
+      summary: Create industry
+      operationId: createIndustry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDictionaryItemRequest' }
+      responses:
+        '201':
+          description: Created industry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /industries/{industryId}:
+    patch:
+      tags: [Vacancy Service]
+      summary: Update industry
+      operationId: updateIndustry
+      parameters:
+        - $ref: '#/components/parameters/IndustryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateDictionaryItemRequest' }
+      responses:
+        '200':
+          description: Updated industry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /experience-levels:
+    get:
+      tags: [Vacancy Service]
+      summary: List experience levels
+      security: []
+      operationId: getExperienceLevels
+      responses:
+        '200':
+          description: Experience levels
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DictionaryItemResponse' }
+    post:
+      tags: [Vacancy Service]
+      summary: Create experience level
+      operationId: createExperienceLevel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDictionaryItemRequest' }
+      responses:
+        '201':
+          description: Created experience level
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /experience-levels/{experienceLevelId}:
+    patch:
+      tags: [Vacancy Service]
+      summary: Update experience level
+      operationId: updateExperienceLevel
+      parameters:
+        - $ref: '#/components/parameters/ExperienceLevelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateDictionaryItemRequest' }
+      responses:
+        '200':
+          description: Updated experience level
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /skills:
+    get:
+      tags: [Vacancy Service]
+      summary: List skills
+      security: []
+      operationId: getSkills
+      responses:
+        '200':
+          description: Skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DictionaryItemResponse' }
+    post:
+      tags: [Vacancy Service]
+      summary: Create skill
+      operationId: createSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDictionaryItemRequest' }
+      responses:
+        '201':
+          description: Created skill
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /skills/{skillId}:
+    patch:
+      tags: [Vacancy Service]
+      summary: Update skill
+      operationId: updateSkill
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateDictionaryItemRequest' }
+      responses:
+        '200':
+          description: Updated skill
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /resumes:
+    get:
+      tags: [Resume Service]
+      summary: Get current applicant resumes
+      operationId: getMyResumes
+      responses:
+        '200':
+          description: Resumes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ResumeResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+    post:
+      tags: [Resume Service]
+      summary: Create resume
+      operationId: createResume
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateResumeRequest' }
+      responses:
+        '201':
+          description: Created resume
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /resumes/{resumeId}:
+    get:
+      tags: [Resume Service]
+      summary: Get resume
+      operationId: getResume
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+      responses:
+        '200':
+          description: Resume
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Resume Service]
+      summary: Update resume
+      operationId: updateResume
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateResumeRequest' }
+      responses:
+        '200':
+          description: Updated resume
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    delete:
+      tags: [Resume Service]
+      summary: Delete resume
+      operationId: deleteResume
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /vacancies/{vacancyId}/applications:
+    post:
+      tags: [Application Service]
+      summary: Apply to vacancy
+      operationId: createApplication
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateApplicationRequest' }
+      responses:
+        '201':
+          description: Created application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    get:
+      tags: [Application Service]
+      summary: Get applications for vacancy
+      operationId: getVacancyApplications
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Application page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationPageResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /applications/my:
+    get:
+      tags: [Application Service]
+      summary: Get current applicant applications
+      operationId: getMyApplications
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Application page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationPageResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /applications/{applicationId}:
+    get:
+      tags: [Application Service]
+      summary: Get application by id
+      operationId: getApplication
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      responses:
+        '200':
+          description: Application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /applications/{applicationId}/status:
+    patch:
+      tags: [Application Service]
+      summary: Update application status
+      operationId: updateApplicationStatus
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateApplicationStatusRequest' }
+      responses:
+        '200':
+          description: Updated application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /applications/{applicationId}/view:
+    post:
+      tags: [Application Service]
+      summary: Mark application as viewed by employer
+      description: После фиксации просмотра application-service публикует ApplicationViewed для notification-service.
+      operationId: viewApplication
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      responses:
+        '200':
+          description: Viewed application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplicationResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /applications/{applicationId}/interview-invitations:
+    post:
+      tags: [Application Service]
+      summary: Create interview invitation
+      description: Создает приглашение на собеседование и публикует InterviewInvitationCreated для notification-service.
+      operationId: createInterviewInvitation
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInterviewInvitationRequest' }
+      responses:
+        '201':
+          description: Created interview invitation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InterviewInvitationResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /vacancies/favorites:
+    get:
+      tags: [Interaction Service]
+      summary: Get favorite vacancies
+      operationId: getFavoriteVacancies
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Favorite vacancy page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancySearchPageResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /vacancies/favorites/{vacancyId}:
+    post:
+      tags: [Interaction Service]
+      summary: Add vacancy to favorites
+      operationId: addFavoriteVacancy
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '201':
+          description: Favorite created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FavoriteVacancyResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    delete:
+      tags: [Interaction Service]
+      summary: Remove vacancy from favorites
+      operationId: removeFavoriteVacancy
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /vacancies/history:
+    get:
+      tags: [Interaction Service]
+      summary: Get vacancy view history
+      operationId: getVacancyHistory
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: View history page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancyViewPageResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /vacancies/history/{vacancyId}:
+    post:
+      tags: [Interaction Service]
+      summary: Add vacancy view to history
+      operationId: addVacancyView
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '201':
+          description: View stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancyViewResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /notifications:
+    get:
+      tags: [Notification Service]
+      summary: Get current user notifications
+      operationId: getNotifications
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: unread_only
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Notification page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPageResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /notifications/{notificationId}/read:
+    patch:
+      tags: [Notification Service]
+      summary: Mark notification as read
+      operationId: markNotificationRead
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Notification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /notifications/read-all:
+    patch:
+      tags: [Notification Service]
+      summary: Mark all current user notifications as read
+      operationId: markAllNotificationsRead
+      responses:
+        '204': { description: All notifications marked as read }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /internal/users/{userId}/auth-context:
+    get:
+      tags: [Internal API]
+      summary: Get user auth context
+      description: auth-service вызывает user-service при логине, чтобы получить роли и статус пользователя.
+      security:
+        - ServiceToken: []
+      operationId: getUserAuthContext
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User auth context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAuthContextResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/users/{userId}/notification-context:
+    get:
+      tags: [Internal API]
+      summary: Get minimal user data for notifications
+      security:
+        - ServiceToken: []
+      operationId: getUserNotificationContext
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User notification context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserNotificationContextResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/employer-profiles/by-user/{userId}:
+    get:
+      tags: [Internal API]
+      summary: Get employer profile by user id
+      description: vacancy-service вызывает company-service для проверки прав работодателя.
+      security:
+        - ServiceToken: []
+      operationId: getEmployerProfileByUserId
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Employer profile context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployerProfileContextResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/companies/{companyId}/summary:
+    get:
+      tags: [Internal API]
+      summary: Get company summary
+      description: search-service использует endpoint для восстановления поисковой проекции или денормализации company_name.
+      security:
+        - ServiceToken: []
+      operationId: getCompanySummary
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200':
+          description: Company summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompanySummaryResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/vacancies/{vacancyId}/application-context:
+    get:
+      tags: [Internal API]
+      summary: Get vacancy context for applications
+      description: application-service вызывает vacancy-service, чтобы проверить статус вакансии и права работодателя на обработку откликов.
+      security:
+        - ServiceToken: []
+      operationId: getVacancyApplicationContext
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Vacancy application context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancyApplicationContextResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/vacancies/{vacancyId}/public-context:
+    get:
+      tags: [Internal API]
+      summary: Get public vacancy context
+      description: interaction-service проверяет, что вакансия существует и доступна для добавления в избранное или историю.
+      security:
+        - ServiceToken: []
+      operationId: getVacancyPublicContext
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Public vacancy context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancyPublicContextResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/vacancies/{vacancyId}/search-document:
+    get:
+      tags: [Internal API]
+      summary: Get vacancy source document for search index
+      description: search-service вызывает vacancy-service для принудительной переиндексации, восстановления после сбоя или если Kafka event содержит неполный payload.
+      security:
+        - ServiceToken: []
+      operationId: getVacancySearchDocument
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '200':
+          description: Search document source
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VacancySearchDocumentResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/resumes/{resumeId}/ownership:
+    get:
+      tags: [Internal API]
+      summary: Check resume ownership
+      description: application-service проверяет, что резюме принадлежит текущему соискателю.
+      security:
+        - ServiceToken: []
+      operationId: checkResumeOwnership
+      parameters:
+        - $ref: '#/components/parameters/ResumeId'
+        - name: userId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Resume ownership
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeOwnershipResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/search/reindex/vacancies/{vacancyId}:
+    post:
+      tags: [Internal API]
+      summary: Force vacancy reindex
+      description: Административный или recovery endpoint search-service.
+      security:
+        - ServiceToken: []
+      operationId: forceVacancyReindex
+      parameters:
+        - $ref: '#/components/parameters/VacancyId'
+      responses:
+        '202':
+          description: Reindex task accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReindexAcceptedResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /internal/notifications:
+    post:
+      tags: [Internal API]
+      summary: Create notification synchronously
+      description: Fallback endpoint. Основной поток уведомлений строится через Kafka events.
+      security:
+        - ServiceToken: []
+      operationId: createNotificationInternal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateNotificationRequest' }
+      responses:
+        '201':
+          description: Notification created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ServiceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CompanyId:
+      name: companyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    VacancyId:
+      name: vacancyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ResumeId:
+      name: resumeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ApplicationId:
+      name: applicationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AssignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IndustryId:
+      name: industryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExperienceLevelId:
+      name: experienceLevelId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SkillId:
+      name: skillId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example:
+            code: VALIDATION
+            message: Invalid request parameters
+            details: [field salary_from must be greater than or equal to 0]
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: UNAUTHORIZED, message: Authentication required }
+    ForbiddenError:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: FORBIDDEN, message: Access denied }
+    NotFoundError:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: NOT_FOUND, message: Resource not found }
+    ConflictError:
+      description: Conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: CONFLICT, message: Resource already exists }
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: INTERNAL, message: Unexpected error }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [VALIDATION, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, INTERNAL]
+        message: { type: string }
+        details:
+          type: array
+          items: { type: string }
+
+    PageMeta:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page: { type: integer, example: 0 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, format: int64, example: 135 }
+
+    SortDirection:
+      type: string
+      enum: [asc, desc]
+
+    UserRole:
+      type: string
+      enum: [APPLICANT, EMPLOYER, ADMIN, DICTIONARY_EDITOR]
+    VacancyStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, ARCHIVED, DELETED]
+    AssignmentRole:
+      type: string
+      enum: [PRIMARY, RECRUITER, VIEWER]
+    ApplicationStatus:
+      type: string
+      enum: [CREATED, VIEWED, INVITED, REJECTED, ACCEPTED, WITHDRAWN]
+    NotificationType:
+      type: string
+      enum: [NEW_APPLICATION, APPLICATION_VIEWED, APPLICATION_STATUS_CHANGED, INTERVIEW_INVITATION, VACANCY_ASSIGNED]
+
+    RegisterRequest:
+      type: object
+      required: [email, password, fullName, role]
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        password: { type: string, minLength: 8 }
+        fullName: { type: string, minLength: 1 }
+        role:
+          type: string
+          enum: [APPLICANT, EMPLOYER]
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, user]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string, nullable: true }
+        tokenType: { type: string, example: Bearer }
+        user: { $ref: '#/components/schemas/UserResponse' }
+
+    UserResponse:
+      type: object
+      required: [id, email, fullName, roles, active]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        fullName: { type: string }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/UserRole' }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    UpdateUserRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        fullName: { type: string }
+    RoleResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: '#/components/schemas/UserRole' }
+    CreateRoleRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { $ref: '#/components/schemas/UserRole' }
+    AssignRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/UserRole' }
+
+    CreateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+    UpdateCompanyRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+    CompanyResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateEmployerProfileRequest:
+      type: object
+      required: [companyId, position]
+      properties:
+        companyId: { type: string, format: uuid }
+        position: { type: string }
+    UpdateEmployerProfileRequest:
+      type: object
+      properties:
+        position: { type: string }
+        companyId: { type: string, format: uuid }
+    EmployerProfileResponse:
+      type: object
+      required: [id, userId, companyId, position]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        position: { type: string }
+
+    DictionaryItemResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        active: { type: boolean, default: true }
+    CreateDictionaryItemRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    UpdateDictionaryItemRequest:
+      type: object
+      properties:
+        name: { type: string }
+        active: { type: boolean }
+
+    CreateVacancyRequest:
+      type: object
+      required: [companyId, title, description]
+      properties:
+        companyId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        city: { type: string, nullable: true }
+        salaryFrom: { type: integer, format: int64, nullable: true, minimum: 0 }
+        salaryTo: { type: integer, format: int64, nullable: true, minimum: 0 }
+        industryIds:
+          type: array
+          items: { type: string, format: uuid }
+        experienceLevelIds:
+          type: array
+          items: { type: string, format: uuid }
+        skillIds:
+          type: array
+          items: { type: string, format: uuid }
+        employmentTypes:
+          type: array
+          items: { type: string }
+        workFormats:
+          type: array
+          items: { type: string }
+        requirementText: { type: string, nullable: true }
+        responsibilityText: { type: string, nullable: true }
+        benefitText: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/VacancyStatus' }
+    UpdateVacancyRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        city: { type: string, nullable: true }
+        salaryFrom: { type: integer, format: int64, nullable: true, minimum: 0 }
+        salaryTo: { type: integer, format: int64, nullable: true, minimum: 0 }
+        industryIds:
+          type: array
+          items: { type: string, format: uuid }
+        experienceLevelIds:
+          type: array
+          items: { type: string, format: uuid }
+        skillIds:
+          type: array
+          items: { type: string, format: uuid }
+        employmentTypes:
+          type: array
+          items: { type: string }
+        workFormats:
+          type: array
+          items: { type: string }
+        requirementText: { type: string, nullable: true }
+        responsibilityText: { type: string, nullable: true }
+        benefitText: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/VacancyStatus' }
+    VacancyResponse:
+      type: object
+      required: [id, companyId, title, description, status]
+      properties:
+        id: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        companyName: { type: string, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        city: { type: string, nullable: true }
+        salaryFrom: { type: integer, format: int64, nullable: true }
+        salaryTo: { type: integer, format: int64, nullable: true }
+        industries:
+          type: array
+          items: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        experienceLevels:
+          type: array
+          items: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/DictionaryItemResponse' }
+        employmentTypes:
+          type: array
+          items: { type: string }
+        workFormats:
+          type: array
+          items: { type: string }
+        requirementText: { type: string, nullable: true }
+        responsibilityText: { type: string, nullable: true }
+        benefitText: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/VacancyStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    VacancySearchDocument:
+      allOf:
+        - $ref: '#/components/schemas/VacancyResponse'
+        - type: object
+          properties:
+            highlightedText: { type: string, nullable: true }
+    VacancyPageResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/VacancyResponse' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    VacancySearchPageResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/VacancySearchDocument' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    CreateVacancyAssignmentRequest:
+      type: object
+      required: [employerProfileId, role]
+      properties:
+        employerProfileId: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/AssignmentRole' }
+    UpdateVacancyAssignmentRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/AssignmentRole' }
+    VacancyAssignmentResponse:
+      type: object
+      required: [id, vacancyId, employerProfileId, role]
+      properties:
+        id: { type: string, format: uuid }
+        vacancyId: { type: string, format: uuid }
+        employerProfileId: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/AssignmentRole' }
+
+    CreateResumeRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        summary: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        skills:
+          type: array
+          items: { type: string }
+        education:
+          type: array
+          items: { $ref: '#/components/schemas/ResumeEducationItem' }
+        workExperience:
+          type: array
+          items: { $ref: '#/components/schemas/ResumeWorkExperienceItem' }
+    UpdateResumeRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateResumeRequest'
+    ResumeEducationItem:
+      type: object
+      properties:
+        institution: { type: string }
+        degree: { type: string, nullable: true }
+        startYear: { type: integer, nullable: true }
+        endYear: { type: integer, nullable: true }
+    ResumeWorkExperienceItem:
+      type: object
+      properties:
+        company: { type: string }
+        position: { type: string }
+        description: { type: string, nullable: true }
+        startDate: { type: string, format: date, nullable: true }
+        endDate: { type: string, format: date, nullable: true }
+    ResumeResponse:
+      type: object
+      required: [id, ownerUserId, title]
+      properties:
+        id: { type: string, format: uuid }
+        ownerUserId: { type: string, format: uuid }
+        title: { type: string }
+        summary: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        skills:
+          type: array
+          items: { type: string }
+        education:
+          type: array
+          items: { $ref: '#/components/schemas/ResumeEducationItem' }
+        workExperience:
+          type: array
+          items: { $ref: '#/components/schemas/ResumeWorkExperienceItem' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateApplicationRequest:
+      type: object
+      required: [resumeId]
+      properties:
+        resumeId: { type: string, format: uuid }
+        coverLetter: { type: string, nullable: true }
+    UpdateApplicationStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/ApplicationStatus' }
+        comment: { type: string, nullable: true }
+    ApplicationResponse:
+      type: object
+      required: [id, vacancyId, resumeId, applicantUserId, status]
+      properties:
+        id: { type: string, format: uuid }
+        vacancyId: { type: string, format: uuid }
+        resumeId: { type: string, format: uuid }
+        applicantUserId: { type: string, format: uuid }
+        coverLetter: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/ApplicationStatus' }
+        viewedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ApplicationPageResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ApplicationResponse' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    CreateInterviewInvitationRequest:
+      type: object
+      required: [scheduledAt]
+      properties:
+        scheduledAt: { type: string, format: date-time }
+        location: { type: string, nullable: true }
+        message: { type: string, nullable: true }
+    InterviewInvitationResponse:
+      type: object
+      required: [id, applicationId, scheduledAt]
+      properties:
+        id: { type: string, format: uuid }
+        applicationId: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time }
+        location: { type: string, nullable: true }
+        message: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    FavoriteVacancyResponse:
+      type: object
+      required: [userId, vacancyId, createdAt]
+      properties:
+        userId: { type: string, format: uuid }
+        vacancyId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    VacancyViewResponse:
+      type: object
+      required: [id, userId, vacancyId, viewedAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        vacancyId: { type: string, format: uuid }
+        viewedAt: { type: string, format: date-time }
+    VacancyViewPageResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/VacancyViewResponse' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    NotificationResponse:
+      type: object
+      required: [id, userId, type, title, read, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        title: { type: string }
+        body: { type: string, nullable: true }
+        entityType: { type: string, nullable: true, example: APPLICATION }
+        entityId: { type: string, format: uuid, nullable: true }
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    NotificationPageResponse:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NotificationResponse' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    CreateNotificationRequest:
+      type: object
+      required: [userId, type, title]
+      properties:
+        userId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        title: { type: string }
+        body: { type: string, nullable: true }
+        entityType: { type: string, nullable: true }
+        entityId: { type: string, format: uuid, nullable: true }
+
+    UserAuthContextResponse:
+      type: object
+      required: [userId, email, roles, active]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/UserRole' }
+        active: { type: boolean }
+    UserNotificationContextResponse:
+      type: object
+      required: [userId, email, fullName]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        fullName: { type: string }
+    EmployerProfileContextResponse:
+      type: object
+      required: [employerProfileId, userId, companyId, active]
+      properties:
+        employerProfileId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        active: { type: boolean }
+    CompanySummaryResponse:
+      type: object
+      required: [companyId, name]
+      properties:
+        companyId: { type: string, format: uuid }
+        name: { type: string }
+        city: { type: string, nullable: true }
+    VacancyApplicationContextResponse:
+      type: object
+      required: [vacancyId, companyId, status, acceptsApplications, assignedEmployerUserIds]
+      properties:
+        vacancyId: { type: string, format: uuid }
+        companyId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/VacancyStatus' }
+        acceptsApplications: { type: boolean }
+        assignedEmployerUserIds:
+          type: array
+          items: { type: string, format: uuid }
+    VacancyPublicContextResponse:
+      type: object
+      required: [vacancyId, status, visible]
+      properties:
+        vacancyId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/VacancyStatus' }
+        visible: { type: boolean }
+    VacancySearchDocumentResponse:
+      allOf:
+        - $ref: '#/components/schemas/VacancySearchDocument'
+    ResumeOwnershipResponse:
+      type: object
+      required: [resumeId, ownerUserId, ownedByUser]
+      properties:
+        resumeId: { type: string, format: uuid }
+        ownerUserId: { type: string, format: uuid }
+        ownedByUser: { type: boolean }
+        status: { type: string, example: ACTIVE }
+    ReindexAcceptedResponse:
+      type: object
+      required: [taskId, vacancyId, status]
+      properties:
+        taskId: { type: string, format: uuid }
+        vacancyId: { type: string, format: uuid }
+        status: { type: string, example: ACCEPTED }

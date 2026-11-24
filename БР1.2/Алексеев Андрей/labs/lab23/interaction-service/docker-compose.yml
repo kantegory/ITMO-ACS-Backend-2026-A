@@ -1,0 +1,45 @@
+services:
+  interaction-db:
+    image: postgres:17
+    container_name: lab23-interaction-db
+    environment:
+      POSTGRES_DB: interaction_db
+      POSTGRES_USER: interaction
+      POSTGRES_PASSWORD: interaction
+    ports:
+      - "55434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interaction -d interaction_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - lab23-network
+
+  interaction-service:
+    build: .
+    container_name: lab23-interaction-service
+    entrypoint: ["java", "-Xms32m", "-Xmx256m", "-jar", "/app/app.jar"]
+    environment:
+      SERVER_PORT: 8088
+      DB_URL: jdbc:postgresql://interaction-db:5432/interaction_db
+      DB_USERNAME: interaction
+      DB_PASSWORD: interaction
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_SECRET: 5d425331c66b17a28480fd38d2128e8350a24d535f23061c8d86bce66bdbcc44
+      SERVICE_TOKEN: df0670418aa48ee9017ad05da2a1367b04e96686e5fb1bb0
+      VACANCY_URL: http://vacancy-service:8084
+    depends_on:
+      interaction-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    mem_limit: 640m
+    ports:
+      - "8088:8088"
+    networks:
+      - lab23-network
+
+networks:
+  lab23-network:
+    name: lab23-network

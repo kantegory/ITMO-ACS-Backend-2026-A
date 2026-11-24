@@ -1,0 +1,40 @@
+name: Auth release
+on:
+  push:
+    branches: [auth-vm, auth-cloud]
+permissions:
+  contents: read
+concurrency:
+  group: itmo-auth-release
+  cancel-in-progress: false
+jobs:
+  build-and-deploy:
+    if: github.repository == 'pxdkxvan/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: auth-lab
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: БР1.2/Алексеев Андрей/labs/lab23/auth-service
+          load: true
+          tags: itmo-backend/auth-service:${{ github.sha }}
+          cache-from: type=gha,scope=auth-release
+          cache-to: type=gha,mode=max,scope=auth-release
+      - name: Verify SSH host and stream the image
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AUTH_RELEASE_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.AUTH_RELEASE_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/auth-release
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          target="${GITHUB_REF_NAME#auth-}"
+          docker image save "itmo-backend/auth-service:$GITHUB_SHA" | gzip -1 |
+            ssh -T -i ~/.ssh/auth-release -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 -o ServerAliveInterval=15 \
+              root@38.87.117.47 "deploy-$target $GITHUB_SHA"

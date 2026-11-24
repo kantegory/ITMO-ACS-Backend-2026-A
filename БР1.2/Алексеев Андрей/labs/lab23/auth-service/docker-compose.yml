@@ -1,0 +1,41 @@
+services:
+  auth-db:
+    image: postgres:17
+    container_name: lab23-auth-db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth
+    ports:
+      - "54322:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - lab23-network
+
+  auth-service:
+    build: .
+    container_name: lab23-auth-service
+    entrypoint: ["java", "-Xms32m", "-Xmx256m", "-jar", "/app/app.jar"]
+    environment:
+      SERVER_PORT: 8081
+      DB_URL: jdbc:postgresql://auth-db:5432/auth_db
+      DB_USERNAME: auth
+      DB_PASSWORD: auth
+      JWT_SECRET: 5d425331c66b17a28480fd38d2128e8350a24d535f23061c8d86bce66bdbcc44
+      SERVICE_TOKEN: df0670418aa48ee9017ad05da2a1367b04e96686e5fb1bb0
+      USER_URL: http://user-service:8082
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    networks:
+      - lab23-network
+
+networks:
+  lab23-network:
+    name: lab23-network
