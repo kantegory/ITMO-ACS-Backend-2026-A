@@ -35,22 +35,18 @@ jobs:
       with:
         python-version: '3.12'
     - run: pip install -r infra/semester2/requirements.txt
-    - run: 'python scripts/semester2/init-env.py
-
+    - run: |-
+        python scripts/semester2/init-env.py
         python scripts/semester2/validate.py
-
-        ansible-playbook -i infra/semester2/ansible/inventory.example.yml infra/semester2/ansible/site.yml
-        --syntax-check
-
-        mkdocs build --strict -f infra/semester2/mkdocs.yml'
+        ansible-playbook -i infra/semester2/ansible/inventory.example.yml infra/semester2/ansible/site.yml --syntax-check
+        mkdocs build --strict -f infra/semester2/mkdocs.yml
     - name: Validate Prometheus configuration
-      run: docker run --rm --entrypoint promtool -v "$PWD/infra/semester2/monitoring:/etc/prometheus:ro"
-        prom/prometheus:v3.2.1 check config /etc/prometheus/prometheus.yml
+      run: docker run --rm --entrypoint promtool -v "$PWD/infra/semester2/monitoring:/etc/prometheus:ro" prom/prometheus:v3.2.1
+        check config /etc/prometheus/prometheus.yml
     - name: Validate Kubernetes schemas
-      run: 'curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
-        | tar -xz kubeconform
-
-        ./kubeconform -strict -summary infra/semester2/kubernetes/*.yml'
+      run: |-
+        curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar -xz kubeconform
+        ./kubeconform -strict -summary infra/semester2/kubernetes/*.yml
   images:
     needs: validate
     runs-on: ubuntu-latest
@@ -89,8 +85,7 @@ jobs:
         cache-from: type=gha,scope=${{ matrix.service }}
         cache-to: type=gha,mode=max,scope=${{ matrix.service }}
   deploy-vm:
-    if: github.ref == 'refs/heads/semester2' || (github.event_name == 'workflow_dispatch'
-      && inputs.deploy == 'vm')
+    if: github.ref == 'refs/heads/semester2' || (github.event_name == 'workflow_dispatch' && inputs.deploy == 'vm')
     needs: images
     runs-on: ubuntu-latest
     environment: semester2-vm
@@ -101,32 +96,25 @@ jobs:
       env:
         SSH_KEY: ${{ secrets.S2_SSH_KEY }}
         KNOWN_HOSTS: ${{ secrets.S2_KNOWN_HOSTS }}
-      run: 'install -d -m 700 ~/.ssh
-
+      run: |-
+        install -d -m 700 ~/.ssh
         printf "%s\n" "$SSH_KEY" > ~/.ssh/id_ed25519
-
         chmod 600 ~/.ssh/id_ed25519
-
-        printf "%s\n" "$KNOWN_HOSTS" > ~/.ssh/known_hosts'
+        printf "%s\n" "$KNOWN_HOSTS" > ~/.ssh/known_hosts
     - name: Copy release and deploy commit
       env:
         SSH_HOST: ${{ secrets.S2_SSH_HOST }}
         SSH_USER: ${{ secrets.S2_SSH_USER }}
         IMAGE_TAG: ${{ github.sha }}
         IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/itmo-backend
-      run: 'test -n "$SSH_HOST" && test -n "$SSH_USER"
-
-        tar --exclude=secrets.env --exclude=site --exclude=inventory.local.yml -czf
-        /tmp/release.tgz infra/semester2 scripts/semester2
-
+      run: |-
+        test -n "$SSH_HOST" && test -n "$SSH_USER"
+        tar --exclude=secrets.env --exclude=site --exclude=inventory.local.yml -czf /tmp/release.tgz infra/semester2 scripts/semester2
         scp /tmp/release.tgz "$SSH_USER@$SSH_HOST:/tmp/itmo-backend-release.tgz"
-
-        ssh "$SSH_USER@$SSH_HOST" "mkdir -p /opt/itmo-backend && tar -xzf /tmp/itmo-backend-release.tgz
-        -C /opt/itmo-backend && IMAGE_PREFIX=$IMAGE_PREFIX IMAGE_TAG=$IMAGE_TAG bash
-        /opt/itmo-backend/scripts/semester2/deploy.sh"'
+        ssh "$SSH_USER@$SSH_HOST" "mkdir -p /opt/itmo-backend && tar -xzf /tmp/itmo-backend-release.tgz -C /opt/itmo-backend && IMAGE_PREFIX=$IMAGE_PREFIX IMAGE_TAG=$IMAGE_TAG bash /opt/itmo-backend/scripts/semester2/deploy.sh"
   deploy-cloud:
-    if: github.ref == 'refs/heads/semester2-cloud' || (github.event_name == 'workflow_dispatch'
-      && inputs.deploy == 'cloud')
+    if: github.ref == 'refs/heads/semester2-cloud' || (github.event_name == 'workflow_dispatch' && inputs.deploy
+      == 'cloud')
     needs: images
     runs-on: ubuntu-latest
     environment: semester2-cloud
@@ -142,10 +130,8 @@ jobs:
         KUBE_CONTEXT: ${{ vars.S2_KUBE_CONTEXT }}
         INGRESS_HOST: ${{ vars.S2_INGRESS_HOST }}
         IMAGE_TAG: ${{ github.sha }}
-      run: 'umask 077
-
+      run: |-
+        umask 077
         mkdir -p ~/.kube
-
-        printf ''%s'' "$KUBE_CONFIG" > ~/.kube/config
-
-        bash scripts/semester2/deploy-kubernetes.sh'
+        printf '%s' "$KUBE_CONFIG" > ~/.kube/config
+        bash scripts/semester2/deploy-kubernetes.sh

@@ -16,5 +16,6 @@
 | k6 smoke, локально | 147 GET, 2,89 req/s, p95 19,95 мс, p99 29,17 мс, 0 ошибок. Один VU, три маршрута |
 | k6 authenticated, локально | 31 запрос, 1,01 req/s, p95 45,38 мс, p99 83,49 мс, 0 ошибок. Один login и 30 запросов профиля |
 | GitHub Actions, прежняя ВМ | [Lab23 Deploy](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/26723466788), deploy успешно завершился |
-| GitHub Actions, второй семестр | [Запуск на ветке с работами](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/45482983203). Проверки и публикация 10 образов в GHCR завершились успешно. Задания доставки пропущены на рабочей ветке |
+| GitHub Actions, второй семестр | [Первый](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/45482983203) и [повторный](https://github.com/pxdkxvan/ITMO-ACS-Backend-2026-A/actions/runs/45484728657) прогоны прошли. В каждом опубликованы 10 образов в GHCR. Задания доставки пропущены на рабочей ветке |
+| Данные и приложение на общей ВМ | Восемь PostgreSQL и Kafka достигли healthy. Elasticsearch не прошёл healthcheck за ограниченное время. Запущены gateway, auth-service и user-service. HTTP-проверка через nginx на ВМ не завершилась в пределах прогона |
 | Cloud delivery и HPA под нагрузкой | Нужны облачный проект, кластер с metrics-server и DNS |

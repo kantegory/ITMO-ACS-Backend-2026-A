@@ -19,9 +19,16 @@ metadata:
   name: backend-prometheus
   namespace: itmo-backend
 data:
-  prometheus.yml: "global:\n  scrape_interval: 15s\nscrape_configs:\n- job_name: microservices\n\
-    \  metrics_path: /actuator/prometheus\n  dns_sd_configs:\n  - names:\n    - _metrics._tcp.backend-metrics.itmo-backend.svc\n\
-    \    type: SRV\n"
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+    - job_name: microservices
+      metrics_path: /actuator/prometheus
+      dns_sd_configs:
+      - names:
+        - _metrics._tcp.backend-metrics.itmo-backend.svc
+        type: SRV
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,11 +38,12 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels: &id001
+    matchLabels:
       app: backend-prometheus
   template:
     metadata:
-      labels: *id001
+      labels:
+        app: backend-prometheus
     spec:
       automountServiceAccountToken: false
       containers:
@@ -88,59 +96,191 @@ metadata:
   name: backend-grafana
   namespace: itmo-backend
 data:
-  datasources.yml: "apiVersion: 1\ndatasources:\n- name: Prometheus\n  uid: prometheus\n\
-    \  type: prometheus\n  access: proxy\n  url: http://backend-prometheus:9090\n\
-    \  isDefault: true\n"
-  dashboards.yml: "apiVersion: 1\nproviders:\n- name: ITMO\n  type: file\n  options:\n\
-    \    path: /var/lib/grafana/dashboards\n"
-  kubernetes.json: "{\n  \"uid\": \"itmo-cloud\",\n  \"title\": \"ITMO Backend · Kubernetes\"\
-    ,\n  \"schemaVersion\": 40,\n  \"refresh\": \"15s\",\n  \"time\": {\n    \"from\"\
-    : \"now-30m\",\n    \"to\": \"now\"\n  },\n  \"panels\": [\n    {\n      \"id\"\
-    : 1,\n      \"title\": \"CPU процесса по pod\",\n      \"type\": \"timeseries\"\
-    ,\n      \"datasource\": {\n        \"uid\": \"prometheus\"\n      },\n      \"\
-    gridPos\": {\n        \"x\": 0,\n        \"y\": 0,\n        \"w\": 12,\n     \
-    \   \"h\": 8\n      },\n      \"targets\": [\n        {\n          \"refId\":\
-    \ \"A\",\n          \"expr\": \"100 * process_cpu_usage\"\n        }\n      ],\n\
-    \      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"percent\"\
-    \n        },\n        \"overrides\": []\n      }\n    },\n    {\n      \"id\"\
-    : 2,\n      \"title\": \"JVM heap по pod\",\n      \"type\": \"timeseries\",\n\
-    \      \"datasource\": {\n        \"uid\": \"prometheus\"\n      },\n      \"\
-    gridPos\": {\n        \"x\": 12,\n        \"y\": 0,\n        \"w\": 12,\n    \
-    \    \"h\": 8\n      },\n      \"targets\": [\n        {\n          \"refId\"\
-    : \"A\",\n          \"expr\": \"sum by (application, instance) (jvm_memory_used_bytes{area=\\\
-    \"heap\\\"})\"\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
-    : {\n          \"unit\": \"bytes\"\n        },\n        \"overrides\": []\n  \
-    \    }\n    },\n    {\n      \"id\": 3,\n      \"title\": \"Запросы в секунду\"\
-    ,\n      \"type\": \"timeseries\",\n      \"datasource\": {\n        \"uid\":\
-    \ \"prometheus\"\n      },\n      \"gridPos\": {\n        \"x\": 0,\n        \"\
-    y\": 8,\n        \"w\": 12,\n        \"h\": 8\n      },\n      \"targets\": [\n\
-    \        {\n          \"refId\": \"A\",\n          \"expr\": \"sum by(application)\
-    \ (rate(http_server_requests_seconds_count{uri!~\\\"/actuator.*\\\"}[2m]))\"\n\
-    \        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\": {\n    \
-    \      \"unit\": \"reqps\"\n        },\n        \"overrides\": []\n      }\n \
-    \   },\n    {\n      \"id\": 4,\n      \"title\": \"HTTP p95\",\n      \"type\"\
-    : \"timeseries\",\n      \"datasource\": {\n        \"uid\": \"prometheus\"\n\
-    \      },\n      \"gridPos\": {\n        \"x\": 12,\n        \"y\": 8,\n     \
-    \   \"w\": 12,\n        \"h\": 8\n      },\n      \"targets\": [\n        {\n\
-    \          \"refId\": \"A\",\n          \"expr\": \"histogram_quantile(0.95, sum\
-    \ by(application,le) (rate(http_server_requests_seconds_bucket{uri!~\\\"/actuator.*\\\
-    \"}[2m])))\"\n        }\n      ],\n      \"fieldConfig\": {\n        \"defaults\"\
-    : {\n          \"unit\": \"s\"\n        },\n        \"overrides\": []\n      }\n\
-    \    },\n    {\n      \"id\": 5,\n      \"title\": \"HTTP 5xx\",\n      \"type\"\
-    : \"timeseries\",\n      \"datasource\": {\n        \"uid\": \"prometheus\"\n\
-    \      },\n      \"gridPos\": {\n        \"x\": 0,\n        \"y\": 16,\n     \
-    \   \"w\": 12,\n        \"h\": 8\n      },\n      \"targets\": [\n        {\n\
-    \          \"refId\": \"A\",\n          \"expr\": \"sum by(application) (rate(http_server_requests_seconds_count{status=~\\\
-    \"5..\\\"}[2m]))\"\n        }\n      ],\n      \"fieldConfig\": {\n        \"\
-    defaults\": {\n          \"unit\": \"reqps\"\n        },\n        \"overrides\"\
-    : []\n      }\n    },\n    {\n      \"id\": 6,\n      \"title\": \"Pod с доступными\
-    \ метриками\",\n      \"type\": \"timeseries\",\n      \"datasource\": {\n   \
-    \     \"uid\": \"prometheus\"\n      },\n      \"gridPos\": {\n        \"x\":\
-    \ 12,\n        \"y\": 16,\n        \"w\": 12,\n        \"h\": 8\n      },\n  \
-    \    \"targets\": [\n        {\n          \"refId\": \"A\",\n          \"expr\"\
-    : \"sum by(application) (process_uptime_seconds > bool 0)\"\n        }\n     \
-    \ ],\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"\
-    short\"\n        },\n        \"overrides\": []\n      }\n    }\n  ]\n}"
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      uid: prometheus
+      type: prometheus
+      access: proxy
+      url: http://backend-prometheus:9090
+      isDefault: true
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+    - name: ITMO
+      type: file
+      options:
+        path: /var/lib/grafana/dashboards
+  kubernetes.json: |-
+    {
+      "uid": "itmo-cloud",
+      "title": "ITMO Backend · Kubernetes",
+      "schemaVersion": 40,
+      "refresh": "15s",
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "CPU процесса по pod",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * process_cpu_usage"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 2,
+          "title": "JVM heap по pod",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (application, instance) (jvm_memory_used_bytes{area=\"heap\"})"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "title": "Запросы в секунду",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by(application) (rate(http_server_requests_seconds_count{uri!~\"/actuator.*\"}[2m]))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "title": "HTTP p95",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by(application,le) (rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[2m])))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "title": "HTTP 5xx",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by(application) (rate(http_server_requests_seconds_count{status=~\"5..\"}[2m]))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "title": "Pod с доступными метриками",
+          "type": "timeseries",
+          "datasource": {
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by(application) (process_uptime_seconds > bool 0)"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          }
+        }
+      ]
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -150,11 +290,12 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels: &id001
+    matchLabels:
       app: backend-grafana
   template:
     metadata:
-      labels: *id001
+      labels:
+        app: backend-grafana
     spec:
       automountServiceAccountToken: false
       containers:
