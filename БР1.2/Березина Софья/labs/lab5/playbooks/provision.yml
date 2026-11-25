@@ -1,0 +1,72 @@
+---
+- name: Provision Ubuntu virtual machines
+  hosts: fitness_servers
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Ensure the target operating system is Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - docker_deb_arch | length > 0
+
+  tasks:
+    - name: Install packages required for Docker
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create the directory for APT keyrings
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download the official Docker repository key
+      ansible.builtin.get_url:
+        url: "{{ docker_apt_key_url }}"
+        dest: "{{ docker_apt_keyring }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Add the official Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: "{{ docker_apt_repo }}"
+        filename: docker
+        state: present
+        update_cache: true
+
+    - name: Install Docker Engine and the Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Verify that Docker Compose is available
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - version
+      changed_when: false

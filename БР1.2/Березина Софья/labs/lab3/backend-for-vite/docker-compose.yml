@@ -1,0 +1,129 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fitness_admin
+      POSTGRES_USER: fitness_admin
+      POSTGRES_PASSWORD: fitness_admin_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitness_admin -d fitness_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  auth:
+    build: ./services/auth
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://auth_user:auth_pass@postgres:5432/auth_db
+      JWT_SECRET: fitness-platform-secret
+      USERS_SERVICE_URL: http://user:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user:
+        condition: service_started
+
+  user:
+    build: ./services/user
+    ports:
+      - "3002:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://users_user:users_pass@postgres:5432/users_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  workout:
+    build: ./services/workout
+    ports:
+      - "3003:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://workouts_user:workouts_pass@postgres:5432/workouts_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  userworkouts:
+    build: ./services/userworkouts
+    ports:
+      - "3004:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://user_workouts_user:user_workouts_pass@postgres:5432/user_workouts_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USERS_SERVICE_URL: http://user:3000
+      WORKOUTS_SERVICE_URL: http://workout:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user:
+        condition: service_started
+      workout:
+        condition: service_started
+
+  progress:
+    build: ./services/progress
+    ports:
+      - "3005:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://progress_user:progress_pass@postgres:5432/progress_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  blog:
+    build: ./services/blog
+    ports:
+      - "3006:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://blog_user:blog_pass@postgres:5432/blog_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USERS_SERVICE_URL: http://user:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      user:
+        condition: service_started
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
