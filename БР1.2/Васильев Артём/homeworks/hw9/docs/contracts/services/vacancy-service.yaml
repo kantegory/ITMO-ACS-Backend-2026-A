@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: Vacancy Service API
+  version: 1.0.0
+  description: Vacancies with external company, profile and dictionary IDs.
+servers:
+  - url: http://localhost:3004/api/v1
+tags:
+  - name: Vacancies
+  - name: Internal
+paths:
+  /vacancies:
+    post:
+      tags: [Vacancies]
+      summary: Create vacancy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancyRequest'
+      responses:
+        '201':
+          description: Vacancy created
+    get:
+      tags: [Vacancies]
+      summary: List published vacancies
+      responses:
+        '200':
+          description: Vacancy list
+  /vacancies/my:
+    get:
+      tags: [Vacancies]
+      summary: List current employer vacancies
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Own vacancy list
+  /vacancies/{vacancy_id}:
+    get:
+      tags: [Vacancies]
+      summary: Get vacancy
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      responses:
+        '200':
+          description: Vacancy found
+    patch:
+      tags: [Vacancies]
+      summary: Update vacancy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VacancyRequest'
+      responses:
+        '200':
+          description: Vacancy updated
+    delete:
+      tags: [Vacancies]
+      summary: Delete vacancy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      responses:
+        '204':
+          description: Vacancy deleted
+  /internal/v1/vacancies/batch:
+    post:
+      tags: [Internal]
+      summary: Internal batch vacancy lookup
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchIdsRequest'
+      responses:
+        '200':
+          description: Vacancies and missingIds returned
+components:
+  schemas:
+    VacancyRequest:
+      type: object
+      required:
+        - company_id
+        - employer_profile_id
+        - industry_id
+        - experience_level_id
+        - title
+        - description
+        - requirements
+        - responsibilities
+        - salary_from
+        - salary_to
+        - city
+        - employment_type
+        - work_format
+        - is_published
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        employer_profile_id:
+          type: string
+          format: uuid
+        industry_id:
+          type: string
+          format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+        experience_level_id:
+          type: string
+          format: uuid
+          example: 22222222-2222-2222-2222-222222222222
+        title:
+          type: string
+          example: Backend Developer
+        description:
+          type: string
+          example: Node.js service work
+        requirements:
+          type: string
+          example: TypeScript, SQL
+        responsibilities:
+          type: string
+          example: Build APIs
+        salary_from:
+          type: number
+          example: 100000
+        salary_to:
+          type: number
+          example: 180000
+        city:
+          type: string
+          example: Saint Petersburg
+        employment_type:
+          type: string
+          enum: [FULL_TIME, PART_TIME, CONTRACT, INTERNSHIP]
+        work_format:
+          type: string
+          enum: [OFFICE, REMOTE, HYBRID]
+        is_published:
+          type: boolean
+    BatchIdsRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          example: true
+  parameters:
+    vacancyId:
+      name: vacancy_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token

@@ -1,0 +1,220 @@
+{
+  "info": {
+    "_postman_id": "8ca3e424-4df8-430e-91a9-728f08fb536b",
+    "name": "Job Platform DZ3 - End-to-End Hiring Flow",
+    "description": "Complex Postman scenario for the job platform API: employer publishes a vacancy, applicant finds it and applies, employer updates application status.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01. Register employer",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const suffix = `${Date.now()}-${Math.floor(Math.random() * 100000)}`; pm.collectionVariables.set('runSuffix', suffix); pm.collectionVariables.set('password', 'Password123!'); pm.collectionVariables.set('employerEmail', `dz3-employer-${suffix}@example.com`); pm.collectionVariables.set('applicantEmail', `dz3-applicant-${suffix}@example.com`); pm.collectionVariables.set('companyTitle', `DZ3 Hiring Company ${suffix}`); pm.collectionVariables.set('vacancyTitle', `DZ3 Backend Developer ${suffix}`); pm.collectionVariables.set('vacancyCity', 'Moscow'); pm.collectionVariables.set('resumeTitle', `DZ3 Backend Resume ${suffix}`); pm.collectionVariables.set('coverLetter', `Cover letter for DZ3 scenario ${suffix}`); ['employerToken','applicantToken','employerUserId','applicantUserId','companyId','employerProfileId','industryId','experienceLevelId','vacancyId','resumeId','viewId','favoriteId','applicationId'].forEach((key) => pm.collectionVariables.unset(key));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201 and employer user fields', function () { pm.response.to.have.status(201); pm.response.to.be.json; const j = pm.response.json(); pm.expect(j).to.include.keys(['id','role','first_name','last_name','email','phone','is_verified','created_at','updated_at']); pm.expect(j.role).to.eql('EMPLOYER'); pm.expect(j.email).to.eql(pm.collectionVariables.get('employerEmail')); pm.collectionVariables.set('employerUserId', j.id); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"role\": \"EMPLOYER\",\n  \"first_name\": \"Egor\",\n  \"last_name\": \"Employer\",\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+79990000101\"\n}" },
+        "url": "{{baseUrl}}/auth/register"
+      }
+    },
+    {
+      "name": "02. Login employer",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200, Bearer token and same employer', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['access_token','token_type','user']); pm.expect(j.token_type).to.eql('Bearer'); const expectedId = pm.collectionVariables.get('employerUserId'); if (expectedId) { pm.expect(j.user.id).to.eql(expectedId); } else { pm.collectionVariables.set('employerUserId', j.user.id); } pm.expect(j.user.role).to.eql('EMPLOYER'); pm.collectionVariables.set('employerToken', j.access_token); });"] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{employerEmail}}\",\n  \"password\": \"{{password}}\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "03. Create company",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and company fields', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','title','employee_count','created_at','updated_at']); pm.expect(j.title).to.eql(pm.collectionVariables.get('companyTitle')); pm.expect(j.employee_count).to.eql(42); pm.collectionVariables.set('companyId', j.id); });"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"{{companyTitle}}\",\n  \"description\": \"Company created by Postman DZ3 scenario.\",\n  \"website\": \"https://dz3-example.com\",\n  \"industry_text\": \"IT\",\n  \"address\": \"Moscow, Postman street 3\",\n  \"employee_count\": 42\n}" },
+        "url": "{{baseUrl}}/companies"
+      }
+    },
+    {
+      "name": "04. Create employer profile",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and profile links employer to company', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','user_id','company_id','position','created_at','updated_at']); pm.expect(j.user_id).to.eql(pm.collectionVariables.get('employerUserId')); pm.expect(j.company_id).to.eql(pm.collectionVariables.get('companyId')); pm.collectionVariables.set('employerProfileId', j.id); });"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"company_id\": \"{{companyId}}\",\n  \"position\": \"HR Manager\"\n}" },
+        "url": "{{baseUrl}}/employer-profiles"
+      }
+    },
+    {
+      "name": "05. Get industries dictionary",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and first industry saved', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j.items).to.be.an('array').and.not.empty; pm.expect(j.items[0]).to.include.keys(['id','title','is_published']); pm.collectionVariables.set('industryId', j.items[0].id); });"] } }],
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/industries" }
+    },
+    {
+      "name": "06. Get experience levels dictionary",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and first experience level saved', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j.items).to.be.an('array').and.not.empty; pm.expect(j.items[0]).to.include.keys(['id','title','is_published']); pm.collectionVariables.set('experienceLevelId', j.items[0].id); });"] } }],
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/experience-levels" }
+    },
+    {
+      "name": "07. Create published vacancy",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and vacancy links company/profile/dictionaries', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','company_id','employer_profile_id','industry_id','experience_level_id','title','salary_from','salary_to','city','employment_type','work_format','is_published']); pm.expect(j.company_id).to.eql(pm.collectionVariables.get('companyId')); pm.expect(j.employer_profile_id).to.eql(pm.collectionVariables.get('employerProfileId')); pm.expect(j.industry_id).to.eql(pm.collectionVariables.get('industryId')); pm.expect(j.experience_level_id).to.eql(pm.collectionVariables.get('experienceLevelId')); pm.expect(j.is_published).to.eql(true); pm.expect(Number(j.salary_to)).to.be.at.least(Number(j.salary_from)); pm.collectionVariables.set('vacancyId', j.id); });"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"company_id\": \"{{companyId}}\",\n  \"employer_profile_id\": \"{{employerProfileId}}\",\n  \"industry_id\": \"{{industryId}}\",\n  \"experience_level_id\": \"{{experienceLevelId}}\",\n  \"title\": \"{{vacancyTitle}}\",\n  \"description\": \"Develop backend services for a job search platform.\",\n  \"requirements\": \"TypeScript, Node.js, PostgreSQL, REST API\",\n  \"responsibilities\": \"Implement API endpoints, review code and improve reliability.\",\n  \"salary_from\": 180000,\n  \"salary_to\": 260000,\n  \"city\": \"{{vacancyCity}}\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"HYBRID\",\n  \"is_published\": true\n}" },
+        "url": "{{baseUrl}}/vacancies"
+      }
+    },
+    {
+      "name": "08. Employer sees vacancy in own list",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and created vacancy is in employer list', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['items','meta']); const found = j.items.find((x) => x.id === pm.collectionVariables.get('vacancyId')); pm.expect(found).to.exist; pm.expect(found.title).to.eql(pm.collectionVariables.get('vacancyTitle')); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }] }, "method": "GET", "header": [], "url": "{{baseUrl}}/vacancies/my?page=1&limit=20" }
+    },
+    {
+      "name": "09. Register applicant",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and applicant user fields', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','role','first_name','last_name','email','phone']); pm.expect(j.role).to.eql('APPLICANT'); pm.expect(j.email).to.eql(pm.collectionVariables.get('applicantEmail')); pm.collectionVariables.set('applicantUserId', j.id); });"] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"role\": \"APPLICANT\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Applicant\",\n  \"email\": \"{{applicantEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+79990000102\"\n}" },
+        "url": "{{baseUrl}}/auth/register"
+      }
+    },
+    {
+      "name": "10. Login applicant",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200, Bearer token and same applicant', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['access_token','token_type','user']); const expectedId = pm.collectionVariables.get('applicantUserId'); if (expectedId) { pm.expect(j.user.id).to.eql(expectedId); } else { pm.collectionVariables.set('applicantUserId', j.user.id); } pm.expect(j.user.role).to.eql('APPLICANT'); pm.collectionVariables.set('applicantToken', j.access_token); });"] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{applicantEmail}}\",\n  \"password\": \"{{password}}\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "11. Create applicant resume",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and resume belongs to applicant', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','user_id','title','desired_position','skills','experiences','salary_expectation','city','employment_type','work_format','is_published']); pm.expect(j.user_id).to.eql(pm.collectionVariables.get('applicantUserId')); pm.expect(j.experiences).to.be.an('array').and.have.lengthOf.at.least(1); pm.expect(j.is_published).to.eql(true); pm.collectionVariables.set('resumeId', j.id); });"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"{{resumeTitle}}\",\n  \"desired_position\": \"Backend Developer\",\n  \"about_me\": \"I build backend services with TypeScript and PostgreSQL.\",\n  \"skills\": \"TypeScript, Node.js, PostgreSQL, Docker\",\n  \"education\": \"ITMO University\",\n  \"salary_expectation\": 210000,\n  \"city\": \"Moscow\",\n  \"employment_type\": \"FULL_TIME\",\n  \"work_format\": \"HYBRID\",\n  \"is_published\": true,\n  \"experiences\": [\n    {\n      \"company_name\": \"DZ3 Previous Company\",\n      \"position\": \"Backend Developer\",\n      \"description\": \"Developed REST APIs and integrations.\",\n      \"start_date\": \"2024-01-01\",\n      \"months_count\": 18\n    }\n  ]\n}" },
+        "url": "{{baseUrl}}/resumes"
+      }
+    },
+    {
+      "name": "12. Search published vacancies",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and created published vacancy appears in filtered search', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['items','meta']); const found = j.items.find((x) => x.id === pm.collectionVariables.get('vacancyId')); pm.expect(found).to.exist; pm.expect(found.city).to.eql(pm.collectionVariables.get('vacancyCity')); pm.expect(found.is_published).to.eql(true); });"] } }],
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/vacancies?search=Backend&city={{vacancyCity}}&employment_type=FULL_TIME&work_format=HYBRID&page=1&limit=20" }
+    },
+    {
+      "name": "13. Get vacancy by id",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and vacancy details match created vacancy', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j.id).to.eql(pm.collectionVariables.get('vacancyId')); pm.expect(j.title).to.eql(pm.collectionVariables.get('vacancyTitle')); pm.expect(j.company_id).to.eql(pm.collectionVariables.get('companyId')); pm.expect(j.is_published).to.eql(true); });"] } }],
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/vacancies/{{vacancyId}}" }
+    },
+    {
+      "name": "14. Record applicant vacancy view",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and vacancy view links applicant to vacancy', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','user_id','vacancy_id','created_at']); pm.expect(j.user_id).to.eql(pm.collectionVariables.get('applicantUserId')); pm.expect(j.vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); pm.collectionVariables.set('viewId', j.id); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "POST", "header": [], "url": "{{baseUrl}}/vacancies/{{vacancyId}}/views" }
+    },
+    {
+      "name": "15. Add vacancy to favorites",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and favorite links applicant to vacancy', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','user_id','vacancy_id','created_at']); pm.expect(j.user_id).to.eql(pm.collectionVariables.get('applicantUserId')); pm.expect(j.vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); pm.collectionVariables.set('favoriteId', j.id); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "POST", "header": [], "url": "{{baseUrl}}/favorites/{{vacancyId}}" }
+    },
+    {
+      "name": "16. List favorites",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and created favorite is present', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['items','meta']); const found = j.items.find((x) => x.vacancy_id === pm.collectionVariables.get('vacancyId')); pm.expect(found).to.exist; pm.expect(found.id).to.eql(pm.collectionVariables.get('favoriteId')); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "GET", "header": [], "url": "{{baseUrl}}/favorites?page=1&limit=20" }
+    },
+    {
+      "name": "17. Create application to vacancy",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201 and application links vacancy, resume and applicant', function () { pm.response.to.have.status(201); const j = pm.response.json(); pm.expect(j).to.include.keys(['id','vacancy_id','resume_id','user_id','cover_letter','status','created_at','updated_at']); pm.expect(j.vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); pm.expect(j.resume_id).to.eql(pm.collectionVariables.get('resumeId')); pm.expect(j.user_id).to.eql(pm.collectionVariables.get('applicantUserId')); pm.expect(j.status).to.eql('PENDING'); pm.collectionVariables.set('applicationId', j.id); });"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"resume_id\": \"{{resumeId}}\",\n  \"cover_letter\": \"{{coverLetter}}\"\n}" },
+        "url": "{{baseUrl}}/vacancies/{{vacancyId}}/applications"
+      }
+    },
+    {
+      "name": "18. Applicant lists own applications",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and applicant sees PENDING application', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['items','meta']); const found = j.items.find((x) => x.id === pm.collectionVariables.get('applicationId')); pm.expect(found).to.exist; pm.expect(found.status).to.eql('PENDING'); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "GET", "header": [], "url": "{{baseUrl}}/applications/my?page=1&limit=20" }
+    },
+    {
+      "name": "19. Employer lists vacancy applications",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and employer sees application for own vacancy', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j).to.include.keys(['items','meta']); const found = j.items.find((x) => x.id === pm.collectionVariables.get('applicationId')); pm.expect(found).to.exist; pm.expect(found.vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); pm.expect(found.resume_id).to.eql(pm.collectionVariables.get('resumeId')); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }] }, "method": "GET", "header": [], "url": "{{baseUrl}}/vacancies/{{vacancyId}}/applications?page=1&limit=20" }
+    },
+    {
+      "name": "20. Employer updates application status",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and application status becomes INVITED', function () { pm.response.to.have.status(200); const j = pm.response.json(); pm.expect(j.id).to.eql(pm.collectionVariables.get('applicationId')); pm.expect(j.vacancy_id).to.eql(pm.collectionVariables.get('vacancyId')); pm.expect(j.status).to.eql('INVITED'); });"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{employerToken}}", "type": "string" }] },
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"INVITED\"\n}" },
+        "url": "{{baseUrl}}/applications/{{applicationId}}/status"
+      }
+    },
+    {
+      "name": "21. Applicant sees updated application status",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and applicant sees INVITED status', function () { pm.response.to.have.status(200); const j = pm.response.json(); const found = j.items.find((x) => x.id === pm.collectionVariables.get('applicationId')); pm.expect(found).to.exist; pm.expect(found.status).to.eql('INVITED'); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "GET", "header": [], "url": "{{baseUrl}}/applications/my?page=1&limit=20" }
+    },
+    {
+      "name": "22. Remove vacancy from favorites",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('204 and empty response after favorite delete', function () { pm.response.to.have.status(204); pm.expect(pm.response.text()).to.eql(''); });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "DELETE", "header": [], "url": "{{baseUrl}}/favorites/{{vacancyId}}" }
+    },
+    {
+      "name": "23. Verify favorite was removed",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 and deleted favorite is absent', function () { pm.response.to.have.status(200); const j = pm.response.json(); const found = j.items.find((x) => x.vacancy_id === pm.collectionVariables.get('vacancyId')); pm.expect(found).to.not.exist; });"] } }],
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{applicantToken}}", "type": "string" }] }, "method": "GET", "header": [], "url": "{{baseUrl}}/favorites?page=1&limit=20" }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
+    { "key": "runSuffix", "value": "" },
+    { "key": "password", "value": "Password123!" },
+    { "key": "employerEmail", "value": "" },
+    { "key": "applicantEmail", "value": "" },
+    { "key": "employerToken", "value": "" },
+    { "key": "applicantToken", "value": "" },
+    { "key": "employerUserId", "value": "" },
+    { "key": "applicantUserId", "value": "" },
+    { "key": "companyId", "value": "" },
+    { "key": "employerProfileId", "value": "" },
+    { "key": "industryId", "value": "" },
+    { "key": "experienceLevelId", "value": "" },
+    { "key": "vacancyId", "value": "" },
+    { "key": "resumeId", "value": "" },
+    { "key": "viewId", "value": "" },
+    { "key": "favoriteId", "value": "" },
+    { "key": "applicationId", "value": "" }
+  ]
+}

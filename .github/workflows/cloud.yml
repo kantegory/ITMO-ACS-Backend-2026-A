@@ -1,0 +1,47 @@
+name: Cloud Kubernetes CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'БР1.2/Васильев Артём/labs/lab7/cloud/**'
+      - 'БР1.2/Васильев Артём/homeworks/hw8/**'
+      - 'БР1.2/Васильев Артём/homeworks/hw9/**'
+      - '.github/workflows/cloud.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-platform-cloud
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ${{ vars.RUNNER_IMAGE || 'ubuntu-24.04' }}
+    timeout-minutes: 55
+    env:
+      CLOUD_DIR: 'БР1.2/Васильев Артём/labs/lab7/cloud'
+      DOCS_DIR: 'БР1.2/Васильев Артём/homeworks/hw9'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ vars.NODE_VERSION || '22' }}
+      - name: Validate manifests and documentation
+        run: |
+          python3 -m pip install 'PyYAML==6.0.3' 'mkdocs==1.6.1'
+          python3 -m unittest discover -s "$CLOUD_DIR/tests" -v
+          python3 -m mkdocs build --strict --config-file "$DOCS_DIR/mkdocs.yml"
+      - name: Build versioned images, push registry, deploy and test
+        env:
+          CLOUD_SSH_PRIVATE_KEY: ${{ secrets.CLOUD_SSH_PRIVATE_KEY }}
+          CLOUD_SSH_KNOWN_HOSTS: ${{ secrets.CLOUD_SSH_KNOWN_HOSTS }}
+        run: bash 'БР1.2/Васильев Артём/homeworks/hw8/scripts/build-deploy.sh'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-integration-results
+          path: newman-cloud.xml
+          if-no-files-found: ignore

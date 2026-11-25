@@ -1,0 +1,929 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-user-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: auth-user-service
+  template:
+    metadata:
+      labels:
+        app: auth-user-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/auth-user-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3001'
+        - name: DB_NAME
+          value: users_db
+        - name: DB_USER
+          value: users
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: USERS_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/auth-user-service:IMAGE_TAG
+        ports:
+        - containerPort: 3001
+        env:
+        - name: APP_PORT
+          value: '3001'
+        - name: DB_NAME
+          value: users_db
+        - name: DB_USER
+          value: users
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: USERS_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3001
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3001
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3001
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-user-service
+spec:
+  selector:
+    app: auth-user-service
+  ports:
+  - port: 3001
+    targetPort: 3001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: company-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: company-service
+  template:
+    metadata:
+      labels:
+        app: company-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/company-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3002'
+        - name: DB_NAME
+          value: companies_db
+        - name: DB_USER
+          value: companies
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: COMPANIES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/company-service:IMAGE_TAG
+        ports:
+        - containerPort: 3002
+        env:
+        - name: APP_PORT
+          value: '3002'
+        - name: DB_NAME
+          value: companies_db
+        - name: DB_USER
+          value: companies
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: COMPANIES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3002
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3002
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3002
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: company-service
+spec:
+  selector:
+    app: company-service
+  ports:
+  - port: 3002
+    targetPort: 3002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dictionary-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: dictionary-service
+  template:
+    metadata:
+      labels:
+        app: dictionary-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/dictionary-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3003'
+        - name: DB_NAME
+          value: dictionaries_db
+        - name: DB_USER
+          value: dictionaries
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DICTIONARIES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/dictionary-service:IMAGE_TAG
+        ports:
+        - containerPort: 3003
+        env:
+        - name: APP_PORT
+          value: '3003'
+        - name: DB_NAME
+          value: dictionaries_db
+        - name: DB_USER
+          value: dictionaries
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: DICTIONARIES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3003
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3003
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3003
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dictionary-service
+spec:
+  selector:
+    app: dictionary-service
+  ports:
+  - port: 3003
+    targetPort: 3003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vacancy-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: vacancy-service
+  template:
+    metadata:
+      labels:
+        app: vacancy-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/vacancy-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3004'
+        - name: DB_NAME
+          value: vacancies_db
+        - name: DB_USER
+          value: vacancies
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: VACANCIES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/vacancy-service:IMAGE_TAG
+        ports:
+        - containerPort: 3004
+        env:
+        - name: APP_PORT
+          value: '3004'
+        - name: DB_NAME
+          value: vacancies_db
+        - name: DB_USER
+          value: vacancies
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: VACANCIES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3004
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3004
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3004
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vacancy-service
+spec:
+  selector:
+    app: vacancy-service
+  ports:
+  - port: 3004
+    targetPort: 3004
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: resume-service
+  template:
+    metadata:
+      labels:
+        app: resume-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/resume-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3005'
+        - name: DB_NAME
+          value: resumes_db
+        - name: DB_USER
+          value: resumes
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RESUMES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/resume-service:IMAGE_TAG
+        ports:
+        - containerPort: 3005
+        env:
+        - name: APP_PORT
+          value: '3005'
+        - name: DB_NAME
+          value: resumes_db
+        - name: DB_USER
+          value: resumes
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RESUMES_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3005
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3005
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3005
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resume-service
+spec:
+  selector:
+    app: resume-service
+  ports:
+  - port: 3005
+    targetPort: 3005
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: application-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: application-service
+  template:
+    metadata:
+      labels:
+        app: application-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/application-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3006'
+        - name: DB_NAME
+          value: applications_db
+        - name: DB_USER
+          value: applications
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: APPLICATIONS_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RABBITMQ_URL
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/application-service:IMAGE_TAG
+        ports:
+        - containerPort: 3006
+        env:
+        - name: APP_PORT
+          value: '3006'
+        - name: DB_NAME
+          value: applications_db
+        - name: DB_USER
+          value: applications
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: APPLICATIONS_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RABBITMQ_URL
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3006
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3006
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3006
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: application-service
+spec:
+  selector:
+    app: application-service
+  ports:
+  - port: 3006
+    targetPort: 3006
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: interaction-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: interaction-service
+  template:
+    metadata:
+      labels:
+        app: interaction-service
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - image: 127.0.0.1:5000/job-platform/interaction-service:IMAGE_TAG
+        env:
+        - name: APP_PORT
+          value: '3007'
+        - name: DB_NAME
+          value: interactions_db
+        - name: DB_USER
+          value: interactions
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: INTERACTIONS_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RABBITMQ_URL
+        envFrom:
+        - configMapRef:
+            name: app-config
+        securityContext: &id001
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        name: migrate
+        command:
+        - node
+        - dist/scripts/migrate.js
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+      containers:
+      - name: app
+        image: 127.0.0.1:5000/job-platform/interaction-service:IMAGE_TAG
+        ports:
+        - containerPort: 3007
+        env:
+        - name: APP_PORT
+          value: '3007'
+        - name: DB_NAME
+          value: interactions_db
+        - name: DB_USER
+          value: interactions
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: INTERACTIONS_DB_PASSWORD
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET_KEY
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SERVICE_TOKEN
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RABBITMQ_URL
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 48Mi
+          limits:
+            cpu: 300m
+            memory: 112Mi
+        startupProbe:
+          tcpSocket:
+            port: 3007
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          tcpSocket:
+            port: 3007
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3007
+          periodSeconds: 20
+        securityContext: *id001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: interaction-service
+spec:
+  selector:
+    app: interaction-service
+  ports:
+  - port: 3007
+    targetPort: 3007
