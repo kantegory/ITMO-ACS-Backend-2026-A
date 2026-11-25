@@ -32,6 +32,7 @@ trap rollback ERR
 k apply -f "$CLOUD_DIR/k8s/config.yml"
 k create configmap postgres-init --from-file=init.sh="$CLOUD_DIR/postgres/init.sh" --dry-run=client -o yaml | k apply -f -
 k create configmap gateway-config --from-file=nginx.conf="$CLOUD_DIR/gateway/nginx.conf" --dry-run=client -o yaml | k apply -f -
+k create configmap rabbitmq-config --from-file=rabbitmq.conf="$CLOUD_DIR/rabbitmq/rabbitmq.conf" --dry-run=client -o yaml | k apply -f -
 k apply --dry-run=server -f "$CLOUD_DIR/k8s/data.yml" >/dev/null
 k apply -f "$CLOUD_DIR/k8s/data.yml"
 k rollout status statefulset/postgres --timeout=600s
