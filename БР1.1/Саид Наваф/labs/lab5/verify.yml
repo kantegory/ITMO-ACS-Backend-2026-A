@@ -1,0 +1,36 @@
+---
+# Проверка результата: службы работают, приложение отвечает через nginx.
+# Запуск: ansible-playbook verify.yml
+- name: Проверка настроенного сервера
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Собрать сведения о службах
+      ansible.builtin.service_facts:
+
+    - name: Убедиться, что docker и nginx запущены
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['docker.service'].state == 'running'
+          - ansible_facts.services['nginx.service'].state == 'running'
+        success_msg: "Службы docker и nginx работают"
+
+    - name: Список контейнеров
+      ansible.builtin.command: docker ps
+      register: docker_ps
+      changed_when: false
+
+    - name: Показать контейнеры
+      ansible.builtin.debug:
+        var: docker_ps.stdout_lines
+
+    - name: Запрос к API через nginx
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ nginx_listen_port }}/api/v1/categories"
+        return_content: false
+        status_code: 200
+      register: api
+
+    - name: Результат запроса
+      ansible.builtin.debug:
+        msg: "API отвечает, HTTP {{ api.status }}"

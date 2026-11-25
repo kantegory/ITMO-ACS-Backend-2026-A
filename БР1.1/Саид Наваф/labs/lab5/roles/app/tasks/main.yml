@@ -1,0 +1,67 @@
+---
+- name: Получить код приложения из репозитория
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dir }}"
+    version: "{{ repo_version }}"
+    force: false
+  register: app_code
+  tags: [code]
+
+- name: Создать файл с секретами, если его ещё нет
+  ansible.builtin.copy:
+    dest: "{{ app_dir }}/.env"
+    content: |
+      DB_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null length=24 chars=ascii_letters,digits') }}
+      JWT_SECRET={{ lookup('ansible.builtin.password', '/dev/null length=48 chars=ascii_letters,digits') }}
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  no_log: true
+  tags: [config]
+
+- name: Проверить, собран ли образ приложения
+  ansible.builtin.command: docker image inspect job-search-api:latest
+  register: app_image
+  changed_when: false
+  failed_when: false
+  tags: [services]
+
+- name: Собрать образ приложения (если его нет или код обновился)
+  ansible.builtin.command:
+    cmd: "docker compose -p {{ compose_project }} -f docker-compose.prod.yml build"
+    chdir: "{{ app_dir }}"
+  environment:
+    COMPOSE_BAKE: "false"
+  when: app_image.rc != 0 or app_code.changed
+  tags: [services]
+
+- name: Запустить приложение и базу данных (docker compose)
+  ansible.builtin.command:
+    cmd: "docker compose -p {{ compose_project }} -f docker-compose.prod.yml up -d --no-build"
+    chdir: "{{ app_dir }}"
+  environment:
+    COMPOSE_BAKE: "false"
+  register: compose_up
+  # Compose пишет в stderr: Running/Healthy, если ничего не изменилось, и
+  # Created/Started/Recreated, если контейнеры создавались или перезапускались
+  changed_when: compose_up.stderr is search('Created|Started|Recreated|Starting|Recreate')
+  tags: [services]
+
+- name: Дождаться порта приложения
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ app_port }}"
+    timeout: 90
+  tags: [check]
+
+- name: Проверить API через nginx
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nginx_listen_port }}/api/v1/categories"
+    status_code: 200
+  register: api_check
+  retries: 15
+  delay: 4
+  until: api_check.status == 200
+  tags: [check]
