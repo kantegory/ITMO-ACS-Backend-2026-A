@@ -1,0 +1,145 @@
+openapi: 3.0.3
+info:
+  title: Application Service API
+  version: 1.0.0
+  description: Job applications with external vacancy, resume and user IDs.
+servers:
+  - url: http://localhost:3006/api/v1
+tags:
+  - name: Applications
+  - name: Internal
+paths:
+  /vacancies/{vacancy_id}/applications:
+    post:
+      tags: [Applications]
+      summary: Create application for vacancy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Application created
+    get:
+      tags: [Applications]
+      summary: List vacancy applications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/vacancyId'
+      responses:
+        '200':
+          description: Application list
+  /applications/my:
+    get:
+      tags: [Applications]
+      summary: List current user applications
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Application list
+  /applications/{application_id}/status:
+    patch:
+      tags: [Applications]
+      summary: Update application status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: application_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationStatusRequest'
+      responses:
+        '200':
+          description: Application status updated
+  /internal/v1/applications/batch:
+    post:
+      tags: [Internal]
+      summary: Internal batch application lookup
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchIdsRequest'
+      responses:
+        '200':
+          description: Applications and missingIds returned
+  /internal/v1/users/{user_id}/applications:
+    get:
+      tags: [Internal]
+      summary: List user applications
+      security:
+        - serviceToken: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User applications
+components:
+  schemas:
+    CreateApplicationRequest:
+      type: object
+      required: [resume_id]
+      properties:
+        resume_id:
+          type: string
+          format: uuid
+        cover_letter:
+          type: string
+          example: I want this job
+    UpdateApplicationStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, VIEWED, INVITED, REJECTED, ACCEPTED]
+    BatchIdsRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+  parameters:
+    vacancyId:
+      name: vacancy_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
