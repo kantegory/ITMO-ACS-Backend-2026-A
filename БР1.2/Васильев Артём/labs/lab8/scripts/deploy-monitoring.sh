@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 LAB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${CLOUD_CONFIG:-$LAB_DIR/../lab7/cloud/config.env}"
-k() { k3s kubectl -n "$NAMESPACE" "$@"; }
+k() { kubectl -n "$NAMESPACE" "$@"; }
+kubectl get nodes -o json | python3 "$LAB_DIR/scripts/check-capacity.py"
 k apply --dry-run=server -f "$LAB_DIR/monitoring/k8s.yml" >/dev/null
 for name in prometheus blackbox loki; do
   k create configmap "$name-config" --from-file="$name.yml=$LAB_DIR/monitoring/$name.yml" --dry-run=client -o yaml | k apply -f -
@@ -14,7 +15,4 @@ k apply -f "$LAB_DIR/monitoring/k8s.yml"
 for name in node-exporter blackbox prometheus loki alloy grafana; do
   k rollout status "deployment/$name" --timeout=420s
 done
-curl --fail --silent --show-error http://127.0.0.1:3100/api/health
-curl --fail --silent --show-error http://127.0.0.1:9090/-/ready
-curl --fail --silent --show-error http://127.0.0.1:3101/ready
 k top pods

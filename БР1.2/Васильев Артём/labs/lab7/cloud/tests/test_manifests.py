@@ -24,12 +24,12 @@ class CloudManifests(unittest.TestCase):
                 self.assertNotIn('latest', container['image'])
             self.assertEqual(spec['initContainers'][0]['command'], ['node', 'dist/scripts/migrate.js'])
 
-    def test_only_gateway_is_public(self):
+    def test_application_services_are_private(self):
         docs = []
         for path in (ROOT / 'k8s').glob('*.yml'):
             docs.extend(d for d in yaml.safe_load_all(path.read_text(encoding='utf-8')) if d)
         exposed = [d['metadata']['name'] for d in docs if d['kind'] == 'Service' and d.get('spec', {}).get('type', 'ClusterIP') != 'ClusterIP']
-        self.assertEqual(exposed, ['gateway'])
+        self.assertEqual(exposed, [])
         self.assertFalse(any(d['kind'] == 'Secret' for d in docs))
 
     def test_app_gets_no_administrative_secrets(self):
@@ -45,6 +45,26 @@ class CloudManifests(unittest.TestCase):
                 self.assertNotIn('RABBITMQ_PASSWORD', env)
                 passwords.add(env['DB_PASSWORD']['valueFrom']['secretKeyRef']['key'])
         self.assertEqual(len(passwords), 7)
+
+    def test_rabbitmq_uses_supported_configuration(self):
+        docs = list(yaml.safe_load_all((ROOT / 'k8s/data.yml').read_text(encoding='utf-8')))
+        rabbit = next(d for d in docs if d['kind'] == 'StatefulSet' and d['metadata']['name'] == 'rabbitmq')
+        container = rabbit['spec']['template']['spec']['containers'][0]
+        self.assertNotIn('RABBITMQ_VM_MEMORY_HIGH_WATERMARK', {v['name'] for v in container['env']})
+        self.assertTrue(any(v['mountPath'] == '/etc/rabbitmq/rabbitmq.conf' for v in container['volumeMounts']))
+        self.assertIn('vm_memory_high_watermark.absolute', (ROOT / 'rabbitmq/rabbitmq.conf').read_text())
+
+    def test_ingress_fronts_private_gateway(self):
+        gateway = list(yaml.safe_load_all((ROOT / 'k8s/gateway.yml').read_text(encoding='utf-8')))
+        service = next(d for d in gateway if d['kind'] == 'Service')
+        self.assertEqual(service['spec']['type'], 'ClusterIP')
+        docs = list(yaml.safe_load_all((ROOT / 'k8s/ingress.yml').read_text(encoding='utf-8')))
+        ingress = next(d for d in docs if d['kind'] == 'Ingress')
+        self.assertEqual(ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'], 'gateway')
+        chart = next(d for d in docs if d['kind'] == 'HelmChart')
+        values = yaml.safe_load(chart['spec']['valuesContent'])
+        self.assertEqual(values['ports']['web']['nodePort'], 30080)
+        self.assertEqual(values['ingressClass']['name'], ingress['spec']['ingressClassName'])
 
     def test_seven_owned_databases(self):
         sql = (ROOT / 'postgres/init.sh').read_text(encoding='utf-8')

@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 CLOUD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$CLOUD_DIR/config.env"
-k() { k3s kubectl -n "$NAMESPACE" "$@"; }
+k() { kubectl -n "$NAMESPACE" "$@"; }
 stamp="$(date -u +%Y%m%d_%H%M%S)"
 directory="${1:-/opt/job-platform-cloud/backups/$stamp}"
 umask 077

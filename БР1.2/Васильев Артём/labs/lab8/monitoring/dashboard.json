@@ -2,7 +2,7 @@
   "uid": "job-platform-cloud",
   "title": "Job Platform Cloud — Load and HPA",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "30s",
   "time": {
@@ -27,7 +27,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[2m])) * 100",
+          "expr": "100 * (1 - avg(sum by(cpu) (rate(node_cpu_seconds_total{mode=~\"idle|iowait\"}[2m]))))",
           "legendFormat": "{{pod}}{{service}}{{device}}"
         }
       ],
@@ -70,7 +70,7 @@
     },
     {
       "id": 3,
-      "title": "Root filesystem used %",
+      "title": "Node root filesystem used %",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -85,7 +85,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * (1-node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}/node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})",
+          "expr": "100 * (1-node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs\"}/node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs\"})",
           "legendFormat": "{{pod}}{{service}}{{device}}"
         }
       ],
@@ -230,8 +230,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(k6_http_reqs_total[1m]))",
-          "legendFormat": "{{pod}}{{service}}{{device}}"
+          "expr": "sum by(run) (rate(k6_http_reqs_total{phase=\"load\"}[1m]))",
+          "legendFormat": "{{run}}"
         }
       ],
       "fieldConfig": {
@@ -259,8 +259,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "k6_http_req_duration_p95",
-          "legendFormat": "{{pod}}{{service}}{{device}}"
+          "expr": "1000 * k6_http_req_duration_p95{phase=\"load\"}",
+          "legendFormat": "{{run}} {{name}}"
         }
       ],
       "fieldConfig": {
@@ -288,8 +288,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "k6_http_req_duration_p99",
-          "legendFormat": "{{pod}}{{service}}{{device}}"
+          "expr": "1000 * k6_http_req_duration_p99{phase=\"load\"}",
+          "legendFormat": "{{run}} {{name}}"
         }
       ],
       "fieldConfig": {
@@ -317,8 +317,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "k6_http_req_failed_rate",
-          "legendFormat": "{{pod}}{{service}}{{device}}"
+          "expr": "k6_http_req_failed_rate{phase=\"load\"}",
+          "legendFormat": "{{run}} {{name}}"
         }
       ],
       "fieldConfig": {
@@ -331,7 +331,7 @@
     },
     {
       "id": 12,
-      "title": "Auth live replicas (observed)",
+      "title": "Auth pods (cAdvisor)",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
@@ -359,12 +359,41 @@
       "options": {}
     },
     {
+      "id": 14,
+      "title": "VM I/O wait %",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[2m]))",
+          "legendFormat": "{{pod}}{{service}}{{device}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
       "id": 13,
       "title": "Kubernetes container logs",
       "type": "logs",
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 56,
         "w": 24,
         "h": 8
       },
