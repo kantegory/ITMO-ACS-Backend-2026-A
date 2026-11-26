@@ -1,0 +1,148 @@
+{
+  "info": {
+    "name": "Ehrmann Assistant",
+    "description": "Smoke проверки и чтение чатов действующего backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "apiBase",
+      "value": "https://backend.dev.ehrmann.assistant.metamentor.pro/api/v1"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Healthcheck",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "noauth"
+        },
+        "url": {
+          "raw": "{{apiBase}}/health",
+          "host": [
+            "{{apiBase}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Health returns HTTP 200 and status ok', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token check without a session",
+      "protocolProfileBehavior": {
+        "disableCookies": true
+      },
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "noauth"
+        },
+        "url": {
+          "raw": "{{apiBase}}/auth/check_token",
+          "host": [
+            "{{apiBase}}"
+          ],
+          "path": [
+            "auth",
+            "check_token"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Missing session returns HTTP 401', function () {",
+              "  pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List chats",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "header": [
+          {
+            "key": "Cookie",
+            "value": "session_id={{sessionId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{apiBase}}/chats/?offset=0&limit=10",
+          "host": [
+            "{{apiBase}}"
+          ],
+          "path": [
+            "chats",
+            ""
+          ],
+          "query": [
+            {
+              "key": "offset",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Chats response contains a page', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const page = pm.response.json().result;",
+              "  pm.expect(page.data).to.be.an('array');",
+              "  pm.expect(page.has_next).to.be.a('boolean');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

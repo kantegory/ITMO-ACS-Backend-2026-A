@@ -1,0 +1,57 @@
+images:
+  registry: harbor.metamentor.pro/ehrmann
+  tag: ""
+  pullSecret: harbor-pull
+host: ""
+tlsSecret: ehrmann-stage-tls
+ingressClass: traefik
+secrets:
+  backend: ehrmann-backend-runtime
+  ml: ehrmann-ml-runtime
+components:
+  frontend:
+    image: frontend
+    port: 3000
+    health: /login
+    requests: {cpu: 100m, memory: 96Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  backend:
+    image: backend
+    command: [uvicorn, "app.utils.app_builder:get_app", --factory, --host, "0.0.0.0", --port, "8000"]
+    port: 8000
+    health: /api/v1/health
+    requests: {cpu: 250m, memory: 384Mi}
+    limits: {cpu: "1", memory: 768Mi}
+  scheduler:
+    image: backend
+    command: [uvicorn, "scheduler.utils.app_builder:get_app", --factory, --host, "0.0.0.0", --port, "8000"]
+    port: 8000
+    health: /health
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  ml-core:
+    image: ml_core
+    command: [python, -m, ml_core.main, production]
+    port: 8000
+    health: /health
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 2Gi}
+  indexer:
+    image: ml_core
+    command: [python, -m, ml_core.worker]
+    requests: {cpu: "1", memory: 2Gi}
+    limits: {cpu: "4", memory: 6Gi}
+migrations:
+  backend:
+    image: backend
+    secret: backend
+    command: [alembic, upgrade, head]
+  ml:
+    image: ml_core
+    secret: ml
+    command: [python, -m, alembic, -c, ml_core/alembic.ini, upgrade, head]
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  cpuUtilization: 70

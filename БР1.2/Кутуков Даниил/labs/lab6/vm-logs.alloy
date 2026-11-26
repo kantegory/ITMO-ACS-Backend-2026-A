@@ -1,0 +1,22 @@
+discovery.relabel "vm_logs" {
+  targets = discovery.docker.application_containers.targets
+
+  rule {
+    action        = "drop"
+    source_labels = ["__meta_docker_container_label_logs_project"]
+    regex         = "ehrmann"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "vm_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.vm_logs.output
+  labels     = {collector = "alloy", scope = "vm"}
+  forward_to = [loki.write.local.receiver]
+}
