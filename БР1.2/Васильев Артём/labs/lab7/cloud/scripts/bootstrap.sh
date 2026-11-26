@@ -59,8 +59,12 @@ for attempt in $(seq 1 60); do
   sleep 2
 done
 k3s kubectl wait node/job-platform-vps --for=condition=Ready --timeout=300s
+registry_owner="$(k3s kubectl -n kube-system get pod lab-registry --ignore-not-found -o jsonpath='{.metadata.ownerReferences[*].uid}')"
+if [ -z "$registry_owner" ]; then
+  k3s kubectl -n kube-system delete pod lab-registry --ignore-not-found --wait=true
+fi
 k3s kubectl apply -f "$CLOUD_DIR/registry.yml"
-k3s kubectl -n kube-system wait pod/lab-registry --for=condition=Ready --timeout=300s
+k3s kubectl -n kube-system rollout status deployment/lab-registry --timeout=300s
 k3s kubectl apply -f "$CLOUD_DIR/k8s/namespace.yml"
 umask 077
 python3 "$CLOUD_DIR/scripts/create-secrets.py" /opt/job-platform-cloud/secrets.env
