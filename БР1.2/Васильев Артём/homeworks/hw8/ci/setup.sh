@@ -25,7 +25,7 @@ export PATH="$bin:$PATH"
 } > "$RESULTS/environment.txt"
 k3d registry create "$REGISTRY_NAME" --port 127.0.0.1:5000 --no-help
 printf 'mirrors:\n  "127.0.0.1:5000":\n    endpoint:\n      - "http://k3d-%s:5000"\n' "$REGISTRY_NAME" > "$DEPLOY_STATE_DIR/registries.yml"
-k3d cluster create "$CLUSTER_NAME" --image "$K3S_IMAGE" --servers 1 --agents 0 --no-lb --registry-use "k3d-$REGISTRY_NAME:5000" --registry-config "$DEPLOY_STATE_DIR/registries.yml" \
+k3d cluster create "$CLUSTER_NAME" --image "$K3S_IMAGE" --servers 1 --agents 0 --registry-use "k3d-$REGISTRY_NAME:5000" --registry-config "$DEPLOY_STATE_DIR/registries.yml" \
   --port '127.0.0.1:30080:30080@server:0' \
   --k3s-arg '--kubelet-arg=fail-swap-on=false@server:0' --k3s-arg '--disable=traefik@server:0' --k3s-arg '--disable=servicelb@server:0' --timeout 180s
 chmod 600 "$KUBECONFIG"

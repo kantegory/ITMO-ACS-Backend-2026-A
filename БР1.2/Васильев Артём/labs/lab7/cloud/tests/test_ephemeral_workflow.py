@@ -23,6 +23,7 @@ class EphemeralWorkflow(unittest.TestCase):
         ci = ROOT.parents[2] / 'homeworks/hw8/ci'
         for name in re.findall(r'bash "\$CI_DIR/([a-z-]+\.sh)"', text):
             self.assertTrue((ci / name).is_file(), f'Missing production CI step: {name}')
+        self.assertNotIn('--no-lb', (ci / 'setup.sh').read_text())
         build = (ci / 'build-deploy.sh').read_text()
         self.assertIn('docker push "$image"', build)
         self.assertNotIn('k3d image import', build)
