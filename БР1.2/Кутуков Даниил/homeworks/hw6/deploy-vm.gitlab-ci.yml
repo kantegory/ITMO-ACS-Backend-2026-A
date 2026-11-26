@@ -1,0 +1,24 @@
+deploy_semester_vm:
+  stage: deploy
+  image: alpine:3.22
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "semester-vm"'
+  environment:
+    name: semester/vm
+    url: $EHRMANN_VM_ORIGIN
+  resource_group: ehrmann-semester-vm
+  script:
+    - apk add --no-cache openssh-client curl
+    - chmod 600 "$VM_SSH_KEY"
+    - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
+    - |
+      set -eu
+      cp "$COURSE/labs/lab4/compose.nginx.yml" ./compose.nginx.yml
+      tar -czf /tmp/ehrmann-release.tar.gz docker-compose.cicd.yml compose.nginx.yml alloy grafana loki prometheus tempo
+      ssh_vm() {
+        ssh -i "$VM_SSH_KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+          -o "UserKnownHostsFile=$VM_KNOWN_HOSTS" -l "$VM_SSH_USER" "$VM_SSH_HOST" "$@"
+      }
+      ssh_vm "mkdir -p /opt/compose/ehrmann/releases/$IMAGE_TAG && tar -xzf - -C /opt/compose/ehrmann/releases/$IMAGE_TAG" < /tmp/ehrmann-release.tar.gz
+      ssh_vm "sh -s -- $IMAGE_TAG" < "$COURSE/homeworks/hw6/deploy-vm.sh"
+    - curl --fail --silent --show-error --output /dev/null "$EHRMANN_VM_ORIGIN/login"

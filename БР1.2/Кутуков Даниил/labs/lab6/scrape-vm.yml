@@ -1,0 +1,48 @@
+scrape_configs:
+  - job_name: vm
+    static_configs:
+      - targets: [ehrmann-vm-node:9100]
+
+  - job_name: ehrmann-http-health
+    metrics_path: /probe
+    params:
+      module: [http]
+    static_configs:
+      - targets: [http://ehrmann-frontend:3000/login]
+        labels: {service: frontend}
+      - targets: [http://ehrmann-backend:8000/api/v1/health]
+        labels: {service: backend}
+      - targets: [http://ehrmann-backend-scheduler:8000/health]
+        labels: {service: scheduler}
+      - targets: [http://ehrmann-ml_core:8000/health]
+        labels: {service: ml-core}
+      - targets: [http://ehrmann-qdrant:6333/healthz]
+        labels: {service: qdrant}
+      - targets: [http://ehrmann-silo:9000/minio/health/live]
+        labels: {service: s3}
+      - targets: [http://ehrmann-embedding_model:7997/health]
+        labels: {service: embedding}
+      - targets: [http://chat-model-api:8000/health]
+        labels: {service: llm}
+    relabel_configs: &blackbox
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: ehrmann-blackbox:9115
+
+  - job_name: ehrmann-tcp-health
+    metrics_path: /probe
+    params:
+      module: [tcp]
+    static_configs:
+      - targets: [ehrmann-postgres:5432]
+        labels: {service: postgres}
+      - targets: [ehrmann-ml-postgres:5432]
+        labels: {service: ml-postgres}
+      - targets: [ehrmann-rabbitmq:5672]
+        labels: {service: rabbitmq}
+      - targets: [ehrmann-redis:6379]
+        labels: {service: redis}
+    relabel_configs: *blackbox

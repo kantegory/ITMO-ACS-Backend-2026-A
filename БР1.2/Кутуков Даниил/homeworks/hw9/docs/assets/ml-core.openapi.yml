@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: Ehrmann ML Core
+  version: "1.0"
+  description: Основные внутренние HTTP-маршруты ML Core.
+servers:
+  - url: http://ehrmann-ml-core:8000
+paths:
+  /health:
+    get:
+      summary: Проверка HTTP-доступности ML Core
+      responses:
+        '200':
+          description: ML Core принимает HTTP-запросы
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: {type: boolean, const: true}
+  /chat/chat_name:
+    post:
+      summary: Сформировать заголовок чата по истории
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [history]
+              properties:
+                history:
+                  type: array
+                  items: {$ref: '#/components/schemas/ChatMessage'}
+      responses:
+        '200':
+          description: Результат генерации заголовка
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, name]
+                properties:
+                  success: {type: boolean}
+                  name: {type: string}
+        '422':
+          description: Ошибка валидации тела
+  /chat/send_message:
+    post:
+      summary: Передать вопрос RAG-ассистенту
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_query]
+              properties:
+                user_query: {type: string}
+                history:
+                  type: [array, "null"]
+                  items: {$ref: '#/components/schemas/ChatMessage'}
+                chat_file_ids:
+                  type: array
+                  items: {type: string, format: uuid}
+                attachment_file_ids:
+                  type: array
+                  items: {type: string, format: uuid}
+                allowed_tools:
+                  type: array
+                  items: {type: string}
+                allowed_folder_ids:
+                  type: [array, "null"]
+                  items: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Поток событий RAG
+          content:
+            text/event-stream:
+              schema: {type: string}
+        '422':
+          description: Ошибка валидации тела или списка вложений
+components:
+  schemas:
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [user, assistant]}
+        content: {type: string}
+        attachment_file_ids:
+          type: array
+          items: {type: string, format: uuid}

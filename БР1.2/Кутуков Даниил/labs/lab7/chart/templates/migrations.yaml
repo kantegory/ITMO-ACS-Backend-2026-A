@@ -1,0 +1,27 @@
+{{- $tag := required "Specify images.tag" .Values.images.tag -}}
+{{- range $name, $migration := .Values.migrations }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}-migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: {{ $.Values.images.pullSecret }}
+      containers:
+        - name: migrate
+          image: "{{ $.Values.images.registry }}/{{ $migration.image }}:{{ $tag }}"
+          command: {{ toJson $migration.command }}
+          envFrom:
+            - secretRef:
+                name: {{ index $.Values.secrets $migration.secret }}
+{{- end }}
