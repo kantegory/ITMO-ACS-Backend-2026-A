@@ -46,6 +46,14 @@ class CloudManifests(unittest.TestCase):
                 passwords.add(env['DB_PASSWORD']['valueFrom']['secretKeyRef']['key'])
         self.assertEqual(len(passwords), 7)
 
+    def test_rabbitmq_has_cpu_budget_for_vps_cold_start(self):
+        docs = list(yaml.safe_load_all((ROOT / 'k8s/data.yml').read_text(encoding='utf-8')))
+        rabbit = next(d for d in docs if d['kind'] == 'StatefulSet' and d['metadata']['name'] == 'rabbitmq')
+        container = rabbit['spec']['template']['spec']['containers'][0]
+        self.assertEqual(container['resources']['limits']['cpu'], '700m')
+        self.assertEqual(container['resources']['limits']['memory'], '160Mi')
+        self.assertEqual(container['startupProbe']['failureThreshold'], 60)
+
     def test_rabbitmq_uses_supported_configuration(self):
         docs = list(yaml.safe_load_all((ROOT / 'k8s/data.yml').read_text(encoding='utf-8')))
         rabbit = next(d for d in docs if d['kind'] == 'StatefulSet' and d['metadata']['name'] == 'rabbitmq')
