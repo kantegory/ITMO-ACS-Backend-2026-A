@@ -1,0 +1,45 @@
+openapi: 3.1.0
+info:
+  title: рабочий проект · служебные HTTP-маршруты
+  version: "1.0"
+  description: |
+    ml-service не публикует HTTP: это потребитель очередей RabbitMQ
+    (`app.ml_classify` на входе, `app.ml_classify_done` на выходе).
+    Документ описывает только health-проверки workers и GPU-моделей из docker-compose.stage.yml.
+servers:
+  - url: http://classification-worker:8001
+    description: classification-worker
+  - url: http://scheduler:8002
+    description: scheduler
+  - url: http://file-worker:8003
+    description: file-worker
+  - url: http://embedding_model:8000
+    description: сервис embeddings
+  - url: http://classification_model:8000
+    description: сервис классификации
+paths:
+  /health:
+    get:
+      summary: Проверка HTTP-доступности сервиса
+      description: Workers возвращают `{"status":"ok"}`, GPU-модели — `{"ok":true}`.
+      responses:
+        '200':
+          description: Сервис принимает HTTP-запросы
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/WorkerHealth'
+                  - $ref: '#/components/schemas/ModelHealth'
+components:
+  schemas:
+    WorkerHealth:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, const: ok}
+    ModelHealth:
+      type: object
+      required: [ok]
+      properties:
+        ok: {type: boolean, const: true}

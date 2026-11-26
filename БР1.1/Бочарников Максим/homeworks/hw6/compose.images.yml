@@ -1,0 +1,29 @@
+# Учебное переопределение: вместо сборки на ВМ берёт образы из Harbor с общим тегом IMAGE_TAG.
+# Запускать только с `docker compose up --no-build`, секции build базового файла остаются.
+services:
+  gateway:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/gateway:${IMAGE_TAG:?Set IMAGE_TAG}
+    pull_policy: always
+  classification-worker:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/classification-worker:${IMAGE_TAG:?Set IMAGE_TAG}
+    pull_policy: always
+  file-worker:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/file-worker:${IMAGE_TAG:?Set IMAGE_TAG}
+    pull_policy: always
+  scheduler:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/scheduler:${IMAGE_TAG:?Set IMAGE_TAG}
+    pull_policy: always
+  frontend:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/frontend:${IMAGE_TAG:?Set IMAGE_TAG}
+    pull_policy: always
+  ml-service:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/ml-service:${IMAGE_TAG:?Set IMAGE_TAG}
+    pull_policy: always
+    volumes:
+      # Релиз лежит в releases/<tag>, а данные ML живут на ВМ рядом (ссылку создаёт ЛР5).
+      - ${рабочий проект_ROOT:-/opt/compose/app}/ml-service-data:/app/data:ro
+  # GPU-модели публикуются в Harbor отдельно и в матрицу ДЗ8 не входят.
+  embedding_model:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/embedding-model:${MODELS_TAG:-stable}
+  classification_model:
+    image: ${рабочий проект_REGISTRY:-harbor.example.org/app}/classification-model:${MODELS_TAG:-stable}

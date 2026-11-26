@@ -1,0 +1,243 @@
+{
+  "info": {
+    "name": "рабочий проект",
+    "description": "Smoke-проверки gateway: healthcheck, вход по cookie, профиль, дерево категорий и список пакетов. Healthcheck находится вне /api/v1, поэтому базовый адрес host задан без префикса.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "host",
+      "value": "https://api.course.example.org"
+    },
+    {
+      "key": "email",
+      "value": "admin@example.com"
+    },
+    {
+      "key": "password",
+      "value": "admin1234"
+    }
+  ],
+  "item": [
+    {
+      "name": "Healthcheck (вне /api/v1)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{host}}/health",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Health returns HTTP 200 and status ok', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Профиль без входа",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{host}}/api/v1/users/me",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "me"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Missing cookie returns HTTP 401', function () {",
+              "  pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disableCookies": true
+      }
+    },
+    {
+      "name": "Вход (login)",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{host}}/api/v1/auth/login",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "email",
+              "value": "{{email}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login returns HTTP 200 and success', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().status).to.eql('success');",
+              "});",
+              "pm.test('Login sets access_token cookie', function () {",
+              "  pm.expect(pm.cookies.has('access_token')).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Текущий пользователь",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{host}}/api/v1/users/me",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "me"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Profile returns HTTP 200 and a result', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().result).to.be.an('object');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Дерево категорий",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{host}}/api/v1/categories/tree",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "categories",
+            "tree"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Categories tree contains an array', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().result).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Список пакетов",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{host}}/api/v1/packages/?limit=10&offset=0",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "packages"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            },
+            {
+              "key": "offset",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Packages response contains a page', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const page = pm.response.json();",
+              "  pm.expect(page.result).to.be.an('array');",
+              "  pm.expect(page.total).to.be.a('number');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

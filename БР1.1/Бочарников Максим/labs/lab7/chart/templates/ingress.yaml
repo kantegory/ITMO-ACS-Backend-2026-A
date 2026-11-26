@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: {{ .Values.ingressClass }}
+  tls:
+    - hosts: [{{ .Values.host | quote }}]
+      secretName: {{ .Values.tlsSecret }}
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port: {name: http}
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: gateway
+                port: {name: http}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port: {name: http}

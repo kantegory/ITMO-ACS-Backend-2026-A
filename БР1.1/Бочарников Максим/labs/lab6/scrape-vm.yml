@@ -1,0 +1,46 @@
+scrape_configs:
+  - job_name: vm
+    static_configs:
+      - targets: [app-vm-node:9100]
+
+  - job_name: app-http-health
+    metrics_path: /probe
+    params:
+      module: [http]
+    static_configs:
+      - targets: [http://frontend:80/]
+        labels: {service: frontend}
+      - targets: [http://gateway:8000/health]
+        labels: {service: gateway}
+      - targets: [http://classification-worker:8001/health]
+        labels: {service: classification-worker}
+      - targets: [http://scheduler:8002/health]
+        labels: {service: scheduler}
+      - targets: [http://file-worker:8003/health]
+        labels: {service: file-worker}
+      - targets: [http://qdrant:6333/readyz]
+        labels: {service: qdrant}
+      - targets: [http://embedding_model:8000/health]
+        labels: {service: embedding}
+      - targets: [http://classification_model:8000/health]
+        labels: {service: classification-model}
+    relabel_configs: &blackbox
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: app-blackbox:9115
+
+  - job_name: app-tcp-health
+    metrics_path: /probe
+    params:
+      module: [tcp]
+    static_configs:
+      - targets: [postgres:5432]
+        labels: {service: postgres}
+      - targets: [rabbitmq:5672]
+        labels: {service: rabbitmq}
+      - targets: [redis:6379]
+        labels: {service: redis}
+    relabel_configs: *blackbox

@@ -1,0 +1,98 @@
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true" && ($CI_COMMIT_BRANCH == "semester-vm" || $CI_COMMIT_BRANCH == "semester-cloud")'
+
+include:
+  - local: '/БР1.1/Бочарников Максим/homeworks/hw6/deploy-vm.gitlab-ci.yml'
+
+stages: [validate, build, deploy]
+
+variables:
+  REGISTRY_HOST: harbor.example.org
+  IMAGE_REPOSITORY: harbor.example.org/app
+  COURSE: 'БР1.1/Бочарников Максим'
+
+validate_python:
+  stage: validate
+  interruptible: true
+  image: python:3.13-slim
+  script:
+    - python -m compileall -q backend ml-service
+
+validate_chart:
+  stage: validate
+  interruptible: true
+  image:
+    name: alpine/helm:3.22.1
+    entrypoint: [""]
+  script:
+    - helm lint "$COURSE/labs/lab7/chart" --set-string host=app-course.example.org --set-string images.tag=validate
+    - helm lint "$COURSE/labs/lab7/chart" --set-string host=app-course.example.org --set-string images.tag=validate -f "$COURSE/labs/lab8/values-hpa.yaml"
+
+build_images:
+  stage: build
+  interruptible: true
+  image: docker:28.3.3-cli
+  services:
+    - name: docker:28.3.3-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /certs/client
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && ($CI_COMMIT_BRANCH == "semester-vm" || $CI_COMMIT_BRANCH == "semester-cloud")'
+  parallel:
+    matrix:
+      - COMPONENT: gateway
+        CONTEXT: backend
+        DOCKERFILE: backend/gateway/Dockerfile
+      - COMPONENT: classification-worker
+        CONTEXT: backend
+        DOCKERFILE: backend/classification_worker/Dockerfile
+      - COMPONENT: file-worker
+        CONTEXT: backend
+        DOCKERFILE: backend/file_worker/Dockerfile
+      - COMPONENT: scheduler
+        CONTEXT: backend
+        DOCKERFILE: backend/scheduler/Dockerfile
+      - COMPONENT: frontend
+        CONTEXT: frontend
+        DOCKERFILE: frontend/Dockerfile
+        BUILD_ARGS: --build-arg VITE_API_URL= --build-arg VITE_APP_NAME=рабочий проект
+      - COMPONENT: ml-service
+        CONTEXT: ml-service
+        DOCKERFILE: ml-service/Dockerfile
+  script:
+    - printf '%s' "$HARBOR_PUSH_PASSWORD" | docker login "$REGISTRY_HOST" --username "$HARBOR_PUSH_USER" --password-stdin
+    - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
+    - docker build --pull ${BUILD_ARGS:-} --file "$DOCKERFILE" --tag "$IMAGE_REPOSITORY/$COMPONENT:$IMAGE_TAG" "$CONTEXT"
+    - docker push "$IMAGE_REPOSITORY/$COMPONENT:$IMAGE_TAG"
+
+deploy_selectel:
+  stage: deploy
+  image:
+    name: alpine/helm:3.22.1
+    entrypoint: [""]
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "semester-cloud"'
+  environment:
+    name: semester/selectel
+    url: https://$рабочий проект_CLOUD_HOST
+  resource_group: app-semester-selectel
+  script:
+    - 'test -n "$KUBE_CONTEXT" && test -n "$рабочий проект_CLOUD_HOST"'
+    - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
+    - apk add --no-cache curl
+    - |
+      helm upgrade --install app "$COURSE/labs/lab7/chart" \
+        --kube-context "$KUBE_CONTEXT" --namespace app-semester \
+        --set-string "images.registry=$IMAGE_REPOSITORY" --set-string "images.tag=$IMAGE_TAG" \
+        --set-string "host=$рабочий проект_CLOUD_HOST" \
+        --values "$COURSE/labs/lab8/values-hpa.yaml" --atomic --wait --timeout 12m
+    - curl --fail --silent --show-error --retry 5 --retry-all-errors "https://$рабочий проект_CLOUD_HOST/health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
+    - curl --fail --silent --show-error --output /dev/null "https://$рабочий проект_CLOUD_HOST/"

@@ -1,0 +1,33 @@
+deploy_semester_vm:
+  stage: deploy
+  image: alpine:3.22
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "semester-vm"'
+  environment:
+    name: semester/vm
+    url: $рабочий проект_VM_ORIGIN
+  resource_group: app-semester-vm
+  script:
+    - apk add --no-cache openssh-client curl
+    - chmod 600 "$VM_SSH_KEY"
+    - IMAGE_TAG="${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
+    - |
+      set -eu
+      cp "$COURSE/labs/lab4/compose.nginx.yml" ./compose.nginx.yml
+      cp "$COURSE/homeworks/hw6/compose.images.yml" ./compose.images.yml
+      tar -czf /tmp/app-release.tar.gz docker-compose.stage.yml compose.nginx.yml compose.images.yml
+      ssh_vm() {
+        ssh -i "$VM_SSH_KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+          -o "UserKnownHostsFile=$VM_KNOWN_HOSTS" -l "$VM_SSH_USER" "$VM_SSH_HOST" "$@"
+      }
+      ssh_vm "mkdir -p /opt/compose/app/releases/$IMAGE_TAG && tar -xzf - -C /opt/compose/app/releases/$IMAGE_TAG" < /tmp/app-release.tar.gz
+      ssh_vm "sh -s -- $IMAGE_TAG" < "$COURSE/homeworks/hw6/deploy-vm.sh"
+    - curl --fail --silent --show-error --retry 5 --retry-all-errors "$рабочий проект_VM_ORIGIN/health" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
+    - curl --fail --silent --show-error --output /dev/null "$рабочий проект_VM_ORIGIN/"
+    - |
+      if [ -n "${рабочий проект_SMOKE_EMAIL:-}" ]; then
+        curl --fail --silent --show-error --output /dev/null -c /tmp/app.cookies \
+          --data-urlencode "email=$рабочий проект_SMOKE_EMAIL" --data-urlencode "password=$рабочий проект_SMOKE_PASSWORD" \
+          "$рабочий проект_VM_ORIGIN/api/v1/auth/login"
+        curl --fail --silent --show-error --output /dev/null -b /tmp/app.cookies "$рабочий проект_VM_ORIGIN/api/v1/users/me"
+      fi
