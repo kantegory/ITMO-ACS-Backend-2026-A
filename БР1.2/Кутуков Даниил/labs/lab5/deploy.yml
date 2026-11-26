@@ -1,0 +1,104 @@
+---
+- name: Prepare and start Ehrmann on a dedicated Ubuntu VM
+  hosts: ehrmann
+  become: true
+  vars:
+    lab4_path: "{{ playbook_dir }}/../lab4"
+  environment:
+    EHRMANN_PUBLIC_ORIGIN: "{{ ehrmann_public_origin }}"
+  tasks:
+    - name: Install system dependencies
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        name: [ca-certificates, curl, docker.io, docker-compose-v2, nginx]
+
+    - name: Check for provisioned repository and runtime configuration
+      ansible.builtin.stat:
+        path: "{{ ehrmann_root }}/{{ item }}"
+      loop: [docker-compose.cicd.yml, .env, env/backend.env, env/frontend.env, env/ml_core.env, env/grafana.env]
+      register: ehrmann_files
+
+    - name: Require the application checkout and server-side configuration
+      ansible.builtin.assert:
+        that: item.stat.isreg | default(false)
+        fail_msg: "Prepare {{ ehrmann_root }}/{{ item.item }} on the VM."
+      loop: "{{ ehrmann_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Enable Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Ensure the external model network expected by Compose exists
+      community.docker.docker_network:
+        name: chat-model-serving
+        state: present
+
+    - name: Ensure external data volumes expected by Compose exist
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: present
+      loop: [ehrmann_qdrant_storage, ehrmann_silo_data, ehrmann_postgres_data, ehrmann_rabbitmq_data]
+
+    - name: Install the project reverse-proxy files
+      ansible.builtin.copy:
+        src: "{{ lab4_path }}/{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - {src: compose.nginx.yml, dest: "{{ ehrmann_root }}/compose.nginx.yml"}
+        - {src: nginx.conf, dest: /etc/nginx/conf.d/ehrmann.conf}
+      notify: Reload nginx
+
+    - name: Remove the distribution default virtual host on this dedicated VM
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+    - name: Validate nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Enable nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Start the existing project with the nginx override
+      community.docker.docker_compose_v2:
+        project_src: "{{ ehrmann_root }}"
+        files: [docker-compose.cicd.yml, compose.nginx.yml]
+        state: present
+        wait: true
+        wait_timeout: 600
+
+    - name: Apply nginx changes before checking the application
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify the proxied API healthcheck
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --resolve
+          - "{{ ehrmann_public_origin | urlsplit('hostname') }}:443:127.0.0.1"
+          - "{{ ehrmann_public_origin }}/api/v1/health"
+      register: ehrmann_health
+      changed_when: false
+      failed_when: ehrmann_health.rc != 0 or (ehrmann_health.stdout | from_json).status != 'ok'
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded

@@ -1,0 +1,56 @@
+services:
+  ehrmann-node-exporter:
+    image: prom/node-exporter:v1.9.1
+    pid: host
+    network_mode: host
+    volumes:
+      - /:/host:ro,rslave
+      - ehrmann_status:/metrics:ro
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.textfile.directory=/metrics
+      - "--web.listen-address=${EHRMANN_DOCKER_GATEWAY:-172.17.0.1}:9100"
+    restart: unless-stopped
+
+  ehrmann-blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    command: [--config.file=/etc/blackbox/config.yml]
+    volumes:
+      - "${EHRMANN_MONITORING_DIR:?Set EHRMANN_MONITORING_DIR}/blackbox.yml:/etc/blackbox/config.yml:ro"
+    networks: [SAP_net, chat-model-serving]
+    restart: unless-stopped
+
+  ehrmann-prometheus:
+    volumes:
+      - "${EHRMANN_MONITORING_DIR:?Set EHRMANN_MONITORING_DIR}/scrape-vm.yml:/etc/prometheus/scrape.d/ehrmann-vm.yml:ro"
+    extra_hosts:
+      - "ehrmann-vm-node:${EHRMANN_DOCKER_GATEWAY:-172.17.0.1}"
+
+  ehrmann-indexer-status:
+    image: docker:28.3.3-cli
+    entrypoint: [sh, /etc/indexer-status.sh]
+    environment:
+      EHRMANN_COMPOSE_PROJECT: "${COMPOSE_PROJECT_NAME:-ehrmann}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "${EHRMANN_MONITORING_DIR:?Set EHRMANN_MONITORING_DIR}/indexer-status.sh:/etc/indexer-status.sh:ro"
+      - ehrmann_status:/metrics
+    restart: unless-stopped
+
+  ehrmann-frontend:
+    networks: [SAP_net]
+
+  ehrmann-alloy:
+    command: [run, --server.http.listen-addr=0.0.0.0:12345, --storage.path=/var/lib/alloy/data, /etc/alloy/conf.d]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/conf.d/application.alloy:ro
+      - "${EHRMANN_MONITORING_DIR:?Set EHRMANN_MONITORING_DIR}/vm-logs.alloy:/etc/alloy/conf.d/vm-logs.alloy:ro"
+
+  ehrmann-grafana:
+    volumes:
+      - "${EHRMANN_MONITORING_DIR:?Set EHRMANN_MONITORING_DIR}/dashboard.json:/var/lib/grafana/dashboards/ehrmann-vm.json:ro"
+
+volumes:
+  ehrmann_status:
