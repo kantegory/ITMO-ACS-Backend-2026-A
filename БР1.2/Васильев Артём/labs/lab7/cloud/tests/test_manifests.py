@@ -69,6 +69,12 @@ class CloudManifests(unittest.TestCase):
         self.assertTrue(any(v['mountPath'] == '/etc/rabbitmq/rabbitmq.conf' for v in container['volumeMounts']))
         self.assertIn('vm_memory_high_watermark.absolute', (ROOT / 'rabbitmq/rabbitmq.conf').read_text())
 
+    def test_ingress_installs_matching_crd_chart(self):
+        docs = list(yaml.safe_load_all((ROOT / 'k8s/ingress.yml').read_text(encoding='utf-8')))
+        charts = {d['metadata']['name']: d for d in docs if d['kind'] == 'HelmChart'}
+        self.assertIn('lab-ingress-crd', charts)
+        self.assertEqual(charts['lab-ingress-crd']['spec']['chart'], charts['lab-ingress']['spec']['chart'].replace('/traefik-', '/traefik-crd-', 1))
+
     def test_ingress_fronts_private_gateway(self):
         gateway = list(yaml.safe_load_all((ROOT / 'k8s/gateway.yml').read_text(encoding='utf-8')))
         service = next(d for d in gateway if d['kind'] == 'Service')
@@ -76,7 +82,7 @@ class CloudManifests(unittest.TestCase):
         docs = list(yaml.safe_load_all((ROOT / 'k8s/ingress.yml').read_text(encoding='utf-8')))
         ingress = next(d for d in docs if d['kind'] == 'Ingress')
         self.assertEqual(ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'], 'gateway')
-        chart = next(d for d in docs if d['kind'] == 'HelmChart')
+        chart = next(d for d in docs if d['kind'] == 'HelmChart' and d['metadata']['name'] == 'lab-ingress')
         values = yaml.safe_load(chart['spec']['valuesContent'])
         self.assertEqual(values['ports']['web']['nodePort'], 30080)
         self.assertEqual(values['ingressClass']['name'], ingress['spec']['ingressClassName'])

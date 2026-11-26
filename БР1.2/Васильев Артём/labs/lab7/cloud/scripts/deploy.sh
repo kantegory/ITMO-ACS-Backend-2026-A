@@ -54,7 +54,7 @@ done
 k apply --dry-run=client -f "$CLOUD_DIR/k8s/gateway.yml" -o json | python3 "$CLOUD_DIR/scripts/render.py" "$IMAGE_TAG" | k apply -f -
 k rollout status deployment/gateway --timeout=180s
 kubectl apply -f "$CLOUD_DIR/k8s/ingress.yml"
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 150); do
   if kubectl -n kube-system get deployment/lab-ingress >/dev/null 2>&1; then break; fi
   sleep 2
 done
