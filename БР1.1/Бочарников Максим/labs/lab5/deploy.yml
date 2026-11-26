@@ -1,0 +1,164 @@
+---
+- name: Prepare and start рабочий проект on a dedicated Ubuntu VM
+  hosts: app
+  become: true
+  vars:
+    lab4_path: "{{ playbook_dir }}/../lab4"
+    app_deploy_user: "{{ ansible_user }}"
+  environment:
+    рабочий проект_PUBLIC_ORIGIN: "{{ app_public_origin }}"
+  tasks:
+    - name: Install system dependencies
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        name: [ca-certificates, curl, docker.io, docker-compose-v2, nginx, python3-requests]
+
+    - name: Check for provisioned repository and runtime configuration
+      ansible.builtin.stat:
+        path: "{{ app_root }}/{{ item }}"
+      loop:
+        - docker-compose.stage.yml
+        - .env
+        - env/gateway.env
+        - env/classification_worker.env
+        - env/file_worker.env
+        - env/scheduler.env
+        - env/ml_service.env
+        - env/frontend.env
+        - env/postgres.env
+        - env/rabbitmq.env
+        - env/redis.env
+        - env/embedding_model.env
+        - env/classification_model.env
+      register: app_files
+
+    - name: Require the application checkout and server-side configuration
+      ansible.builtin.assert:
+        that: item.stat.isreg | default(false)
+        fail_msg: "Prepare {{ app_root }}/{{ item.item }} on the VM."
+      loop: "{{ app_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check for the ML data directory mounted into ml-service
+      ansible.builtin.stat:
+        path: "{{ app_root }}/ml-service/data"
+      register: app_ml_data
+
+    - name: Require ml-service/data from the repository checkout
+      ansible.builtin.assert:
+        that: app_ml_data.stat.isdir | default(false)
+        fail_msg: "Copy ml-service/data (categories.pkl and reference files) to {{ app_root }}/ml-service/data."
+
+    - name: Enable Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Let the deploy user run Docker
+      ansible.builtin.user:
+        name: "{{ app_deploy_user }}"
+        groups: docker
+        append: true
+
+    - name: Read the Docker runtimes
+      ansible.builtin.command: docker info --format '{% raw %}{{json .Runtimes}}{% endraw %}'
+      register: app_runtimes
+      changed_when: false
+
+    - name: Require the NVIDIA runtime for embedding and classification models
+      ansible.builtin.assert:
+        that: "'nvidia' in app_runtimes.stdout"
+        fail_msg: "Install and configure NVIDIA Container Toolkit (nvidia-ctk runtime configure --runtime=docker)."
+
+    - name: Ensure the external network expected by Compose exists
+      community.docker.docker_network:
+        name: ML_net
+        state: present
+
+    - name: Ensure data volumes expected by Compose exist
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - app_pgdata
+        - app_redisdata
+        - app_rabbitmq_data
+        - app_qdrant_data
+        - working-project_app_hf_cache
+        - working-project_app_sbert_cache
+
+    - name: Create the release directory used by the HW6 pipeline
+      ansible.builtin.file:
+        path: "{{ app_root }}/releases"
+        state: directory
+        owner: "{{ app_deploy_user }}"
+        mode: '0755'
+
+    - name: Link the ML data directory for release overlays
+      ansible.builtin.file:
+        src: "{{ app_root }}/ml-service/data"
+        dest: "{{ app_root }}/ml-service-data"
+        state: link
+
+    - name: Install the project reverse-proxy files
+      ansible.builtin.copy:
+        src: "{{ lab4_path }}/{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - {src: compose.nginx.yml, dest: "{{ app_root }}/compose.nginx.yml"}
+        - {src: nginx.conf, dest: /etc/nginx/conf.d/app.conf}
+      notify: Reload nginx
+
+    - name: Remove the distribution default virtual host on this dedicated VM
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+    - name: Validate nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Enable nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Start the existing project with the nginx override
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_root }}"
+        project_name: app
+        files: [docker-compose.stage.yml, compose.nginx.yml]
+        state: present
+        wait: true
+        wait_timeout: 900
+
+    - name: Apply nginx changes before checking the application
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify the proxied gateway healthcheck
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --resolve
+          - "{{ app_public_origin | urlsplit('hostname') }}:443:127.0.0.1"
+          - "{{ app_public_origin }}/health"
+      register: app_health
+      changed_when: false
+      failed_when: app_health.rc != 0 or (app_health.stdout | from_json).status != 'ok'
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded

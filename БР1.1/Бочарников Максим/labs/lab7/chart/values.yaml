@@ -1,0 +1,57 @@
+images:
+  registry: harbor.example.org/app
+  tag: ""
+  pullSecret: harbor-pull
+host: ""
+tlsSecret: app-stage-tls
+ingressClass: traefik
+secrets:
+  gateway: app-gateway-runtime
+  ml: app-ml-runtime
+components:
+  frontend:
+    image: frontend
+    port: 80
+    health: /
+    requests: {cpu: 100m, memory: 96Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  gateway:
+    image: gateway
+    command: [python, main.py, backend, --production]
+    port: 8000
+    health: /health
+    requests: {cpu: 250m, memory: 384Mi}
+    limits: {cpu: "1", memory: 768Mi}
+  classification-worker:
+    image: classification-worker
+    port: 8001
+    health: /health
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  file-worker:
+    image: file-worker
+    port: 8003
+    health: /health
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  scheduler:
+    image: scheduler
+    port: 8002
+    health: /health
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+  ml-service:
+    image: ml-service
+    replicas: 4
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 3Gi}
+migrations:
+  gateway:
+    image: gateway
+    secret: gateway
+    command: [alembic, upgrade, head]
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  cpuUtilization: 70

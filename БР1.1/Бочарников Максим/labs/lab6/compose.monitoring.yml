@@ -1,0 +1,106 @@
+services:
+  app-node-exporter:
+    image: prom/node-exporter:v1.9.1
+    pid: host
+    network_mode: host
+    volumes:
+      - /:/host:ro,rslave
+      - app_status:/metrics:ro
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.textfile.directory=/metrics
+      - "--web.listen-address=${рабочий проект_DOCKER_GATEWAY:-172.17.0.1}:9100"
+    restart: unless-stopped
+
+  app-blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    command: [--config.file=/etc/blackbox/config.yml]
+    volumes:
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/blackbox.yml:/etc/blackbox/config.yml:ro"
+    networks: [ML_net]
+    restart: unless-stopped
+
+  app-prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/scrape-vm.yml:/etc/prometheus/scrape.d/app-vm.yml:ro"
+      - app_prometheus_data:/prometheus
+    extra_hosts:
+      - "app-vm-node:${рабочий проект_DOCKER_GATEWAY:-172.17.0.1}"
+    networks: [ML_net]
+    restart: unless-stopped
+
+  app-loki:
+    image: grafana/loki:3.5.5
+    command: [-config.file=/etc/loki/config.yml]
+    volumes:
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/loki.yml:/etc/loki/config.yml:ro"
+      - app_loki_data:/loki
+    networks: [ML_net]
+    restart: unless-stopped
+
+  app-alloy:
+    image: grafana/alloy:v1.10.2
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/vm-logs.alloy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/vm-logs.alloy:/etc/alloy/vm-logs.alloy:ro"
+      - app_alloy_data:/var/lib/alloy/data
+    depends_on: [app-loki]
+    networks: [ML_net]
+    restart: unless-stopped
+
+  app-grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "127.0.0.1:13300:3000"
+    volumes:
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/grafana-datasources.yml:/etc/grafana/provisioning/datasources/app.yml:ro"
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/app.yml:ro"
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/dashboard.json:/var/lib/grafana/dashboards/app-vm.json:ro"
+      - app_grafana_data:/var/lib/grafana
+    depends_on: [app-prometheus, app-loki]
+    networks: [ML_net]
+    restart: unless-stopped
+
+  app-ml-service-status:
+    image: docker:28.3.3-cli
+    entrypoint: [sh, /etc/ml-service-status.sh]
+    environment:
+      рабочий проект_COMPOSE_PROJECT: "${COMPOSE_PROJECT_NAME:-app}"
+      рабочий проект_ML_SERVICE_REPLICAS: "4"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "${рабочий проект_MONITORING_DIR:?Set рабочий проект_MONITORING_DIR}/ml-service-status.sh:/etc/ml-service-status.sh:ro"
+      - app_status:/metrics
+    restart: unless-stopped
+
+volumes:
+  app_status:
+    name: app_status
+  app_prometheus_data:
+    name: app_prometheus_data
+  app_loki_data:
+    name: app_loki_data
+  app_alloy_data:
+    name: app_alloy_data
+  app_grafana_data:
+    name: app_grafana_data
+
+networks:
+  ML_net:
+    external: true
