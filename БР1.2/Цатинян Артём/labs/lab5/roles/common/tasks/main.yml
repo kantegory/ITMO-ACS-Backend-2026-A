@@ -1,0 +1,59 @@
+---
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, git, rsync, python3, ufw]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Set Moscow timezone
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Europe/Moscow
+    dest: /etc/localtime
+    state: link
+
+- name: Check dedicated swap file
+  ansible.builtin.stat:
+    path: /swapfile-lab5
+  register: lab5_swap
+
+- name: Allocate swap file
+  ansible.builtin.command: fallocate -l 2G /swapfile-lab5
+  when: not lab5_swap.stat.exists
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: /swapfile-lab5
+    mode: '0600'
+
+- name: Format new swap file
+  ansible.builtin.command: mkswap /swapfile-lab5
+  when: not lab5_swap.stat.exists
+
+- name: Read active swap devices
+  ansible.builtin.command: swapon --show=NAME --noheadings --raw
+  register: active_swap
+  changed_when: false
+
+- name: Enable swap file
+  ansible.builtin.command: swapon /swapfile-lab5
+  when: "'/swapfile-lab5' not in active_swap.stdout_lines"
+
+- name: Make swap persistent
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: /swapfile-lab5 none swap sw 0 0
+    state: present
+
+- name: Allow SSH and HTTP
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ['22', '80']
+
+- name: Enable host firewall
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming

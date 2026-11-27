@@ -1,0 +1,68 @@
+---
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy application source to VM
+  ansible.posix.synchronize:
+    src: "{{ app_src }}"
+    dest: "{{ app_dir }}/"
+    checksum: true
+    perms: false
+    owner: false
+    group: false
+    times: false
+    rsync_opts:
+      - '--exclude=.gradle/'
+      - '--exclude=.gradle-home/'
+      - '--exclude=build/'
+      - '--exclude=*.log'
+      - '--exclude=*.pdf'
+      - '--exclude=*.tex'
+      - '--exclude=docker-compose.yml'
+      - '--exclude=Dockerfile'
+      - '--exclude=/gradlew'
+  register: app_copy
+
+- name: Copy Compose and Dockerfiles using accessible image registry
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.file', app_src ~ item) | replace('public.ecr.aws/docker/library/', 'mirror.gcr.io/library/') }}\n"
+    dest: "{{ app_dir }}/{{ item }}"
+    mode: '0644'
+  loop:
+    - docker-compose.yml
+    - identity-service/Dockerfile
+    - catalog-service/Dockerfile
+    - booking-service/Dockerfile
+    - review-service/Dockerfile
+  register: image_configs
+
+- name: Copy Gradle wrapper with Unix line endings
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import base64, pathlib, sys; p=pathlib.Path(sys.argv[1]); data=base64.b64decode(sys.argv[2]).replace(bytes([13,10]),bytes([10])).rstrip(bytes([10]))+bytes([10]); old=p.read_bytes() if p.exists() else None; p.write_bytes(data) if old != data else None; print('updated' if old != data else 'unchanged')"
+      - "{{ app_dir }}/gradlew"
+      - "{{ lookup('ansible.builtin.file', app_src ~ 'gradlew') | b64encode }}"
+  register: gradle_wrapper
+  changed_when: gradle_wrapper.stdout == 'updated'
+
+- name: Set Gradle wrapper permissions
+  ansible.builtin.file:
+    path: "{{ app_dir }}/gradlew"
+    mode: '0755'
+
+- name: Build and start application containers
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -o
+      - pipefail
+      - -c
+      - 'docker compose --progress plain up -d --build 2>&1 | tee /var/log/lab5-compose.log'
+    chdir: "{{ app_dir }}"
+  register: compose_up
+  changed_when: app_copy.changed or image_configs.changed or gradle_wrapper.changed or ('Started' in compose_up.stdout) or ('Created' in compose_up.stdout)

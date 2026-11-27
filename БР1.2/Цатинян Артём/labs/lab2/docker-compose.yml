@@ -1,0 +1,124 @@
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:14
+    container_name: restaurant-booking-postgres
+    environment:
+      POSTGRES_DB: storage_local
+      POSTGRES_USER: storage
+      POSTGRES_PASSWORD: storage
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storage -d storage_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: public.ecr.aws/docker/library/rabbitmq:3.13-management
+    container_name: restaurant-booking-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: storage
+      RABBITMQ_DEFAULT_PASS: storage
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: identity-service/Dockerfile
+    image: restaurant-booking/identity-service:latest
+    container_name: restaurant-booking-identity-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/storage_local
+      SPRING_DATASOURCE_USERNAME: storage
+      SPRING_DATASOURCE_PASSWORD: storage
+      APP_JWT_SECRET: lab2-docker-development-secret-with-at-least-256-bits
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: catalog-service/Dockerfile
+    image: restaurant-booking/catalog-service:latest
+    container_name: restaurant-booking-catalog-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/storage_local
+      SPRING_DATASOURCE_USERNAME: storage
+      SPRING_DATASOURCE_PASSWORD: storage
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: storage
+      SPRING_RABBITMQ_PASSWORD: storage
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: booking-service/Dockerfile
+    image: restaurant-booking/booking-service:latest
+    container_name: restaurant-booking-booking-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/storage_local
+      SPRING_DATASOURCE_USERNAME: storage
+      SPRING_DATASOURCE_PASSWORD: storage
+      SERVICES_CATALOG_BASE_URL: http://catalog-service:8082
+      SERVICES_IDENTITY_BASE_URL: http://identity-service:8081
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      catalog-service:
+        condition: service_started
+
+  review-service:
+    build:
+      context: .
+      dockerfile: review-service/Dockerfile
+    image: restaurant-booking/review-service:latest
+    container_name: restaurant-booking-review-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/storage_local
+      SPRING_DATASOURCE_USERNAME: storage
+      SPRING_DATASOURCE_PASSWORD: storage
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: storage
+      SPRING_RABBITMQ_PASSWORD: storage
+      SERVICES_BOOKING_BASE_URL: http://booking-service:8083
+      SERVICES_IDENTITY_BASE_URL: http://identity-service:8081
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+
+volumes:
+  postgres-data:

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-review-schema" author="codex">
+        <sql>create schema if not exists review</sql>
+
+        <createTable schemaName="review" tableName="reviews">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="booking_id" type="bigint">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="restaurant_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rating" type="integer">
+                <constraints nullable="false"/>
+            </column>
+            <column name="comment" type="text"/>
+            <column name="author_name_snapshot" type="varchar(220)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable schemaName="review" tableName="review_outbox">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="event_type" type="varchar(80)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="aggregate_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="payload" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="processed" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="002-review-demo-data" author="codex">
+        <sql><![CDATA[
+            insert into review.reviews(id, booking_id, restaurant_id, user_id, rating, comment, author_name_snapshot)
+            values
+                (1001, 1002, 2, 1001, 5, 'Excellent pasta and friendly service. The booking flow worked perfectly.', 'Emily Carter')
+            on conflict do nothing;
+
+            insert into review.review_outbox(id, event_type, aggregate_id, payload, processed)
+            values
+                (1001, 'REVIEW_CREATED', 1001, '{"restaurantId":2,"rating":5}', false)
+            on conflict (id) do nothing;
+
+            select setval(pg_get_serial_sequence('review.reviews', 'id'), greatest((select coalesce(max(id), 1) from review.reviews), 1));
+            select setval(pg_get_serial_sequence('review.review_outbox', 'id'), greatest((select coalesce(max(id), 1) from review.review_outbox), 1));
+        ]]></sql>
+    </changeSet>
+
+    <changeSet id="003-review-demo-outbox-processed" author="codex">
+        <update schemaName="review" tableName="review_outbox">
+            <column name="event_type" value="ReviewCreated"/>
+            <column name="payload" value="{&quot;reviewId&quot;:1001,&quot;bookingId&quot;:1002,&quot;restaurantId&quot;:2,&quot;userId&quot;:1001,&quot;rating&quot;:5}"/>
+            <where>id = 1001</where>
+        </update>
+        <update schemaName="review" tableName="review_outbox">
+            <column name="processed" valueBoolean="true"/>
+            <where>id = 1001</where>
+        </update>
+    </changeSet>
+</databaseChangeLog>

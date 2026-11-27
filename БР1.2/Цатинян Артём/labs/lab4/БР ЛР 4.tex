@@ -1,0 +1,266 @@
+\documentclass[14pt,a4paper]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{cmap}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\geometry{left=30mm,right=15mm,top=20mm,bottom=20mm}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2em}
+\renewcommand{\arraystretch}{1.35}
+\sloppy
+
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\pathcode}[1]{{\footnotesize\nolinkurl{#1}}}
+
+\lstdefinestyle{codestyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        САНКТ-ПЕТЕРБУРГСКИЙ НАЦИОНАЛЬНЫЙ\\
+        ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО
+
+        \vspace{1.5cm}
+        Дисциплина: Бэк-энд разработка
+
+        \vspace{1.5cm}
+        \textbf{Отчет}
+
+        \vspace{0.5cm}
+        Лабораторная работа 4
+
+        \vspace{0.5cm}
+        \textbf{Развёртывание приложения на удалённом сервере}
+
+        \vfill
+
+        \begin{flushright}
+            Выполнил:\\
+            Цатинян Артём\\
+            Группа БР1.2
+
+            \vspace{0.8cm}
+            Проверил:\\
+            Добряков Д. И.
+        \end{flushright}
+
+        \vfill
+        Санкт-Петербург\\
+        2026 г.
+    \end{center}
+\end{titlepage}
+
+\section{Задача}
+
+Тема проекта: приложение для бронирования столиков в ресторанах.
+
+В рамках лабораторной работы требовалось выполнить ручное развёртывание backend-приложения на удалённом сервере. В качестве разворачиваемого приложения использовалась микросервисная версия проекта: \code{identity-service}, \code{catalog-service}, \code{booking-service}, \code{review-service}, PostgreSQL и RabbitMQ.
+
+\section{Ход работы}
+
+\subsection{Подготовка сервера}
+
+Для развёртывания был использован удалённый сервер с публичным IP-адресом \code{186.246.13.204}. На сервере установлена операционная система Debian GNU/Linux 13.
+
+На сервер были установлены необходимые компоненты:
+
+\begin{lstlisting}[style=codestyle]
+apt-get update
+apt-get install -y git docker.io docker-compose openjdk-21-jdk postgresql rabbitmq-server
+systemctl enable --now docker postgresql rabbitmq-server
+\end{lstlisting}
+
+Docker и Docker Compose были установлены для поддержки контейнерного сценария, однако во время ручного деплоя сервер упёрся в лимиты загрузки образов из публичных registry. Поэтому для финального ручного развёртывания был выбран более стабильный вариант для небольшой VPS: запуск собранных Spring Boot jar-файлов через \code{systemd}. Такой способ соответствует ручному развёртыванию и не зависит от Docker Hub rate limit.
+
+\subsection{Настройка базы данных и брокера сообщений}
+
+В PostgreSQL были созданы пользователь и база данных, которые используются сервисами:
+
+\begin{lstlisting}[style=codestyle]
+CREATE ROLE storage LOGIN PASSWORD 'storage';
+CREATE DATABASE storage_local OWNER storage;
+\end{lstlisting}
+
+Для RabbitMQ был включён management plugin и создан пользователь:
+
+\begin{lstlisting}[style=codestyle]
+rabbitmq-plugins enable rabbitmq_management
+rabbitmqctl add_user storage storage
+rabbitmqctl set_user_tags storage administrator
+rabbitmqctl set_permissions -p / storage '.*' '.*' '.*'
+\end{lstlisting}
+
+\subsection{Сборка приложения}
+
+На сервере была предпринята попытка собрать проект через Gradle, но VPS имеет около 2 GB RAM и не имеет swap. Kotlin compiler daemon создавал слишком высокую нагрузку, поэтому сборка была перенесена на локальную машину, а на сервер загружались уже готовые Spring Boot jar-файлы.
+
+Локальная сборка выполнялась командой:
+
+\begin{lstlisting}[style=codestyle]
+./gradlew.bat --console=plain --offline bootJar
+\end{lstlisting}
+
+После сборки на сервер были загружены jar-файлы:
+
+\begin{longtable}{|L{0.34\textwidth}|L{0.45\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Jar-файл} \\
+\hline
+\code{identity-service} & \pathcode{identity-service/build/libs/identity-service.jar} \\
+\hline
+\code{catalog-service} & \pathcode{catalog-service/build/libs/catalog-service.jar} \\
+\hline
+\code{booking-service} & \pathcode{booking-service/build/libs/booking-service.jar} \\
+\hline
+\code{review-service} & \pathcode{review-service/build/libs/review-service.jar} \\
+\hline
+\end{longtable}
+
+\subsection{Настройка systemd}
+
+Для запуска микросервисов был добавлен скрипт \code{deploy-systemd.sh}. Он создаёт четыре unit-файла:
+
+\begin{longtable}{|L{0.42\textwidth}|L{0.35\textwidth}|}
+\hline
+\textbf{Unit} & \textbf{Порт сервиса} \\
+\hline
+\pathcode{restaurant-booking-identity.service} & 8081 \\
+\hline
+\pathcode{restaurant-booking-catalog.service} & 8082 \\
+\hline
+\pathcode{restaurant-booking-booking.service} & 8083 \\
+\hline
+\pathcode{restaurant-booking-review.service} & 8084 \\
+\hline
+\end{longtable}
+
+Для каждого сервиса задаются переменные окружения подключения к PostgreSQL и RabbitMQ. Пример unit-файла:
+
+\begin{lstlisting}[style=codestyle]
+[Service]
+WorkingDirectory=/opt/restaurant-booking-lab2
+Environment=SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/storage_local
+Environment=SPRING_DATASOURCE_USERNAME=storage
+Environment=SPRING_DATASOURCE_PASSWORD=storage
+Environment=SPRING_RABBITMQ_HOST=localhost
+ExecStart=/usr/bin/java -jar /opt/restaurant-booking-lab2/identity-service/build/libs/identity-service.jar
+Restart=always
+\end{lstlisting}
+
+Сервисы включены в автозагрузку:
+
+\begin{lstlisting}[style=codestyle]
+systemctl enable restaurant-booking-identity
+systemctl enable restaurant-booking-catalog
+systemctl enable restaurant-booking-booking
+systemctl enable restaurant-booking-review
+\end{lstlisting}
+
+\subsection{Результат развёртывания}
+
+После запуска все четыре сервиса находятся в состоянии \code{active}. Проверка выполнялась командами:
+
+\begin{lstlisting}[style=codestyle]
+systemctl is-active restaurant-booking-identity restaurant-booking-catalog restaurant-booking-booking restaurant-booking-review
+curl http://localhost:8081/v3/api-docs
+curl http://localhost:8082/v3/api-docs
+curl http://localhost:8083/v3/api-docs
+curl http://localhost:8084/v3/api-docs
+\end{lstlisting}
+
+Также была проверена пользовательская ручка каталога:
+
+\begin{lstlisting}[style=codestyle]
+curl http://localhost:8082/api/v1/cuisines
+\end{lstlisting}
+
+Ответ содержал тестовые кухни:
+
+\begin{lstlisting}[style=codestyle]
+[
+  {"id":1,"name":"European"},
+  {"id":2,"name":"Italian"},
+  {"id":3,"name":"Japanese"},
+  {"id":4,"name":"Vegetarian"}
+]
+\end{lstlisting}
+
+\subsection{Настройка nginx reverse proxy}
+
+По полному условию лабораторной работы также был настроен nginx в режиме обратного прокси. На сервер уже был направлен домен \code{ezhidze.ru}, поэтому приложение было опубликовано через HTTPS на этом домене. Старый активный конфиг сайта был сохранён в резервную копию, а доменный конфиг nginx заменён на reverse proxy для микросервисов.
+
+Корневой маршрут перенаправляет пользователя на Swagger каталога:
+
+\begin{lstlisting}[style=codestyle]
+location = / {
+    return 302 /catalog/swagger-ui/index.html;
+}
+\end{lstlisting}
+
+Для сервисов настроены отдельные префиксы:
+
+\begin{lstlisting}[style=codestyle]
+location /identity/ { proxy_pass http://127.0.0.1:8081/; }
+location /catalog/  { proxy_pass http://127.0.0.1:8082/; }
+location /booking/  { proxy_pass http://127.0.0.1:8083/; }
+location /review/   { proxy_pass http://127.0.0.1:8084/; }
+\end{lstlisting}
+
+После настройки выполнялась проверка:
+
+\begin{lstlisting}[style=codestyle]
+nginx -t
+systemctl reload nginx
+curl https://ezhidze.ru/catalog/api/v1/cuisines
+curl https://ezhidze.ru/identity/v3/api-docs
+curl https://ezhidze.ru/catalog/v3/api-docs
+curl https://ezhidze.ru/booking/v3/api-docs
+curl https://ezhidze.ru/review/v3/api-docs
+\end{lstlisting}
+
+После развёртывания приложение доступно через nginx:
+
+\begin{longtable}{|L{0.28\textwidth}|L{0.55\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Swagger UI} \\
+\hline
+\code{identity-service} & \pathcode{https://ezhidze.ru/identity/swagger-ui/index.html} \\
+\hline
+\code{catalog-service} & \pathcode{https://ezhidze.ru/catalog/swagger-ui/index.html} \\
+\hline
+\code{booking-service} & \pathcode{https://ezhidze.ru/booking/swagger-ui/index.html} \\
+\hline
+\code{review-service} & \pathcode{https://ezhidze.ru/review/swagger-ui/index.html} \\
+\hline
+\end{longtable}
+
+Прямые порты сервисов \code{8081--8084} также остаются доступными для отладки, но основной внешний доступ для защиты организован через nginx и домен \code{ezhidze.ru}.
+
+\section{Вывод}
+
+В рамках лабораторной работы микросервисное backend-приложение было вручную развёрнуто на удалённом сервере. На сервере установлены Java 21, PostgreSQL, RabbitMQ и nginx, настроены база данных и брокер сообщений, а четыре Spring Boot сервиса запущены как systemd-сервисы с автоперезапуском и автозагрузкой.
+
+Результат проверен через Swagger/OpenAPI endpoints и тестовую ручку каталога. Приложение доступно извне через nginx reverse proxy по домену \code{ezhidze.ru}.
+
+\end{document}

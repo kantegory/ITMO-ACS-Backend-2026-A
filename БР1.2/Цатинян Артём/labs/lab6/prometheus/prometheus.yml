@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+  - job_name: node
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+  - job_name: services
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://identity-service:8081/v3/api-docs
+          - http://catalog-service:8082/v3/api-docs
+          - http://booking-service:8083/v3/api-docs
+          - http://review-service:8084/v3/api-docs
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        regex: 'http://([^:]+):.*'
+        target_label: service
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

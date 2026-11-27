@@ -1,0 +1,306 @@
+\documentclass[14pt,a4paper]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{cmap}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{seqsplit}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+
+\geometry{
+    left=30mm,
+    right=15mm,
+    top=20mm,
+    bottom=20mm
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue
+}
+
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2em}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{4pt}
+\sloppy
+
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+
+\lstdefinestyle{codestyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\pathcode}[1]{{\footnotesize\nolinkurl{#1}}}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        САНКТ-ПЕТЕРБУРГСКИЙ НАЦИОНАЛЬНЫЙ\\
+        ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО
+
+        \vspace{1.5cm}
+
+        Дисциплина: Бэк-энд разработка
+
+        \vspace{1.5cm}
+
+        \textbf{Отчет}
+
+        \vspace{0.5cm}
+
+        Лабораторная работа 3
+
+        \vspace{0.5cm}
+
+        \textbf{Контейнеризация написанного приложения средствами Docker}
+
+        \vfill
+
+        \begin{flushright}
+            Выполнил:\\
+            Цатинян Артём\\
+            Группа БР1.2
+
+            \vspace{0.8cm}
+
+            Проверил:\\
+            Добряков Д. И.
+        \end{flushright}
+
+        \vfill
+
+        Санкт-Петербург\\
+        2026 г.
+    \end{center}
+\end{titlepage}
+
+\section{Задача}
+
+Тема проекта: приложение для бронирования столиков в ресторанах.
+
+В рамках лабораторной работы требовалось контейнеризовать микросервисное backend-приложение: реализовать \code{Dockerfile} для каждого сервиса, написать общий \code{docker-compose.yml} и настроить сетевое взаимодействие между сервисами.
+
+\section{Ход работы}
+
+Контейнеризация выполнялась для микросервисной версии приложения, реализованной в рамках ЛР2. Проект представляет собой Gradle multi-module приложение на Kotlin и Spring Boot. В состав системы входят четыре бизнес-сервиса и две инфраструктурные зависимости: PostgreSQL и RabbitMQ.
+
+\subsection{Состав контейнеризуемого приложения}
+
+\begin{longtable}{|L{0.28\textwidth}|L{0.42\textwidth}|L{0.16\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Назначение} & \textbf{Порт} \\
+\hline
+\code{identity-service} & Регистрация, авторизация, выдача JWT, получение данных текущего пользователя & 8081 \\
+\hline
+\code{catalog-service} & Каталог ресторанов, кухни, меню, столики, агрегированные рейтинги & 8082 \\
+\hline
+\code{booking-service} & Создание и просмотр бронирований, проверка доступности столика & 8083 \\
+\hline
+\code{review-service} & Создание и просмотр отзывов, публикация событий об отзывах & 8084 \\
+\hline
+\code{postgres} & Общая PostgreSQL база для локального запуска, схемы разделены по сервисам & 5432 \\
+\hline
+\code{rabbitmq} & Брокер сообщений для асинхронного взаимодействия & 5672, 15672 \\
+\hline
+\end{longtable}
+
+\subsection{Dockerfile для сервисов}
+
+Для каждого бизнес-сервиса был создан отдельный \code{Dockerfile}. Все файлы построены по одной схеме:
+
+\begin{enumerate}[nosep]
+    \item На первом этапе используется образ \code{eclipse-temurin:21-jdk}.
+    \item В контейнер копируется весь multi-module проект.
+    \item Gradle собирает bootJar только нужного сервиса.
+    \item На втором этапе используется более легкий runtime-образ \code{eclipse-temurin:21-jre}.
+    \item В итоговый образ копируется только готовый jar-файл сервиса.
+\end{enumerate}
+
+Пример общей логики Dockerfile:
+
+\begin{lstlisting}[style=codestyle]
+FROM eclipse-temurin:21-jdk AS build
+WORKDIR /workspace
+COPY . .
+RUN chmod +x ./gradlew \
+    && ./gradlew --console=plain :booking-service:bootJar \
+       -x liquibaseUpdate -x generateJooq --no-daemon
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /workspace/booking-service/build/libs/booking-service.jar app.jar
+EXPOSE 8083
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+\end{lstlisting}
+
+Генерация jOOQ и Liquibase update не запускаются внутри Docker build. Сгенерированные jOOQ-классы уже находятся в проекте, а миграции Liquibase применяются при старте каждого Spring Boot сервиса.
+
+\subsection{Оптимизация контекста сборки}
+
+Для уменьшения Docker build context добавлен файл \code{.dockerignore}. Из контекста исключены локальные Gradle-кэши, build-директории, временные файлы и PDF/TeX артефакты отчетов. Это ускоряет сборку образов и не тащит внутрь контейнеров лишние локальные файлы.
+
+\subsection{Общий docker-compose.yml}
+
+Для запуска всей системы добавлен общий \code{docker-compose.yml}. Он поднимает PostgreSQL, RabbitMQ и все четыре микросервиса в одной Docker-сети. Благодаря этому сервисы обращаются друг к другу не через \code{localhost}, а по DNS-именам контейнеров.
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=1.9cm,
+    service/.style={rectangle, draw, rounded corners, align=center, minimum width=3.2cm, minimum height=0.9cm},
+    infra/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, minimum width=2.8cm, minimum height=1cm},
+    arrow/.style={-{Latex[length=3mm]}, thick}
+]
+\node[service] (identity) {identity-service\\8081};
+\node[service, right=2.4cm of identity] (catalog) {catalog-service\\8082};
+\node[service, below=1.6cm of identity] (booking) {booking-service\\8083};
+\node[service, right=2.4cm of booking] (review) {review-service\\8084};
+\node[infra, below=1.5cm of booking] (postgres) {PostgreSQL\\5432};
+\node[infra, below=1.5cm of review] (rabbit) {RabbitMQ\\5672/15672};
+
+\draw[arrow] (booking) -- node[left]{auth} (identity);
+\draw[arrow] (booking) -- node[above]{catalog context} (catalog);
+\draw[arrow] (review) -- node[right]{auth} (identity);
+\draw[arrow] (review) -- node[above]{booking context} (booking);
+\draw[arrow] (review) -- node[right]{events} (rabbit);
+\draw[arrow] (rabbit) -- node[right]{events} (catalog);
+\draw[arrow] (identity) -- (postgres);
+\draw[arrow] (catalog) -- (postgres);
+\draw[arrow] (booking) -- (postgres);
+\draw[arrow] (review) -- (postgres);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Сетевое взаимодействие}
+
+В Docker Compose все сервисы находятся в одной сети. Поэтому для межсервисных вызовов используются внутренние адреса:
+
+\begin{longtable}{|L{0.35\textwidth}|L{0.45\textwidth}|}
+\hline
+\textbf{Назначение} & \textbf{Адрес внутри Docker-сети} \\
+\hline
+PostgreSQL & \pathcode{jdbc:postgresql://postgres:5432/storage_local} \\
+\hline
+RabbitMQ & \code{rabbitmq:5672} \\
+\hline
+Identity Service & \code{http://identity-service:8081} \\
+\hline
+Catalog Service & \code{http://catalog-service:8082} \\
+\hline
+Booking Service & \code{http://booking-service:8083} \\
+\hline
+\end{longtable}
+
+Например, \code{booking-service} получает адреса зависимых сервисов через переменные окружения:
+
+\begin{lstlisting}[style=codestyle]
+SERVICES_CATALOG_BASE_URL: http://catalog-service:8082
+SERVICES_IDENTITY_BASE_URL: http://identity-service:8081
+\end{lstlisting}
+
+\code{review-service} аналогично получает адреса \code{booking-service} и \code{identity-service}, а также параметры подключения к RabbitMQ.
+
+\subsection{Порядок старта}
+
+Для инфраструктуры настроены healthcheck-и. PostgreSQL считается готовым после успешного \code{pg_isready}, RabbitMQ --- после успешного \code{rabbitmq-diagnostics ping}. Бизнес-сервисы запускаются после готовности нужной инфраструктуры.
+
+\begin{longtable}{|L{0.28\textwidth}|L{0.52\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Зависимости при запуске} \\
+\hline
+\code{identity-service} & \code{postgres} \\
+\hline
+\code{catalog-service} & \code{postgres}, \code{rabbitmq} \\
+\hline
+\code{booking-service} & \code{postgres}, \code{identity-service}, \code{catalog-service} \\
+\hline
+\code{review-service} & \code{postgres}, \code{rabbitmq}, \code{identity-service}, \code{booking-service} \\
+\hline
+\end{longtable}
+
+\subsection{Запуск и проверка}
+
+Для запуска всей системы используется команда:
+
+\begin{lstlisting}[style=codestyle]
+docker-compose up --build -d
+\end{lstlisting}
+
+Если установлен новый Docker Compose plugin, можно использовать вариант:
+
+\begin{lstlisting}[style=codestyle]
+docker compose up --build -d
+\end{lstlisting}
+
+После запуска доступны Swagger UI каждого сервиса:
+
+\begin{longtable}{|L{0.28\textwidth}|L{0.55\textwidth}|}
+\hline
+\textbf{Сервис} & \textbf{Swagger UI} \\
+\hline
+\code{identity-service} & \pathcode{http://localhost:8081/swagger-ui/index.html} \\
+\hline
+\code{catalog-service} & \pathcode{http://localhost:8082/swagger-ui/index.html} \\
+\hline
+\code{booking-service} & \pathcode{http://localhost:8083/swagger-ui/index.html} \\
+\hline
+\code{review-service} & \pathcode{http://localhost:8084/swagger-ui/index.html} \\
+\hline
+\end{longtable}
+
+Подключение к базе данных:
+
+\begin{lstlisting}[style=codestyle]
+host: localhost
+port: 5432
+database: storage_local
+username: storage
+password: storage
+\end{lstlisting}
+
+RabbitMQ Management UI:
+
+\begin{lstlisting}[style=codestyle]
+url: http://localhost:15672
+username: storage
+password: storage
+\end{lstlisting}
+
+Для остановки контейнеров используется команда:
+
+\begin{lstlisting}[style=codestyle]
+docker-compose down
+\end{lstlisting}
+
+Для полной очистки данных PostgreSQL:
+
+\begin{lstlisting}[style=codestyle]
+docker-compose down -v
+\end{lstlisting}
+
+\section{Вывод}
+
+В рамках лабораторной работы была выполнена контейнеризация микросервисного backend-приложения. Для каждого сервиса создан отдельный Dockerfile, а общий \code{docker-compose.yml} поднимает всю систему вместе с PostgreSQL и RabbitMQ. Межсервисное взаимодействие настроено через внутренние DNS-имена Docker Compose, поэтому сервисы могут обращаться друг к другу внутри общей сети без ручной настройки адресов.
+
+В результате приложение можно запускать одной командой, что упрощает демонстрацию на защите и приближает локальное окружение к реальному развертыванию микросервисной системы.
+
+\end{document}

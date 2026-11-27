@@ -1,0 +1,637 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Booking Interservice API
+  version: 1.0.0
+  description: |
+    Internal REST contracts for splitting the restaurant booking monolith
+    into services with database-per-service ownership.
+
+servers:
+  - url: http://identity-service:8080
+    description: Identity Service internal network address
+  - url: http://catalog-service:8080
+    description: Restaurant Catalog Service internal network address
+  - url: http://booking-service:8080
+    description: Booking Service internal network address
+  - url: http://review-service:8080
+    description: Review Service internal network address
+
+security:
+  - serviceToken: []
+
+tags:
+  - name: Identity Internal
+  - name: Catalog Internal
+  - name: Booking Internal
+  - name: Review Internal
+
+paths:
+  /identity/internal/v1/auth/jwks:
+    get:
+      tags: [Identity Internal]
+      summary: Get public keys for JWT verification
+      responses:
+        '200':
+          description: Public keys for token verification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JwksResponse'
+        '503':
+          description: Identity Service is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /identity/internal/v1/users/{userId}/summary:
+    get:
+      tags: [Identity Internal]
+      summary: Get short user profile for another service
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found or inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /catalog/internal/v1/restaurants/{restaurantId}/summary:
+    get:
+      tags: [Catalog Internal]
+      summary: Get short restaurant data for another service
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Restaurant summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantSummary'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Restaurant not found or inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /catalog/internal/v1/restaurants/{restaurantId}/booking-context:
+    get:
+      tags: [Catalog Internal]
+      summary: Validate restaurant and table before creating a booking
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - in: query
+          name: tableId
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - in: query
+          name: guestsCount
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - in: query
+          name: startsAt
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: endsAt
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Restaurant and table can be used by Booking Service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantBookingContext'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Restaurant or table not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Table is not suitable or restaurant is closed for the requested time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /catalog/internal/v1/restaurants/{restaurantId}/availability-context:
+    get:
+      tags: [Catalog Internal]
+      summary: Get working hours and active tables for availability calculation
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: guestsCount
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: Data required to calculate available booking slots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityContextResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Restaurant not found or inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /booking/internal/v1/bookings/availability/check:
+    post:
+      tags: [Booking Internal]
+      summary: Check booking conflicts for a set of tables
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TableAvailabilityCheckRequest'
+      responses:
+        '200':
+          description: Table availability result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableAvailabilityCheckResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /booking/internal/v1/bookings/{bookingId}/review-context:
+    get:
+      tags: [Booking Internal]
+      summary: Check whether a user can create a review for a booking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+        - in: query
+          name: userId
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - in: query
+          name: restaurantId
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Booking review context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingReviewContext'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Booking not found for this user and restaurant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reviews/internal/v1/restaurants/{restaurantId}/rating-stats:
+    get:
+      tags: [Review Internal]
+      summary: Get actual rating statistics for a restaurant
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+      responses:
+        '200':
+          description: Restaurant rating statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingStats'
+        '401':
+          description: Service token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Restaurant has no review statistics yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+
+  parameters:
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    RestaurantId:
+      in: path
+      name: restaurantId
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    BookingId:
+      in: path
+      name: bookingId
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  schemas:
+    JwksResponse:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    UserSummary:
+      type: object
+      required: [id, email, firstName, lastName, role, active]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        email:
+          type: string
+          format: email
+          example: emily.carter@example.com
+        firstName:
+          type: string
+          example: Emily
+        lastName:
+          type: string
+          example: Carter
+        role:
+          type: string
+          enum: [CUSTOMER, ADMIN]
+          example: CUSTOMER
+        active:
+          type: boolean
+          example: true
+
+    RestaurantSummary:
+      type: object
+      required: [id, name, city, street, building, priceSegment, active]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: North Garden
+        city:
+          type: string
+          example: Saint Petersburg
+        street:
+          type: string
+          example: Nevsky Prospect
+        building:
+          type: string
+          example: '12'
+        priceSegment:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+          example: MEDIUM
+        active:
+          type: boolean
+          example: true
+
+    WorkingHours:
+      type: object
+      required: [weekDay, closed]
+      properties:
+        weekDay:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: ISO day of week, where Monday is 1 and Sunday is 7
+          example: 5
+        opensAt:
+          type: string
+          format: time
+          nullable: true
+          example: '12:00:00'
+        closesAt:
+          type: string
+          format: time
+          nullable: true
+          example: '23:00:00'
+        closed:
+          type: boolean
+          example: false
+
+    TableBookingContext:
+      type: object
+      required: [id, restaurantId, tableNumber, seatsCount, active]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 10
+        restaurantId:
+          type: integer
+          format: int64
+          example: 1
+        tableNumber:
+          type: string
+          example: T-04
+        seatsCount:
+          type: integer
+          minimum: 1
+          example: 4
+        zoneName:
+          type: string
+          nullable: true
+          example: Main hall
+        active:
+          type: boolean
+          example: true
+
+    RestaurantBookingContext:
+      type: object
+      required: [restaurant, table, withinWorkingHours]
+      properties:
+        restaurant:
+          $ref: '#/components/schemas/RestaurantSummary'
+        table:
+          $ref: '#/components/schemas/TableBookingContext'
+        workingHours:
+          allOf:
+            - $ref: '#/components/schemas/WorkingHours'
+          nullable: true
+        withinWorkingHours:
+          type: boolean
+          example: true
+
+    AvailabilityContextResponse:
+      type: object
+      required: [restaurantId, date, open, tables]
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+          example: 1
+        date:
+          type: string
+          format: date
+          example: '2026-05-12'
+        open:
+          type: boolean
+          example: true
+        workingHours:
+          allOf:
+            - $ref: '#/components/schemas/WorkingHours'
+          nullable: true
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableBookingContext'
+
+    TableAvailabilityCheckRequest:
+      type: object
+      required: [tableIds, startsAt, endsAt]
+      properties:
+        tableIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          example: [1, 2, 3]
+        startsAt:
+          type: string
+          format: date-time
+          example: '2026-05-12T18:00:00'
+        endsAt:
+          type: string
+          format: date-time
+          example: '2026-05-12T20:00:00'
+        ignoredBookingId:
+          type: integer
+          format: int64
+          nullable: true
+          example: null
+
+    TableAvailabilityCheckResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableAvailabilityItem'
+
+    TableAvailabilityItem:
+      type: object
+      required: [tableId, available, conflictingBookingIds]
+      properties:
+        tableId:
+          type: integer
+          format: int64
+          example: 1
+        available:
+          type: boolean
+          example: false
+        conflictingBookingIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          example: [25]
+
+    BookingStatus:
+      type: string
+      enum: [CONFIRMED, COMPLETED, CANCELLED]
+      example: COMPLETED
+
+    BookingReviewContext:
+      type: object
+      required: [bookingId, userId, restaurantId, status, startsAt, endsAt, canReview]
+      properties:
+        bookingId:
+          type: integer
+          format: int64
+          example: 19
+        userId:
+          type: integer
+          format: int64
+          example: 3
+        restaurantId:
+          type: integer
+          format: int64
+          example: 1
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        startsAt:
+          type: string
+          format: date-time
+          example: '2026-04-12T18:00:00'
+        endsAt:
+          type: string
+          format: date-time
+          example: '2026-04-12T20:00:00'
+        canReview:
+          type: boolean
+          example: true
+        denialReason:
+          type: string
+          nullable: true
+          example: null
+
+    RatingStats:
+      type: object
+      required: [restaurantId, averageRating, reviewCount, updatedAt]
+      properties:
+        restaurantId:
+          type: integer
+          format: int64
+          example: 1
+        averageRating:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+          example: 4.7
+        reviewCount:
+          type: integer
+          minimum: 0
+          example: 128
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-05-12T12:00:00Z'
+
+    ErrorResponse:
+      type: object
+      required: [timestamp, status, error, message, path]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-05-12T12:00:00Z'
+        status:
+          type: integer
+          example: 409
+        error:
+          type: string
+          example: Conflict
+        message:
+          type: string
+          example: This table is already booked for the selected time range
+        path:
+          type: string
+          example: /booking/internal/v1/bookings/availability/check
+        details:
+          type: array
+          items:
+            type: string

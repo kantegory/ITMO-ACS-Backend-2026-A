@@ -1,0 +1,255 @@
+\documentclass[14pt,a4paper]{extarticle}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{cmap}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{seqsplit}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+
+\geometry{
+    left=30mm,
+    right=15mm,
+    top=20mm,
+    bottom=20mm
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue
+}
+
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.2em}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{4pt}
+\sloppy
+
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+
+\lstdefinestyle{codestyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5}
+}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\pathcode}[1]{{\footnotesize\nolinkurl{#1}}}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        САНКТ-ПЕТЕРБУРГСКИЙ НАЦИОНАЛЬНЫЙ\\
+        ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО
+
+        \vspace{1.5cm}
+
+        Дисциплина: Бэк-энд разработка
+
+        \vspace{1.5cm}
+
+        \textbf{Отчет}
+
+        \vspace{0.5cm}
+
+        Домашнее задание 5
+
+        \vspace{0.5cm}
+
+        \textbf{Реализация межсервисного взаимодействия посредством очередей сообщений}
+
+        \vfill
+
+        \begin{flushright}
+            Выполнил:\\
+            Цатинян Артём\\
+            Группа БР1.2
+
+            \vspace{0.8cm}
+
+            Проверил:\\
+            Добряков Д. И.
+        \end{flushright}
+
+        \vfill
+
+        Санкт-Петербург\\
+        2026 г.
+    \end{center}
+\end{titlepage}
+
+\section{Задача}
+
+Тема проекта: приложение для бронирования столиков в ресторанах.
+
+В рамках домашнего задания требовалось подключить брокер сообщений RabbitMQ или Kafka и реализовать межсервисное взаимодействие через очередь сообщений. Для текущего проекта был выбран RabbitMQ, так как он хорошо подходит для событийной интеграции между Spring Boot сервисами и не требует избыточной инфраструктуры для учебного сценария.
+
+\section{Ход работы}
+
+К началу работы приложение уже было разделено на микросервисы: \code{identity-service}, \code{catalog-service}, \code{booking-service} и \code{review-service}. Синхронное взаимодействие между сервисами использовалось для операций, где результат нужен сразу, например проверка пользователя или получение контекста бронирования. Для ДЗ5 был добавлен асинхронный сценарий, в котором сервис отзывов сообщает каталогу о создании нового отзыва.
+
+\subsection{Выбор сценария}
+
+В качестве бизнес-сценария выбрано обновление рейтинга ресторана после публикации отзыва. Это хороший пример для очереди сообщений, потому что пользовательский запрос на создание отзыва не должен напрямую зависеть от успешности пересчета агрегированного рейтинга в каталоге. Отзыв создается в \code{review-service}, после чего событие \code{ReviewCreated} публикуется в RabbitMQ. \code{catalog-service} получает это событие и обновляет таблицу агрегированной статистики рейтинга.
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=2.5cm,
+    service/.style={rectangle, draw, rounded corners, align=center, minimum width=3.4cm, minimum height=1cm},
+    queue/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, minimum width=2.7cm, minimum height=1.1cm},
+    db/.style={cylinder, draw, shape border rotate=90, aspect=0.25, align=center, minimum width=2.8cm, minimum height=1.1cm},
+    arrow/.style={-{Latex[length=3mm]}, thick}
+]
+\node[service] (review) {review-service\\создание отзыва};
+\node[db, below=1.4cm of review] (reviewdb) {review schema\\reviews, outbox};
+\node[queue, right=3cm of review] (rabbit) {RabbitMQ\\review.created};
+\node[service, right=3cm of rabbit] (catalog) {catalog-service\\listener};
+\node[db, below=1.4cm of catalog] (catalogdb) {catalog schema\\rating stats};
+
+\draw[arrow] (review) -- node[above]{publish event} (rabbit);
+\draw[arrow] (rabbit) -- node[above]{consume event} (catalog);
+\draw[arrow] (review) -- (reviewdb);
+\draw[arrow] (catalog) -- (catalogdb);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Настройка RabbitMQ}
+
+RabbitMQ подключен как инфраструктурный сервис. Для локального запуска был добавлен файл \code{docker-compose.rabbitmq.yml}, который поднимает брокер и management UI.
+
+\begin{lstlisting}[style=codestyle]
+rabbitmq:
+  image: rabbitmq:3.13-management
+  ports:
+    - "5672:5672"
+    - "15672:15672"
+  environment:
+    RABBITMQ_DEFAULT_USER: storage
+    RABBITMQ_DEFAULT_PASS: storage
+\end{lstlisting}
+
+Для сервисов добавлены зависимости Spring AMQP. Параметры подключения вынесены в \code{application.yml}: host, port, username и password. В Docker Compose для ЛР3 эти параметры переопределяются так, чтобы сервисы обращались к брокеру по имени контейнера \code{rabbitmq}.
+
+\subsection{Контракт события}
+
+Общий контракт события вынесен в модуль \code{common}. Это позволяет producer и consumer использовать один и тот же DTO и одинаковые имена exchange, queue и routing key.
+
+\begin{longtable}{|L{0.28\textwidth}|L{0.55\textwidth}|}
+\hline
+\textbf{Элемент} & \textbf{Значение} \\
+\hline
+Exchange & \code{restaurant.review.events} \\
+\hline
+Queue & \code{catalog.review-created} \\
+\hline
+Routing key & \code{review.created} \\
+\hline
+Событие & \code{ReviewCreatedEvent} \\
+\hline
+Producer & \code{review-service} \\
+\hline
+Consumer & \code{catalog-service} \\
+\hline
+\end{longtable}
+
+Событие содержит минимальный набор данных, необходимый каталогу для обновления рейтинга:
+
+\begin{lstlisting}[style=codestyle]
+data class ReviewCreatedEvent(
+    val eventId: String,
+    val reviewId: Long,
+    val bookingId: Long,
+    val restaurantId: Long,
+    val userId: Long,
+    val rating: Int,
+    val occurredAt: LocalDateTime
+)
+\end{lstlisting}
+
+\subsection{Публикация события}
+
+В \code{review-service} создание отзыва и запись сообщения в outbox выполняются в рамках одной бизнес-операции. Для этого в схему \code{review} добавлена таблица \code{review_outbox}. Такой подход снижает риск потери события: если отзыв успешно сохранен, событие также остается в базе и может быть опубликовано позже.
+
+Публикация реализована отдельным компонентом \code{ReviewOutboxPublisher}. Он периодически выбирает необработанные записи outbox, преобразует payload в \code{ReviewCreatedEvent}, отправляет событие в RabbitMQ через \code{RabbitTemplate} и после успешной отправки помечает запись как обработанную.
+
+\begin{lstlisting}[style=codestyle]
+rabbitTemplate.convertAndSend(
+    ReviewEvents.EXCHANGE,
+    ReviewEvents.CREATED_ROUTING_KEY,
+    event
+)
+\end{lstlisting}
+
+\subsection{Обработка события}
+
+В \code{catalog-service} добавлен listener \code{ReviewCreatedEventListener}. Он подписан на очередь \code{catalog.review-created} через аннотацию \code{@RabbitListener}. После получения события сервис вызывает метод репозитория \code{applyReviewCreatedEvent}.
+
+В каталоге добавлены две таблицы:
+
+\begin{longtable}{|L{0.34\textwidth}|L{0.49\textwidth}|}
+\hline
+\textbf{Таблица} & \textbf{Назначение} \\
+\hline
+\pathcode{restaurant_rating_stats} & Хранит агрегированный рейтинг ресторана и количество отзывов. Эти данные используются в списке ресторанов и карточке ресторана. \\
+\hline
+\pathcode{processed_review_events} & Хранит идентификаторы уже обработанных событий, чтобы повторная доставка из очереди не увеличивала рейтинг дважды. \\
+\hline
+\end{longtable}
+
+Метод обработки сначала пытается записать \code{eventId} в таблицу \code{processed_review_events}. Если событие уже было обработано, вставка не выполняется и пересчет рейтинга пропускается. Если событие новое, сервис блокирует текущую строку статистики ресторана, пересчитывает средний рейтинг и увеличивает счетчик отзывов.
+
+\subsection{Идемпотентность и надежность}
+
+Очереди сообщений обычно допускают повторную доставку события. Поэтому обработчик в \code{catalog-service} сделан идемпотентным: ключом идемпотентности является \code{eventId}. Даже если RabbitMQ повторно доставит то же сообщение, таблица \code{processed_review_events} не позволит применить его второй раз.
+
+Также используется outbox-подход на стороне \code{review-service}. Он отделяет сохранение бизнес-данных от отправки сообщения в брокер. Если RabbitMQ временно недоступен, отзыв остается в базе, outbox-запись остается необработанной, и publisher попробует отправить событие повторно при следующем запуске.
+
+\subsection{Проверка результата}
+
+Для проверки сценария можно поднять RabbitMQ:
+
+\begin{lstlisting}[style=codestyle]
+docker-compose -f docker-compose.rabbitmq.yml up -d
+\end{lstlisting}
+
+Затем запускаются сервисы \code{identity-service}, \code{catalog-service}, \code{booking-service} и \code{review-service}. После авторизации пользователь создает отзыв через \code{review-service}. В результате:
+
+\begin{enumerate}[nosep]
+    \item В схеме \code{review} появляется запись в \code{reviews}.
+    \item В \code{review_outbox} появляется событие, которое затем помечается как обработанное.
+    \item В RabbitMQ публикуется сообщение \code{ReviewCreatedEvent}.
+    \item \code{catalog-service} получает событие из очереди.
+    \item В схеме \code{catalog} обновляется \code{restaurant_rating_stats}.
+\end{enumerate}
+
+Проверить инфраструктуру RabbitMQ можно через web-интерфейс:
+
+\begin{lstlisting}[style=codestyle]
+http://localhost:15672
+login: storage
+password: storage
+\end{lstlisting}
+
+\section{Вывод}
+
+В рамках домашнего задания было реализовано асинхронное межсервисное взаимодействие через RabbitMQ. Сервис отзывов стал producer событий о создании отзывов, а сервис каталога стал consumer этих событий и обновляет агрегированный рейтинг ресторанов. Для надежности добавлен outbox-подход, а для защиты от повторной доставки сообщений реализована идемпотентная обработка через таблицу обработанных событий.
+
+В результате микросервисная архитектура стала менее связанной: создание отзыва не зависит напрямую от синхронного вызова каталога, а данные рейтинга обновляются через событийную интеграцию.
+
+\end{document}
