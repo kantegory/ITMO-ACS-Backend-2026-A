@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-source "$(dirname -- "${BASH_SOURCE[0]}")/ci.env"
+source "${CHECK_CONFIG:-$(dirname -- "${BASH_SOURCE[0]}")/ci.env}"
 export TMPDIR="$RUNNER_TEMP"
 k() { kubectl -n "$NAMESPACE" "$@"; }
 printf 'run,profile,start_utc,end_utc,exit_code\n' > "$RESULTS/load-runs.csv"

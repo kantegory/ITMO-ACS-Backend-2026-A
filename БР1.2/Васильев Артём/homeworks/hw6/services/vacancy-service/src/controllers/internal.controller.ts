@@ -21,7 +21,12 @@ class InternalVacancyController extends BaseController {
         const foundIds = new Set(vacancies.map((vacancy) => vacancy.id));
 
         return {
-            items: vacancies,
+            items: vacancies.map((vacancy) => ({
+                id: vacancy.id,
+                companyId: vacancy.companyId,
+                employerProfileId: vacancy.employerProfileId,
+                isPublished: vacancy.isPublished,
+            })),
             missingIds: ids.filter((id) => !foundIds.has(id)),
         };
     }

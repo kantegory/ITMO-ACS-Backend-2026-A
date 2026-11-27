@@ -13,6 +13,6 @@ k create configmap grafana-config --from-file=datasources.yml="$LAB_DIR/monitori
 k create configmap cloud-dashboard --from-file=dashboard.json="$LAB_DIR/monitoring/dashboard.json" --dry-run=client -o yaml | k apply -f -
 k apply -f "$LAB_DIR/monitoring/k8s.yml"
 for name in node-exporter blackbox prometheus loki alloy grafana; do
-  k rollout status "deployment/$name" --timeout=420s
+  k rollout status "deployment/$name" --timeout=900s
 done
 k top pods

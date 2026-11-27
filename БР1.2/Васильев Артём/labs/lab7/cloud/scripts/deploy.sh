@@ -7,25 +7,16 @@ source "$CLOUD_DIR/config.env"
 k() { kubectl -n "$NAMESPACE" "$@"; }
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-k get deployments -o json > "$work/before.json"
+snapshot="${RELEASE_SNAPSHOT_DIR:-$work/previous-templates}"
+bash "$CLOUD_DIR/scripts/release-rollback.sh" save "$snapshot"
 rollback() {
   code=$?
   trap - ERR
-  echo 'Deployment failed; restoring existing application image references' >&2
-  python3 - "$work/before.json" "$work" <<'PY' > "$work/restore.txt"
-import json, sys
-from pathlib import Path
-for item in json.load(open(sys.argv[1]))['items']:
-    name = item['metadata']['name']
-    if name not in ['gateway', 'auth-user-service', 'company-service', 'dictionary-service', 'vacancy-service', 'resume-service', 'application-service', 'interaction-service']:
-        continue
-    path = Path(sys.argv[2]) / (name + '-rollback.json')
-    path.write_text(json.dumps({'spec': {'template': item['spec']['template']}}))
-    print(name, str(path))
-PY
-  while read -r deployment patch; do
-    k patch "deployment/$deployment" --type=merge --patch-file "$patch" || true
-  done < "$work/restore.txt"
+  echo 'Deployment failed; restoring previous application templates' >&2
+  if ! bash "$CLOUD_DIR/scripts/release-rollback.sh" restore "$snapshot"; then
+    echo 'Rollback failed; data/schema were not rolled back' >&2
+    exit 1
+  fi
   exit "$code"
 }
 trap rollback ERR
@@ -59,7 +50,7 @@ for attempt in $(seq 1 150); do
   sleep 2
 done
 kubectl -n kube-system rollout status deployment/lab-ingress --timeout=300s
-curl --fail --silent --show-error --max-time 15 http://127.0.0.1:30080/api/v1/industries >/dev/null
+curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --retry-max-time 45 --max-time 15 http://127.0.0.1:30080/api/v1/industries >/dev/null
 k get pods -o wide
 state_dir="${DEPLOY_STATE_DIR:-/opt/job-platform-cloud}"
 mkdir -p "$state_dir"

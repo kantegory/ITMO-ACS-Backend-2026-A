@@ -3,7 +3,8 @@ set -Eeuo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/ci.env"
 exec > >(tee "$RESULTS/acceptance.txt") 2>&1
 k() { kubectl -n "$NAMESPACE" "$@"; }
-collection="$BASE/homeworks/hw3/job-platform-dz3.postman_collection.json"
+collection="$BASE/homeworks/hw9/docs/contracts/job-platform-dz3.postman_collection.json"
+k exec -i postgres-0 -- psql -X -v ON_ERROR_STOP=1 -U clusteradmin -d dictionaries_db < "$BASE/homeworks/hw9/docs/contracts/e2e-dictionaries.sql"
 k exec rabbitmq-0 -- rabbitmq-diagnostics -q check_local_alarms
 npx --yes newman@6.2.1 run "$collection" --env-var "baseUrl=$BASE_URL" --timeout-request 15000 --reporters cli,junit --reporter-junit-export "$RESULTS/newman-before.xml" --bail
 for page in index.html architecture.html api.html authentication.html endpoints.html run-deploy.html testing.html observability.html swagger.html contracts/openapi.yaml contracts/job-platform-dz3.postman_collection.json; do

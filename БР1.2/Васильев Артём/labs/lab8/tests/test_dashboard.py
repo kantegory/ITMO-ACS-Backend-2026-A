@@ -6,6 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Dashboard(unittest.TestCase):
+    def test_grafana_cold_start_budget_exceeds_observed_617_seconds(self):
+        import yaml
+        docs = list(yaml.safe_load_all((ROOT / 'monitoring/k8s.yml').read_text()))
+        grafana = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'] == 'grafana')
+        self.assertGreaterEqual(grafana['spec'].get('progressDeadlineSeconds', 600), 900)
+        self.assertIn('--timeout=900s', (ROOT / 'scripts/deploy-monitoring.sh').read_text())
+
     def test_k6_seconds_are_displayed_as_milliseconds(self):
         dashboard = json.loads((ROOT / 'monitoring/dashboard.json').read_text())
         for panel in dashboard['panels']:

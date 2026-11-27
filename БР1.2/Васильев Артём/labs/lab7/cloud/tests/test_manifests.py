@@ -85,6 +85,7 @@ class CloudManifests(unittest.TestCase):
         chart = next(d for d in docs if d['kind'] == 'HelmChart' and d['metadata']['name'] == 'lab-ingress')
         values = yaml.safe_load(chart['spec']['valuesContent'])
         self.assertEqual(values['ports']['web']['nodePort'], 30080)
+        self.assertEqual(values.get('service', {}).get('spec', {}).get('type'), 'NodePort')
         self.assertEqual(values['ingressClass']['name'], ingress['spec']['ingressClassName'])
 
     def test_seven_owned_databases(self):

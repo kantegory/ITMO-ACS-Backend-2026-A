@@ -43,7 +43,7 @@ try {
   await cdp('Page.enable');
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1600, height: 3000, deviceScaleFactor: 1, mobile: false });
   const cases = [
-    ['mkdocs', 'http://127.0.0.1:30080/docs/', "!!document.querySelector('.md-content h1')"],
+    ['mkdocs', 'http://127.0.0.1:30080/docs/', `!!document.querySelector('[role="main"] h1')`],
     ['swagger', 'http://127.0.0.1:30080/docs/swagger.html', "document.querySelectorAll('.swagger-ui .opblock').length > 0"],
     ['grafana', `http://127.0.0.1:3100/d/${dashboard.uid}?orgId=1&from=now-30m&to=now&kiosk`, "document.querySelectorAll('canvas').length >= 3 && !document.body.innerText.includes('Loading dashboard')"],
   ];

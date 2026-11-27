@@ -8,6 +8,7 @@ on:
       - 'БР1.2/Васильев Артём/labs/lab7/cloud/**'
       - 'БР1.2/Васильев Артём/labs/lab8/**'
       - 'БР1.2/Васильев Артём/homeworks/hw8/ci/**'
+      - 'БР1.2/Васильев Артём/homeworks/hw6/services/**'
       - 'БР1.2/Васильев Артём/homeworks/hw9/**'
       - 'БР1.2/Васильев Артём/homeworks/hw10/**'
       - '!**/*.md'
@@ -28,6 +29,7 @@ jobs:
     timeout-minutes: 90
     env:
       CLOUD_DIR: 'БР1.2/Васильев Артём/labs/lab7/cloud'
+      DOCS_DIR: 'БР1.2/Васильев Артём/homeworks/hw9'
       CI_DIR: 'БР1.2/Васильев Артём/homeworks/hw8/ci'
       MKDOCS_SITE_URL: 'http://127.0.0.1:30080/docs/'
     steps:
@@ -37,10 +39,18 @@ jobs:
           node-version: '22'
       - name: Validate configuration and documentation
         run: |
-          python3 -m pip install 'PyYAML==6.0.3' 'mkdocs==1.6.1'
+          python3 -m pip install 'PyYAML==6.0.3' 'mkdocs==1.6.1' 'openapi-spec-validator==0.7.2' 'check-jsonschema==0.29.2'
           python3 -m unittest discover -s "$CLOUD_DIR/tests" -v
+          python3 -m unittest discover -s "$CI_DIR" -p 'test_*.py' -v
+          python3 'БР1.2/Васильев Артём/homeworks/hw9/test_fixtures.py'
           python3 -m unittest discover -s 'БР1.2/Васильев Артём/labs/lab8/tests' -v
+          for spec in "$DOCS_DIR/docs/contracts/openapi.yaml" "$DOCS_DIR/docs/contracts/services/"*.yaml; do
+            openapi-spec-validator "$spec" || exit 1
+          done
+          check-jsonschema --schemafile https://schema.getpostman.com/json/collection/v2.1.0/collection.json "$DOCS_DIR/docs/contracts/job-platform-dz3.postman_collection.json"
           python3 -m mkdocs build --strict --config-file 'БР1.2/Васильев Артём/homeworks/hw9/mkdocs.yml'
+      - name: Verify real internal serialization and authorization guards
+        run: bash "$CI_DIR/check-internal-contracts.sh"
       - name: Create isolated Kubernetes cluster
         run: bash "$CI_DIR/setup.sh"
       - name: Build and deploy all seven services
@@ -52,7 +62,9 @@ jobs:
       - name: Run load profiles, HPA and resource tuning
         run: bash "$CI_DIR/load.sh"
       - name: Capture final metrics and browser evidence
-        run: bash "$CI_DIR/evidence.sh"
+        run: |
+          bash "$CI_DIR/evidence.sh"
+          node "$CI_DIR/browser.mjs" "$RUNNER_TEMP/cloud-results" 'БР1.2/Васильев Артём/labs/lab8/monitoring/dashboard.json'
       - name: Collect safe diagnostics
         if: always()
         run: bash "$CI_DIR/collect.sh"
