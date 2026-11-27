@@ -36,14 +36,21 @@ for stateful in postgres rabbitmq; do
   fi
   k rollout status "statefulset/$stateful" --timeout=600s
 done
-k apply --dry-run=client -f "$CLOUD_DIR/k8s/app.yml" -o json | python3 "$CLOUD_DIR/scripts/render.py" "$IMAGE_TAG" "$work"
+k create --dry-run=client -f "$CLOUD_DIR/k8s/app.yml" -o json | python3 "$CLOUD_DIR/scripts/render.py" "$IMAGE_TAG" "$work"
 for service in $SERVICES; do
   k apply --dry-run=server -f "$work/$service-Service.json" -f "$work/$service-Deployment.json" >/dev/null
   k apply -f "$work/$service-Service.json" -f "$work/$service-Deployment.json"
   k rollout status "deployment/$service" --timeout=600s
 done
-k apply --dry-run=client -f "$CLOUD_DIR/k8s/gateway.yml" -o json | python3 "$CLOUD_DIR/scripts/render.py" "$IMAGE_TAG" | k apply -f -
+k create --dry-run=client -f "$CLOUD_DIR/k8s/gateway.yml" -o json | python3 "$CLOUD_DIR/scripts/render.py" "$IMAGE_TAG" | k apply -f -
 k rollout status deployment/gateway --timeout=180s
+for service in $SERVICES gateway; do
+  actual="$(k get deployment "$service" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+  if [[ "$actual" != "$REGISTRY/job-platform/$service:$IMAGE_TAG" ]]; then
+    echo "Unexpected deployed image for $service: $actual" >&2
+    false
+  fi
+done
 kubectl apply -f "$CLOUD_DIR/k8s/ingress.yml"
 for attempt in $(seq 1 150); do
   if kubectl -n kube-system get deployment/lab-ingress >/dev/null 2>&1; then break; fi
