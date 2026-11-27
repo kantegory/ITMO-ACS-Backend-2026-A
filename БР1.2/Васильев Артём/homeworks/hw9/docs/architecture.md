@@ -4,7 +4,10 @@
 Клиент / Postman
        │ HTTP /api/v1/...
        ▼
-Nginx api-gateway (план K3s: NodePort 30080)
+Traefik NodePort :30080 → Ingress
+       │
+       ▼
+Nginx gateway (ClusterIP :80 → контейнер :8080)
        │
        ├── auth-user-service :3001 ── users-db
        ├── company-service :3002 ──── companies-db
@@ -19,8 +22,10 @@ application-service ── RabbitMQ: application.created
 
 Семь Express/TypeORM-сервисов и семь PostgreSQL-баз описаны в
 `hw6/docker-compose.yml`. Compose публикует порты сервисов только на loopback;
-единый Nginx gateway в этом Compose не определён. Gateway и K3s выше — целевая
-инфраструктура, не результат запуска ДЗ9.
+единый Nginx gateway в этом Compose не определён. На учебном VPS приложение
+развёрнуто в K3s: семь сервисов, их БД, RabbitMQ и отдельный gateway.
+Манифесты и Nginx-конфигурация находятся в `labs/lab7/cloud/`.
+NodePort принадлежит Traefik, а gateway доступен внутри кластера через ClusterIP.
 
 | Сервис | Ответственность |
 | --- | --- |
@@ -39,4 +44,5 @@ Interaction consumer сохраняет уведомление и проверя
 
 Публичные маршруты: `/api/v1/...` без обязательного `/job-platform`.
 Документация публикуется отдельно под `/docs/`; внутренние `/internal/...`
-нельзя открывать через публичный gateway.
+не проксируются публичным gateway. При проверке 27 ноября 2026 года
+`/api/v1/internal/users/test` вернул 404, а `/api/v1/users/me` без JWT — 401.

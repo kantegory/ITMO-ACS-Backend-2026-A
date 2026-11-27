@@ -59,28 +59,15 @@ for attempt in $(seq 1 60); do
   sleep 2
 done
 k3s kubectl wait node/job-platform-vps --for=condition=Ready --timeout=300s
+registry_owner="$(k3s kubectl -n kube-system get pod lab-registry --ignore-not-found -o jsonpath='{.metadata.ownerReferences[*].uid}')"
+if [ -z "$registry_owner" ]; then
+  k3s kubectl -n kube-system delete pod lab-registry --ignore-not-found --wait=true
+fi
 k3s kubectl apply -f "$CLOUD_DIR/registry.yml"
-k3s kubectl -n kube-system wait pod/lab-registry --for=condition=Ready --timeout=300s
+k3s kubectl -n kube-system rollout status deployment/lab-registry --timeout=300s
 k3s kubectl apply -f "$CLOUD_DIR/k8s/namespace.yml"
 umask 077
-python3 - <<'PY'
-from pathlib import Path
-import os
-import secrets
-from urllib.parse import quote
-path = Path('/opt/job-platform-cloud/secrets.env')
-values = dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line) if path.exists() else {}
-keys = ['JWT_SECRET_KEY', 'SERVICE_TOKEN', 'POSTGRES_PASSWORD', 'RABBITMQ_PASSWORD', 'GRAFANA_ADMIN_PASSWORD']
-keys += [role.upper() + '_DB_PASSWORD' for role in ['users', 'companies', 'dictionaries', 'vacancies', 'resumes', 'applications', 'interactions']]
-for key in keys:
-    values.setdefault(key, secrets.token_hex(24))
-values.setdefault('RABBITMQ_USER', 'jobplatform')
-values.setdefault('RABBITMQ_URL', 'amqp://jobplatform:' + quote(values['RABBITMQ_PASSWORD'], safe='') + '@rabbitmq:5672')
-temporary = path.with_suffix('.new')
-temporary.write_text(''.join(key + '=' + value + '\n' for key, value in values.items()))
-os.chmod(temporary, 0o600)
-os.replace(temporary, path)
-PY
+python3 "$CLOUD_DIR/scripts/create-secrets.py" /opt/job-platform-cloud/secrets.env
 chmod 600 /opt/job-platform-cloud/secrets.env
 k3s kubectl -n "$NAMESPACE" create secret generic app-secrets --from-env-file=/opt/job-platform-cloud/secrets.env --dry-run=client -o yaml | k3s kubectl apply -f -
 k3s kubectl get node -o wide

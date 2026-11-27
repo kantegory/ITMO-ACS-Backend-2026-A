@@ -27,7 +27,17 @@ def render(document, sha):
 
 
 if __name__ == '__main__':
-    document = json.load(sys.stdin)
+    # kubectl create emits separate JSON documents for a multi-resource YAML.
+    text = sys.stdin.read().strip()
+    documents = []
+    decoder = json.JSONDecoder()
+    while text:
+        document, end = decoder.raw_decode(text)
+        documents.append(document)
+        text = text[end:].lstrip()
+    if not documents:
+        raise ValueError('No manifest documents supplied')
+    document = documents[0] if len(documents) == 1 else {'apiVersion': 'v1', 'kind': 'List', 'items': documents}
     result = render(document, sys.argv[1])
     if len(sys.argv) == 3:
         directory = Path(sys.argv[2])

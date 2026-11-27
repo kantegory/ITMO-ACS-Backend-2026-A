@@ -21,7 +21,10 @@ class InternalResumeController extends BaseController {
         const foundIds = new Set(resumes.map((resume) => resume.id));
 
         return {
-            items: resumes,
+            items: resumes.map((resume) => ({
+                id: resume.id,
+                userId: resume.userId,
+            })),
             missingIds: ids.filter((id) => !foundIds.has(id)),
         };
     }

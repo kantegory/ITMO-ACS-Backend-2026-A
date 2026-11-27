@@ -4,11 +4,21 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/cloud.yml'
       - 'БР1.2/Васильев Артём/labs/lab7/cloud/**'
       - 'БР1.2/Васильев Артём/homeworks/hw8/**'
       - 'БР1.2/Васильев Артём/homeworks/hw9/**'
-      - '.github/workflows/cloud.yml'
+      - 'БР1.2/Васильев Артём/homeworks/hw6/services/**'
+      - '!**/docs/report.md'
+      - '!**/*.pdf'
+      - '!**/docs/evidence/**'
   workflow_dispatch:
+    inputs:
+      confirm_vps_recovery:
+        description: 'Run only after VPS storage and SSH have been verified healthy'
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -19,11 +29,13 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    if: ${{ github.event_name == 'push' || inputs.confirm_vps_recovery }}
     runs-on: ${{ vars.RUNNER_IMAGE || 'ubuntu-24.04' }}
-    timeout-minutes: 55
+    timeout-minutes: 90
     env:
       CLOUD_DIR: 'БР1.2/Васильев Артём/labs/lab7/cloud'
       DOCS_DIR: 'БР1.2/Васильев Артём/homeworks/hw9'
+      CI_DIR: 'БР1.2/Васильев Артём/homeworks/hw8/ci'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,9 +43,27 @@ jobs:
           node-version: ${{ vars.NODE_VERSION || '22' }}
       - name: Validate manifests and documentation
         run: |
-          python3 -m pip install 'PyYAML==6.0.3' 'mkdocs==1.6.1'
+          python3 -m pip install 'PyYAML==6.0.3' 'mkdocs==1.6.1' 'openapi-spec-validator==0.7.2' 'check-jsonschema==0.29.2'
           python3 -m unittest discover -s "$CLOUD_DIR/tests" -v
+          python3 -m unittest discover -s 'БР1.2/Васильев Артём/homeworks/hw8/tests' -v
+          python3 -m unittest discover -s "$CI_DIR" -p 'test_*.py' -v
+          python3 "$DOCS_DIR/test_fixtures.py"
+          for spec in "$DOCS_DIR/docs/contracts/openapi.yaml" "$DOCS_DIR/docs/contracts/services/"*.yaml; do
+            openapi-spec-validator "$spec" || exit 1
+          done
+          check-jsonschema --schemafile https://schema.getpostman.com/json/collection/v2.1.0/collection.json "$DOCS_DIR/docs/contracts/job-platform-dz3.postman_collection.json"
           python3 -m mkdocs build --strict --config-file "$DOCS_DIR/mkdocs.yml"
+      - name: Verify real internal serialization and authorization guards
+        run: bash "$CI_DIR/check-internal-contracts.sh"
+      - name: Create isolated Kubernetes cluster
+        run: bash "$CI_DIR/setup.sh"
+      - name: Build and deploy ephemeral release
+        run: bash "$CI_DIR/build-deploy.sh"
+      - name: Verify ephemeral integration and recovery
+        run: bash "$CI_DIR/acceptance.sh"
+      - name: Remove ephemeral cluster and registry before VPS tunnel
+        if: always()
+        run: bash "$CI_DIR/cleanup.sh"
       - name: Build versioned images, push registry, deploy and test
         env:
           CLOUD_SSH_PRIVATE_KEY: ${{ secrets.CLOUD_SSH_PRIVATE_KEY }}

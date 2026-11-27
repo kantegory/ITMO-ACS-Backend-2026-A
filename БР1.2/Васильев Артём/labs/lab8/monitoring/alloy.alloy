@@ -1,0 +1,44 @@
+discovery.kubernetes "pods" {
+  role = "pod"
+}
+discovery.relabel "pod_logs" {
+  targets = discovery.kubernetes.pods.targets
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label = "namespace"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label = "pod"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label = "container"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+    separator = "/"
+    target_label = "__path__"
+    replacement = "/var/log/pods/*$1/*.log"
+  }
+  rule {
+    target_label = "job"
+    replacement = "kubernetes"
+  }
+}
+local.file_match "pods" {
+  path_targets = discovery.relabel.pod_logs.output
+}
+loki.source.file "pods" {
+  targets = local.file_match.pods.targets
+  forward_to = [loki.process.cri.receiver]
+}
+loki.process "cri" {
+  stage.cri {}
+  forward_to = [loki.write.local.receiver]
+}
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:3101/loki/api/v1/push"
+  }
+}

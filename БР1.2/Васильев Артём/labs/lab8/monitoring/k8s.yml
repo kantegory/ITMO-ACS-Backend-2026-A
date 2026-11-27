@@ -1,0 +1,476 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: observer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-platform-observer
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - nodes
+  - nodes/proxy
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-platform-observer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-platform-observer
+subjects:
+- kind: ServiceAccount
+  name: observer
+  namespace: job-platform
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alloy-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: observer
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v3.16.0
+        resources:
+          requests:
+            cpu: 10m
+            memory: 53Mi
+          limits:
+            cpu: 250m
+            memory: 160Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+          readOnly: true
+        - name: data
+          mountPath: /prometheus
+        args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=48h
+        - --storage.tsdb.retention.size=400MB
+        - --web.listen-address=127.0.0.1:9090
+        - --web.enable-remote-write-receiver
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+            host: 127.0.0.1
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-data
+      securityContext:
+        runAsUser: 65534
+        fsGroup: 65534
+      automountServiceAccountToken: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-exporter
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      serviceAccountName: observer
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:v1.13.1
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 250m
+            memory: 40Mi
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: host
+          mountPath: /host
+          readOnly: true
+        args:
+        - --web.listen-address=127.0.0.1:9100
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --path.rootfs=/host
+        - --collector.filesystem.fs-types-exclude=^(tmpfs|devtmpfs|proc|sysfs|cgroup2?)$
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 9100
+            host: 127.0.0.1
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: host
+        hostPath:
+          path: /
+      automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: blackbox
+  template:
+    metadata:
+      labels:
+        app: blackbox
+    spec:
+      serviceAccountName: observer
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: blackbox
+        image: prom/blackbox-exporter:v0.25.0
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 250m
+            memory: 40Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/blackbox
+          readOnly: true
+        args:
+        - --config.file=/etc/blackbox/blackbox.yml
+        ports:
+        - containerPort: 9115
+        readinessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9115
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: config
+        configMap:
+          name: blackbox-config
+      automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox
+spec:
+  selector:
+    app: blackbox
+  ports:
+  - port: 9115
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      serviceAccountName: observer
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: loki
+        image: grafana/loki:3.7.10
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 192Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/loki
+          readOnly: true
+        - name: data
+          mountPath: /loki
+        args:
+        - -config.file=/etc/loki/loki.yml
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3101
+            host: 127.0.0.1
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: config
+        configMap:
+          name: loki-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: loki-data
+      securityContext:
+        runAsUser: 10001
+        fsGroup: 10001
+      automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      serviceAccountName: observer
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: alloy
+        image: grafana/alloy:v1.22.0
+        resources:
+          requests:
+            cpu: 10m
+            memory: 42Mi
+          limits:
+            cpu: 250m
+            memory: 128Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/alloy
+          readOnly: true
+        - name: data
+          mountPath: /data
+        - name: logs
+          mountPath: /var/log/pods
+          readOnly: true
+        args:
+        - run
+        - --server.http.listen-addr=127.0.0.1:12345
+        - --storage.path=/data
+        - /etc/alloy/alloy.alloy
+        env:
+        - name: GOMEMLIMIT
+          value: 96MiB
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 12345
+            host: 127.0.0.1
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: config
+        configMap:
+          name: alloy-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: alloy-data
+      - name: logs
+        hostPath:
+          path: /var/log/pods
+      automountServiceAccountToken: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  progressDeadlineSeconds: 900
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      serviceAccountName: observer
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: grafana
+        image: grafana/grafana:13.3.2
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 384Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/grafana/provisioning/datasources/datasources.yml
+          readOnly: true
+          subPath: datasources.yml
+        - name: config
+          mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
+          readOnly: true
+          subPath: dashboards.yml
+        - name: data
+          mountPath: /var/lib/grafana
+        - name: dashboard
+          mountPath: /var/lib/grafana/dashboards
+          readOnly: true
+        env:
+        - name: GF_SERVER_HTTP_ADDR
+          value: 127.0.0.1
+        - name: GF_SERVER_HTTP_PORT
+          value: '3100'
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: GRAFANA_ADMIN_PASSWORD
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: 'false'
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: 'false'
+        - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+          value: 'false'
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: 'true'
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Viewer
+        - name: GF_UNIFIED_ALERTING_ENABLED
+          value: 'false'
+        - name: GF_PLUGINS_PREINSTALL_DISABLED
+          value: 'true'
+        - name: GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES
+          value: 'false'
+        - name: GF_PLUGINS_DISABLE_PLUGINS
+          value: cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,grafana-azure-monitor-datasource,mssql,mysql,postgres,tempo,zipkin,graphite,opentsdb,testdata
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3100
+            host: 127.0.0.1
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: grafana-data
+      - name: dashboard
+        configMap:
+          name: cloud-dashboard
+      securityContext:
+        runAsUser: 472
+        fsGroup: 472
+      automountServiceAccountToken: false

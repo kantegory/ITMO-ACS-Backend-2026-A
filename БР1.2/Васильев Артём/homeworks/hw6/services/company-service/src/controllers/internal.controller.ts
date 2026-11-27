@@ -42,7 +42,11 @@ class InternalCompanyController extends BaseController {
         const foundIds = new Set(profiles.map((profile) => profile.id));
 
         return {
-            items: profiles,
+            items: profiles.map((profile) => ({
+                id: profile.id,
+                userId: profile.userId,
+                companyId: profile.companyId,
+            })),
             missingIds: ids.filter((id) => !foundIds.has(id)),
         };
     }

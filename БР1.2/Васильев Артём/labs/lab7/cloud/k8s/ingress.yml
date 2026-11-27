@@ -1,0 +1,66 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: lab-ingress-crd
+  namespace: kube-system
+spec:
+  chart: https://%{KUBERNETES_API}%/static/charts/traefik-crd-40.1.7+up40.1.0.tgz
+  failurePolicy: retry
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: lab-ingress
+  namespace: kube-system
+spec:
+  chart: https://%{KUBERNETES_API}%/static/charts/traefik-40.1.7+up40.1.0.tgz
+  failurePolicy: retry
+  valuesContent: |-
+    fullnameOverride: lab-ingress
+    image:
+      repository: rancher/mirrored-library-traefik
+      tag: '3.7.15'
+    providers:
+      kubernetesCRD:
+        enabled: false
+      kubernetesGateway:
+        enabled: false
+      kubernetesIngress:
+        enabled: true
+    ingressClass:
+      enabled: true
+      isDefaultClass: false
+      name: lab-ingress
+    ingressRoute:
+      dashboard:
+        enabled: false
+    logs:
+      general:
+        level: INFO
+    service:
+      spec:
+        type: NodePort
+    ports:
+      web:
+        nodePort: 30080
+      websecure:
+        expose:
+          default: false
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway
+  namespace: job-platform
+spec:
+  ingressClassName: lab-ingress
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway
+            port:
+              number: 80
