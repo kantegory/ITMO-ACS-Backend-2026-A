@@ -26,7 +26,7 @@ const grafanaReadyExpression = `(() => {
 const profile = await mkdtemp(path.join(process.env.RUNNER_TEMP, 'cloud-chrome-'));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const browser = spawn('google-chrome', ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-  '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore' });
+  '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', '--user-data-dir=' + profile, 'about:blank'], { stdio: ['ignore', 'ignore', 'inherit'] });
 let browserError;
 browser.on('error', error => { browserError = error; });
 let ws;
