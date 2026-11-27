@@ -1,0 +1,109 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: rental-lab7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: loki
+        image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+        ports:
+        - containerPort: 3100
+        volumeMounts:
+        - name: monitor-settings
+          mountPath: "/config/loki.yml"
+          subPath: loki.yml
+          readOnly: true
+        - name: storage
+          mountPath: "/loki"
+        readinessProbe:
+          tcpSocket:
+            port: 3100
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 35m
+            memory: 64Mi
+          limits:
+            cpu: 600m
+            memory: 384Mi
+        args:
+        - "-config.file=/config/loki.yml"
+      volumes:
+      - name: monitor-settings
+        configMap:
+          name: monitor-settings
+      - name: storage
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 65534
+        fsGroup: 65534
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: rental-lab7
+spec:
+  selector:
+    app: loki
+  ports:
+  - port: 3100
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: loki
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - loki
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - grafana
+          - alloy
+    ports:
+    - protocol: TCP
+      port: 3100
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+        - key: k8s-app
+          operator: In
+          values:
+          - coredns
+          - kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53

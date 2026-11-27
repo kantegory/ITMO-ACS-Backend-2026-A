@@ -1,0 +1,57 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: replay-failed
+  namespace: rental-lab7
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app: replay-failed
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: replay-failed
+        image: ${IMAGE}
+        workingDir: "/app"
+        command:
+        - node
+        - "/scripts/replay-failed.cjs"
+        envFrom:
+        - secretRef:
+            name: broker-client
+        env:
+        - name: NODE_EXTRA_CA_CERTS
+          value: "/ca/rabbit-ca.pem"
+        volumeMounts:
+        - name: ca
+          mountPath: "/ca"
+          readOnly: true
+        - name: scripts
+          mountPath: "/scripts"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 600m
+            memory: 300Mi
+      volumes:
+      - name: scripts
+        configMap:
+          name: cloud-scripts
+      - name: ca
+        configMap:
+          name: ca
+      restartPolicy: Never

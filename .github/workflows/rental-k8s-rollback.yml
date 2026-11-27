@@ -1,0 +1,97 @@
+# ДЗ8, Зотеев Максим БР1.1: ручной откат (rollback) релизов в UpCloud Kubernetes.
+# Возвращает один сервис или все 6 Deployment на предыдущую или указанную ревизию
+# через kubectl rollout undo без пересборки образа.
+
+name: Откат релиза в Kubernetes (Зотеев Максим)
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Какой сервис откатить"
+        type: choice
+        default: all
+        options:
+          - all
+          - api-gateway
+          - identity-service
+          - property-service
+          - rental-service
+          - messaging-service
+          - rental-outbox
+      revision:
+        description: "Номер ревизии (если пусто, берётся предыдущая)"
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: rental-k8s-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NAMESPACE: rental-lab7
+
+jobs:
+  rollback:
+    name: Откат Deployment в UpCloud Kubernetes
+    if: github.repository == 'F0x1d/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: cloud-k8s
+    steps:
+      - name: Установка kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.0
+
+      - name: Настройка kubeconfig (ServiceAccount ci-deployer)
+        env:
+          KUBECONFIG_B64: ${{ secrets.K8S_DEPLOYER_KUBECONFIG_B64 }}
+        run: |
+          install -d -m 700 ~/.kube
+          printf '%s' "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Выполнение kubectl rollout undo
+        env:
+          TARGET_SERVICE: ${{ inputs.service }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          if [[ "$TARGET_SERVICE" == "all" ]]; then
+            SERVICES=(identity-service property-service rental-service messaging-service rental-outbox api-gateway)
+          else
+            SERVICES=("$TARGET_SERVICE")
+          fi
+
+          for svc in "${SERVICES[@]}"; do
+            echo "=== История до отката: $svc ==="
+            kubectl -n "${NAMESPACE}" rollout history deployment/"$svc"
+            if [[ -n "$REVISION" ]]; then
+              kubectl -n "${NAMESPACE}" rollout undo deployment/"$svc" --to-revision="$REVISION"
+            else
+              kubectl -n "${NAMESPACE}" rollout undo deployment/"$svc"
+            fi
+          done
+
+          for svc in "${SERVICES[@]}"; do
+            kubectl -n "${NAMESPACE}" rollout status deployment/"$svc" --timeout=180s
+          done
+
+          echo "=== Текущее состояние после отката ==="
+          kubectl -n "${NAMESPACE}" get deployments,pods -o wide
+
+      - name: Проверка /health после отката
+        env:
+          PUBLIC_API_URL: ${{ secrets.K8S_PUBLIC_API_URL }}
+        run: |
+          curl -fsS "${PUBLIC_API_URL}/health"
+          echo ""
+
+      - name: Очистка kubeconfig
+        if: always()
+        run: rm -f ~/.kube/config

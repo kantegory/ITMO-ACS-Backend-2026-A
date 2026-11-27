@@ -1,0 +1,103 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: rental-lab7
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: exporter
+        image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+        args:
+        - "--path.procfs=/host/proc"
+        - "--collector.disable-defaults"
+        - "--collector.cpu"
+        - "--collector.meminfo"
+        - "--collector.diskstats"
+        - "--collector.netdev"
+        - "--no-collector.netdev.netlink"
+        ports:
+        - name: metrics
+          containerPort: 9100
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 24Mi
+          limits:
+            cpu: 150m
+            memory: 80Mi
+        volumeMounts:
+        - name: stat
+          mountPath: "/host/proc/stat"
+          readOnly: true
+        - name: meminfo
+          mountPath: "/host/proc/meminfo"
+          readOnly: true
+        - name: diskstats
+          mountPath: "/host/proc/diskstats"
+          readOnly: true
+        - name: netdev
+          mountPath: "/host/proc/net/dev"
+          readOnly: true
+      volumes:
+      - name: stat
+        hostPath:
+          type: File
+          path: "/proc/stat"
+      - name: meminfo
+        hostPath:
+          type: File
+          path: "/proc/meminfo"
+      - name: diskstats
+        hostPath:
+          type: File
+          path: "/proc/diskstats"
+      - name: netdev
+        hostPath:
+          type: File
+          path: "/proc/1/net/dev"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: node-exporter
+  namespace: rental-lab7
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - node-exporter
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - prometheus
+    ports:
+    - protocol: TCP
+      port: 9100
+  egress: []

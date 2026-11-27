@@ -1,0 +1,118 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rental-service
+  namespace: rental-lab7
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rental-service
+  template:
+    metadata:
+      labels:
+        app: rental-service
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+      - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: rental-service
+        image: ${IMAGE}
+        workingDir: "/app"
+        command:
+        - node
+        - "/app/services/rental-service/dist/index.js"
+        envFrom:
+        - configMapRef:
+            name: database
+        - secretRef:
+            name: db-rental
+        - secretRef:
+            name: auth
+        env:
+        - name: DB_CA_FILE
+          value: "/ca/pg-ca.pem"
+        - name: DB_SYNCHRONIZE
+          value: 'false'
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity-service:3001
+        - name: PROPERTY_SERVICE_URL
+          value: http://property-service:3002
+        - name: RENTAL_OUTBOX
+          value: 'true'
+        volumeMounts:
+        - name: ca
+          mountPath: "/ca"
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 600m
+            memory: 300Mi
+        ports:
+        - name: http
+          containerPort: 3003
+        readinessProbe:
+          httpGet:
+            path: "/ready"
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 5
+        startupProbe:
+          httpGet:
+            path: "/health"
+            port: http
+          periodSeconds: 5
+          failureThreshold: 45
+      volumes:
+      - name: ca
+        configMap:
+          name: ca
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: rental-service
+            topologyKey: kubernetes.io/hostname
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rental-service
+  namespace: rental-lab7
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: rental-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rental-service
+  namespace: rental-lab7
+spec:
+  selector:
+    app: rental-service
+  ports:
+  - name: http
+    port: 3003
+    targetPort: http

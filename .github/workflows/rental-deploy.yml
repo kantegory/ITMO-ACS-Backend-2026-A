@@ -1,0 +1,118 @@
+# ДЗ6, Зотеев Максим БР1.1: автодеплой сервиса аренды недвижимости.
+# При пуше в main с изменениями в lab2 (код) или lab4 (Ansible) приложение
+# собирается, разворачивается на VPS плейбуком из ЛР4 и проверяется
+# postman-коллекцией.
+
+name: Деплой сервиса аренды (Зотеев Максим)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "БР1.1/Зотеев Максим/labs/lab2/**"
+      - "БР1.1/Зотеев Максим/labs/lab4/**"
+      - ".github/workflows/rental-deploy.yml"
+      - "!**/*.docx"
+      - "!**/*.pdf"
+  workflow_dispatch:
+
+# Деплои идут строго по очереди, новый не прерывает идущий.
+concurrency:
+  group: rental-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  LAB2_DIR: БР1.1/Зотеев Максим/labs/lab2
+  LAB4_DIR: БР1.1/Зотеев Максим/labs/lab4
+  PUBLIC_URL: http://82.115.222.101
+
+jobs:
+  build:
+    name: Сборка TypeScript
+    # Файл попадёт и в основной репозиторий курса, где нет ни сервера, ни секретов.
+    if: github.repository == 'F0x1d/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ env.LAB2_DIR }}/package-lock.json
+
+      - name: Установка зависимостей
+        working-directory: ${{ env.LAB2_DIR }}
+        run: npm ci --no-audit --no-fund
+
+      - name: Сборка всех сервисов
+        working-directory: ${{ env.LAB2_DIR }}
+        run: npm run build:all
+
+  deploy:
+    name: Деплой на VPS
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: ${{ env.PUBLIC_URL }}/health
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Установка Ansible и коллекций
+        working-directory: ${{ env.LAB4_DIR }}
+        run: |
+          pip install ansible-core==2.21.5
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: SSH-ключ, known_hosts и пароль vault
+        working-directory: ${{ env.LAB4_DIR }}
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          install -d -m 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          install -m 600 /dev/null .vault_pass
+          printf '%s' "$ANSIBLE_VAULT_PASSWORD" > .vault_pass
+
+      - name: Проверка синтаксиса плейбука
+        working-directory: ${{ env.LAB4_DIR }}
+        run: ansible-playbook deploy.yml --syntax-check
+
+      - name: ansible-playbook deploy.yml
+        working-directory: ${{ env.LAB4_DIR }}
+        env:
+          ANSIBLE_FORCE_COLOR: "1"
+        run: ansible-playbook deploy.yml --private-key ~/.ssh/deploy_key
+
+      - name: Удаление ключа и пароля vault
+        if: always()
+        working-directory: ${{ env.LAB4_DIR }}
+        run: rm -f ~/.ssh/deploy_key .vault_pass
+
+  smoke:
+    name: Проверка API (newman)
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Postman-коллекция против развёрнутого API
+        working-directory: ${{ env.LAB2_DIR }}
+        run: >-
+          npx --yes newman@6 run postman/rental-api.lab2.postman_collection.json
+          --env-var base_url=${{ env.PUBLIC_URL }}/api/v1

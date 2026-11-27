@@ -1,0 +1,308 @@
+openapi: 3.0.3
+info:
+  title: "Rental Platform: Internal Microservices API"
+  version: 2.0.0
+  description: >-
+    Межсервисные REST-контракты и пробы (`/health`, `/ready`) сервисов
+    `identity-service`, `property-service`, `rental-service` и `messaging-service`.
+    Запросы проверяются заголовком `X-Internal-Service-Token`, ограничены
+    Kubernetes NetworkPolicy и закрыты на `api-gateway` (возвращают `404`).
+
+servers:
+  - url: http://identity-service:3001/api/v1
+    description: Identity Service (ClusterIP)
+  - url: http://property-service:3002/api/v1
+    description: Property Service (ClusterIP)
+  - url: http://rental-service:3003/api/v1
+    description: Rental Service (ClusterIP)
+  - url: http://messaging-service:3004/api/v1
+    description: Messaging Service (ClusterIP)
+
+tags:
+  - name: Probes
+    description: Liveness и readiness пробы микросервисов
+  - name: Identity Internal
+    description: Внутренние методы identity-service (порт 3001)
+  - name: Property Internal
+    description: Внутренние методы property-service (порт 3002)
+  - name: Rental Internal
+    description: Внутренние методы rental-service (порт 3003)
+
+paths:
+  /health:
+    get:
+      tags: [Probes]
+      summary: Liveness-проба микросервиса (корневой путь без /api/v1)
+      servers:
+        - url: http://identity-service:3001
+        - url: http://property-service:3002
+        - url: http://rental-service:3003
+        - url: http://messaging-service:3004
+      responses:
+        '200':
+          description: Процесс микросервиса запущен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: property }
+
+  /ready:
+    get:
+      tags: [Probes]
+      summary: Readiness-проба микросервиса (проверяет соединение с PostgreSQL)
+      servers:
+        - url: http://identity-service:3001
+        - url: http://property-service:3002
+        - url: http://rental-service:3003
+        - url: http://messaging-service:3004
+      responses:
+        '200':
+          description: Сервис готов принимать трафик (SELECT 1 в PostgreSQL успешен)
+        '503':
+          description: База данных недоступна
+
+  /internal/users/{userId}:
+    get:
+      tags: [Identity Internal]
+      summary: Получить профиль пользователя по ID
+      security:
+        - InternalServiceAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Пользователь найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/users/batch-get:
+    post:
+      tags: [Identity Internal]
+      summary: Пакетное получение пользователей по массиву ID
+      description: Используется `rental-service` и `messaging-service` для обогащения карточек сделок и чатов без N+1 запросов.
+      security:
+        - InternalServiceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  items: { type: string }
+                  example: ['1', '2']
+      responses:
+        '200':
+          description: Список найденных пользователей
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/InternalUser' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/properties/{propertyId}/rental-context:
+    get:
+      tags: [Property Internal]
+      summary: Получить контекст объекта для оформления аренды
+      security:
+        - InternalServiceAuth: []
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Контекст объекта для снапшота сделки
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PropertyRentalContext' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/properties/{propertyId}/availability:
+    put:
+      tags: [Property Internal]
+      summary: Атомарное обновление доступности объекта (оптимистическая блокировка)
+      description: >-
+        Обновляет `is_available` только если текущее значение совпадает с
+        `expected_available`. При конкурентной попытке бронирования возвращает `409 Conflict`.
+      security:
+        - InternalServiceAuth: []
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAvailabilityRequest' }
+      responses:
+        '200':
+          description: Доступность изменена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  property_id: { type: string, example: '10' }
+                  is_available: { type: boolean, example: false }
+                  updated_at: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Конфликт состояния (объект уже занят или освобождён)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /internal/rentals/{rentalId}:
+    get:
+      tags: [Rental Internal]
+      summary: Получить данные сделки для внутренних сервисов
+      security:
+        - InternalServiceAuth: []
+      parameters:
+        - name: rentalId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Сделка найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalRental' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /internal/rentals/{rentalId}/participants:
+    get:
+      tags: [Rental Internal]
+      summary: Получить участников и статус сделки (для проверки доступа в чате)
+      security:
+        - InternalServiceAuth: []
+      parameters:
+        - name: rentalId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Участники сделки
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rental_id, tenant_id, owner_id, status]
+                properties:
+                  rental_id: { type: string, example: '100' }
+                  tenant_id: { type: string, example: '2' }
+                  owner_id: { type: string, example: '1' }
+                  status: { type: string, enum: [active, completed, cancelled] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    InternalServiceAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Service-Token
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Отсутствует или неверный X-Internal-Service-Token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    InternalUser:
+      type: object
+      required: [id, email, name, role, created_at]
+      properties:
+        id: { type: string, example: '1' }
+        email: { type: string, format: email }
+        name: { type: string }
+        phone: { type: string, nullable: true }
+        role: { type: string, enum: [tenant, landlord] }
+        created_at: { type: string, format: date-time }
+
+    PropertyRentalContext:
+      type: object
+      required: [id, owner_id, title, city, price_per_month, is_available, property_type, address]
+      properties:
+        id: { type: string, example: '10' }
+        owner_id: { type: string, example: '1' }
+        title: { type: string }
+        city: { type: string }
+        district: { type: string, nullable: true }
+        address: { type: string }
+        property_type: { type: string, nullable: true }
+        price_per_month: { type: number }
+        is_available: { type: boolean }
+
+    UpdateAvailabilityRequest:
+      type: object
+      required: [is_available, expected_available, reason]
+      properties:
+        is_available: { type: boolean }
+        expected_available: { type: boolean }
+        reason: { type: string, enum: [rental_created, rental_completed, rental_cancelled, manual_update] }
+        rental_id: { type: string, nullable: true }
+
+    InternalRental:
+      type: object
+      required: [id, property_id, tenant_id, owner_id, status, start_date, created_at]
+      properties:
+        id: { type: string }
+        property_id: { type: string }
+        tenant_id: { type: string }
+        owner_id: { type: string }
+        property_title_snapshot: { type: string }
+        property_city_snapshot: { type: string }
+        price_per_month_snapshot: { type: number }
+        status: { type: string, enum: [active, completed, cancelled] }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string }
+        message: { type: string }

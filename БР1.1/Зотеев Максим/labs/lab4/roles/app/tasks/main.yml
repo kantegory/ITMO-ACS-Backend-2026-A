@@ -1,0 +1,152 @@
+- name: Каталог приложения
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0755"
+
+- name: Метка первой полной сборки
+  ansible.builtin.stat:
+    path: "{{ app_dir }}/.built"
+  register: app_built
+
+# Список сервисов, которые ещё нужно собрать. Пишется сразу после копирования
+# кода, поэтому прерванный запуск не теряет пересборку: следующий её доделает.
+- name: Незавершённые сборки
+  ansible.builtin.slurp:
+    src: "{{ app_dir }}/.pending-build"
+  register: app_pending_file
+  failed_when: false
+
+# Исключённые файлы rsync не трогает и при --delete, поэтому серверные
+# .env, docker-compose.prod.yml и метки сборки переживают синхронизацию.
+# Файлы сравниваются по содержимому, а время изменения не переносится:
+# в свежем клоне (GitHub Actions) у всех файлов новое время, и сравнение
+# по нему пересобирало бы все сервисы на каждом запуске.
+- name: Копирование кода lab2 на сервер
+  ansible.posix.synchronize:
+    src: "{{ app_src }}"
+    dest: "{{ app_dir }}/"
+    delete: true
+    checksum: true
+    times: false
+    owner: false
+    group: false
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=dist"
+      - "--exclude=.env"
+      - "--exclude=.DS_Store"
+      - "--exclude=*.docx"
+      - "--exclude=*.pdf"
+      - "--exclude=postman"
+      - "--exclude=docker-compose.prod.yml"
+      - "--exclude=.built"
+      - "--exclude=.pending-build"
+  become: false
+  register: app_sync
+
+# Строки вывода rsync имеют вид "<fcs...... services/property-service/src/index.ts"
+# или "*deleting path"; строки на "." — изменились только атрибуты, они
+# пропускаются. Сервис пересобирается, если изменились его файлы;
+# packages/shared и корневые package*.json входят в образы всех сервисов,
+# кроме api-gateway, который собирается из своего каталога.
+- name: Сервисы, которые нужно пересобрать
+  ansible.builtin.set_fact:
+    app_build_services: >-
+      {%- set paths = app_sync.stdout_lines | default([]) | reject('match', '\.') | map('regex_replace', '^\S+\s+', '') | list -%}
+      {%- set shared_changed = paths | select('match', 'packages/shared/|package(-lock)?\.json$') | list | length > 0 -%}
+      {%- set pending = (app_pending_file.content | b64decode | from_json) if app_pending_file.content is defined else [] -%}
+      {%- set out = [] -%}
+      {%- for service in app_services -%}
+        {%- set own_changed = paths | select('match', 'services/' ~ service ~ '/') | list | length > 0 -%}
+        {%- if not app_built.stat.exists or service in pending or own_changed or (shared_changed and service != 'api-gateway') -%}
+          {%- set _ = out.append(service) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Запись списка незавершённых сборок
+  ansible.builtin.copy:
+    dest: "{{ app_dir }}/.pending-build"
+    content: "{{ app_build_services | to_json }}"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0644"
+  when: app_build_services | length > 0
+
+- name: Файл .env с секретами
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+
+- name: docker-compose.prod.yml
+  ansible.builtin.template:
+    src: docker-compose.prod.yml.j2
+    dest: "{{ app_dir }}/docker-compose.prod.yml"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: "0600"
+
+- name: Сборка образов
+  when: app_build_services | length > 0
+  become: false
+  block:
+    # По одному сервису: на 1 vCPU / 709 МиБ параллельная сборка упирается в память.
+    - name: Сборка образа сервиса
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml build {{ item }}
+        chdir: "{{ app_dir }}"
+      loop: "{{ app_build_services }}"
+      async: 1800
+      poll: 15
+      changed_when: true
+
+    - name: Сборки завершены
+      ansible.builtin.file:
+        path: "{{ app_dir }}/.pending-build"
+        state: absent
+
+    - name: Установка метки первой полной сборки
+      ansible.builtin.file:
+        path: "{{ app_dir }}/.built"
+        state: touch
+        mode: "0644"
+      when: not app_built.stat.exists
+
+# Пересоздаются только контейнеры, у которых изменился образ или настройки.
+- name: Запуск контейнеров
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    files:
+      - docker-compose.yml
+      - docker-compose.prod.yml
+    build: never
+    state: present
+    remove_orphans: true
+  become: false
+  register: app_up
+
+- name: api-gateway отвечает
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gateway_port }}/health"
+    return_content: true
+  register: gateway_health
+  until: gateway_health.status == 200 and gateway_health.json.status == 'ok'
+  retries: 30
+  delay: 5
+
+# На 8.8 ГБ диска кэш сборки (~800 МБ) вместе со старыми и новыми образами
+# не помещается, поэтому он удаляется после сборки.
+- name: Очистка старых образов и кэша сборки
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - docker image prune -f
+    - docker builder prune -af
+  when: app_build_services | length > 0
+  become: false
+  changed_when: false

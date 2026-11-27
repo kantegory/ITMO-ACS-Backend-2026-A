@@ -1,0 +1,88 @@
+- name: Обновление пакетов
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: safe
+
+- name: Базовые пакеты
+  ansible.builtin.apt:
+    name:
+      - rsync
+      - curl
+      - ca-certificates
+      - ufw
+    state: present
+
+- name: Текущий swap-файл
+  ansible.builtin.stat:
+    path: /swapfile
+  register: swapfile
+
+- name: Пересоздание swap-файла нужного размера
+  when: not swapfile.stat.exists or swapfile.stat.size != swap_size_mb * 1024 * 1024
+  block:
+    - name: Отключение старого swap
+      ansible.builtin.command: swapoff /swapfile
+      when: swapfile.stat.exists
+      changed_when: true
+      failed_when: false
+
+    - name: Выделение места под swap
+      ansible.builtin.command: fallocate -l {{ swap_size_mb }}M /swapfile
+      changed_when: true
+
+    - name: Права на swap-файл
+      ansible.builtin.file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Разметка swap
+      ansible.builtin.command: mkswap /swapfile
+      changed_when: true
+
+- name: Активные swap-устройства
+  ansible.builtin.command: swapon --show=NAME --noheadings
+  register: active_swap
+  changed_when: false
+
+- name: Включение swap
+  ansible.builtin.command: swapon /swapfile
+  when: "'/swapfile' not in active_swap.stdout_lines"
+  changed_when: true
+
+- name: swap в fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^/swapfile\s'
+    line: /swapfile none swap sw 0 0
+
+- name: Использовать swap только при нехватке памяти
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "10"
+    sysctl_file: /etc/sysctl.d/99-swappiness.conf
+
+- name: UFW разрешает SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: UFW разрешает HTTP
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: UFW включён, входящие по умолчанию запрещены
+  community.general.ufw:
+    state: enabled
+    default: deny
+    direction: incoming
+
+# Отдельный ключ без пароля для GitHub Actions. Добавляется, а не заменяет
+# список ключей: личный ключ из bootstrap.yml остаётся.
+- name: SSH-ключ GitHub Actions для deploy
+  ansible.posix.authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ lookup('ansible.builtin.file', 'github-actions.pub') }}"

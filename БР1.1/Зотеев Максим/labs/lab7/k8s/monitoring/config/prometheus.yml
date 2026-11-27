@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 10s
+  scrape_timeout: 5s
+scrape_configs:
+  - job_name: rental-health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [rental-lab7]
+    relabel_configs:
+      - {source_labels: [__meta_kubernetes_pod_container_port_name], regex: http, action: keep}
+      - {source_labels: [__meta_kubernetes_pod_label_app], regex: 'api-gateway|identity-service|property-service|rental-service|messaging-service', action: keep}
+      - {source_labels: [__meta_kubernetes_pod_label_app], target_label: app}
+      - {source_labels: [__meta_kubernetes_pod_ready], target_label: kube_ready}
+      - {source_labels: [__address__], regex: '(.+)', replacement: 'http://${1}/health', target_label: __param_target}
+      - {source_labels: [__meta_kubernetes_pod_name], target_label: instance}
+      - {target_label: __address__, replacement: 'blackbox:9115'}
+  - job_name: rabbit
+    static_configs:
+      - targets:
+          - rabbit-0.rabbit-peer:15692
+          - rabbit-1.rabbit-peer:15692
+          - rabbit-2.rabbit-peer:15692
+  # Per-queue depth, so the dead-letter queue messaging.failed is visible on its own.
+  - job_name: rabbit-queues
+    metrics_path: /metrics/detailed
+    params: {family: [queue_coarse_metrics]}
+    static_configs:
+      - targets:
+          - rabbit-0.rabbit-peer:15692
+          - rabbit-1.rabbit-peer:15692
+          - rabbit-2.rabbit-peer:15692
+  - job_name: service-health
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    static_configs:
+      - targets: [http://api-gateway:8080/health, http://identity-service:3001/health, http://property-service:3002/health, http://rental-service:3003/health, http://messaging-service:3004/health]
+    relabel_configs:
+      - {source_labels: [__address__], target_label: __param_target}
+      - {source_labels: [__address__], regex: 'http://([^:]+):.*', target_label: app}
+      - {target_label: __address__, replacement: 'blackbox:9115'}
+  - job_name: workers
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [rental-lab7]
+    relabel_configs:
+      - {source_labels: [__meta_kubernetes_pod_label_app], regex: node-exporter, action: keep}
+      - {source_labels: [__meta_kubernetes_pod_container_port_name], regex: metrics, action: keep}
+      - {source_labels: [__meta_kubernetes_pod_node_name], target_label: instance}
