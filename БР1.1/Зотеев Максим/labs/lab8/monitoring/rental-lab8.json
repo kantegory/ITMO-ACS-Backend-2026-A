@@ -1,0 +1,110 @@
+{
+  "uid": "rental-lab8",
+  "title": "Сервис аренды • ЛР8 (Нагрузка и HPA)",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "title": "CPU контейнеров по сервисам (mCPU)",
+      "id": 1,
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (container) (rate(container_cpu_usage_seconds_total{namespace=\"rental-lab7\",container=~\"api-gateway|identity-service|property-service|rental-service|messaging-service|rental-outbox\"}[1m])) * 1000",
+          "legendFormat": "{{container}}",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        }
+      ]
+    },
+    {
+      "title": "Реплики HPA (текущие / целевые)",
+      "id": 2,
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "min": 0, "decimals": 0 } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kube_deployment_status_replicas_available{namespace=\"rental-lab7\",deployment=~\"api-gateway|identity-service|property-service|rental-service|messaging-service\"}",
+          "legendFormat": "{{deployment}} (ready)",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        },
+        {
+          "refId": "B",
+          "expr": "kube_horizontalpodautoscaler_status_desired_replicas{namespace=\"rental-lab7\"}",
+          "legendFormat": "{{horizontalpodautoscaler}} (HPA desired)",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        }
+      ]
+    },
+    {
+      "title": "Память контейнеров (MiB, working set)",
+      "id": 3,
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (container) (container_memory_working_set_bytes{namespace=\"rental-lab7\",container=~\"api-gateway|identity-service|property-service|rental-service|messaging-service|rental-outbox\"})",
+          "legendFormat": "{{container}}",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        }
+      ]
+    },
+    {
+      "title": "CPU throttling по сервисам (% периодов)",
+      "id": 4,
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0 } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (container) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"rental-lab7\",container=~\"api-gateway|identity-service|property-service|rental-service|messaging-service\"}[1m])) / clamp_min(sum by (container) (rate(container_cpu_cfs_periods_total{namespace=\"rental-lab7\",container=~\"api-gateway|identity-service|property-service|rental-service|messaging-service\"}[1m])), 1)",
+          "legendFormat": "{{container}}",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        }
+      ]
+    },
+    {
+      "title": "CPU рабочих узлов (ядра)",
+      "id": 5,
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instance) (rate(node_cpu_seconds_total{mode!=\"idle\"}[1m]))",
+          "legendFormat": "{{instance}}",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        }
+      ]
+    },
+    {
+      "title": "Время отклика healthcheck (Blackbox, с)",
+      "id": 6,
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_duration_seconds{job=\"service-health\"}",
+          "legendFormat": "{{app}}",
+          "datasource": { "type": "prometheus", "uid": "prom" }
+        }
+      ]
+    }
+  ]
+}
