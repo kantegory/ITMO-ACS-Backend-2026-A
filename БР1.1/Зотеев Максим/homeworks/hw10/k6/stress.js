@@ -35,7 +35,7 @@ export default function (seed) {
   } else if (roll < 0.78) {
     profileAndRefsScenario(seed);
   } else if (roll < 0.88) {
-    // Авторизация использует bcrypt и создаёт управляемую CPU-нагрузку на identity-service и gateway.
+    // Логин проверяет пароль через bcrypt и нагружает CPU на identity-service и api-gateway.
     loginUser(seed.tenantEmail, seed.password);
   } else {
     transactionalRentalFlow(seed);

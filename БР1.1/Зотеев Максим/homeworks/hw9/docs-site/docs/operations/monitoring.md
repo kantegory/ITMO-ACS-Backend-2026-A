@@ -2,13 +2,13 @@
 
 ## Стек наблюдаемости
 
-В облачном контуре `rental-lab7` развёрнут полный стек наблюдаемости:
+В namespace `rental-lab7` развёрнуты инструменты сбора метрик и логов:
 
-- **Prometheus** — сбор метрик `node-exporter` (CPU/RAM/диск/сеть узлов), `blackbox-exporter` (HTTP-пробы `/health` сервисов и подов), `rabbitmq` (глубина очередей и DLQ), а также метрик контейнеров/HPA (ЛР8).
-- **Loki + Grafana Alloy** — централизованный сбор и индексация логов всех контейнеров приложения.
-- **Grafana** — преднастроенный дашборд с панелями доступности, реплик, CPU/RAM, очередей RabbitMQ и логов.
+- Prometheus собирает метрики `node-exporter` (CPU, RAM, диск и сеть узлов), `blackbox-exporter` (HTTP-пробы `/health`), `rabbitmq` (очереди и DLQ), а также метрики контейнеров и HPA из ЛР8.
+- Loki и Grafana Alloy собирают и индексируют логи всех контейнеров приложения.
+- Grafana содержит дашборды с панелями доступности, числа реплик, CPU/RAM, очередей RabbitMQ и логов.
 
-## Целевые SLA / SLO (ДЗ10)
+## Целевые SLA и SLO (ДЗ10)
 
 | Класс операций | Целевой RPS | Latency p95 | Latency p99 | Error rate |
 |---|---:|---:|---:|---:|
@@ -22,4 +22,4 @@
 
 ## Нагрузочное тестирование и HPA (ДЗ10 и ЛР8)
 
-Сценарии на **k6** расположены в `homeworks/hw10/k6/` (`smoke.js`, `load.js`, `stress.js`, `spike.js`). Горизонтальное масштабирование (`HorizontalPodAutoscaler` `autoscaling/v2`) и настроенные `requests`/`limits` подов описаны в `labs/lab8/`.
+Сценарии k6 лежат в `homeworks/hw10/k6/` (`smoke.js`, `load.js`, `stress.js`, `spike.js`). Манифесты `HorizontalPodAutoscaler` (`autoscaling/v2`) и настройка `requests`/`limits` подов находятся в `labs/lab8/`.

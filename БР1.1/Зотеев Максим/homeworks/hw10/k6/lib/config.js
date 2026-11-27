@@ -3,7 +3,7 @@
 export const BASE_URL = (__ENV.BASE_URL || "http://localhost:8080").replace(/\/+$/, "");
 export const API_URL = `${BASE_URL}/api/v1`;
 
-// Пороги строго синхронизированы с sla-slo.json (25 пороговых выражений по 17 метрикам:
+// Пороги совпадают с sla-slo.json (25 пороговых выражений по 17 метрикам:
 // 1 глобальный error rate + 7 per-endpoint error rate + 1 checks + 8×2 latency p95/p99).
 export const SLO_THRESHOLDS = {
   // Глобальный SLO доступности и скорости

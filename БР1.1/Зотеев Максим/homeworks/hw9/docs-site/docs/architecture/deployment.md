@@ -28,12 +28,17 @@
 
 ## Облачный CI/CD-пайплайн (ДЗ8)
 
-Доставка изменений в облачный Kubernetes автоматизирована двумя workflow в `.github/workflows/`:
+Доставка изменений в облачный Kubernetes настроена через два workflow в `.github/workflows/`:
 
-1. **`rental-k8s-deploy.yml`** (автоматически при `push` в `main` по изменениям `lab2` / `lab7/k8s` или вручную):
-   - `test-and-build` — установка зависимостей и компиляция TypeScript (`npm run build:all`);
-   - `build-and-push` — сборка `linux/amd64`-образа и публикация в GHCR с фиксацией неизменяемого `sha256`-дайджеста;
-   - `deploy-k8s` — аутентификация от выделенного ServiceAccount `ci-deployer` (без прав на `secrets` и без `cluster-admin`), проверка манифестов `kubectl apply --dry-run=server`, применение манифестов и ожидание `kubectl rollout status` для всех 6 Deployment;
-   - `smoke-test` — прогон 62 запросов Postman-коллекции через `newman` по публичному HTTPS-адресу балансировщика.
-2. **`rental-k8s-rollback.yml`** (ручной `workflow_dispatch`):
-   - мгновенный откат одного выбранного сервиса или всех 6 Deployment командой `kubectl rollout undo` с проверкой `rollout status` и `GET /health`.
+### `rental-k8s-deploy.yml`
+
+Запускается при `push` в `main` по изменениям в `lab2` или `lab7/k8s`, а также вручную через `workflow_dispatch`:
+
+- `test-and-build`: установка зависимостей и компиляция TypeScript (`npm run build:all`).
+- `build-and-push`: сборка `linux/amd64`-образа и публикация в GHCR с фиксацией `sha256`-дайджеста.
+- `deploy-k8s`: аутентификация от ServiceAccount `ci-deployer` (без прав на `secrets` и без `cluster-admin`), проверка манифестов `kubectl apply --dry-run=server`, применение манифестов и ожидание `kubectl rollout status` для всех 6 Deployment.
+- `smoke-test`: прогон 62 запросов коллекции Postman через `newman` против публичного HTTPS-балансировщика.
+
+### `rental-k8s-rollback.yml`
+
+Запускается вручную (`workflow_dispatch`). Откатывает выбранный сервис или все 6 Deployment командой `kubectl rollout undo`, ждёт `rollout status` и проверяет `GET /health`.
