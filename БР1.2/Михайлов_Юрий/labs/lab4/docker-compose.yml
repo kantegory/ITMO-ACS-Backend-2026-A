@@ -1,0 +1,163 @@
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rental-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - rental-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/localhost/5672'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  auth-db:
+    image: postgres:16-alpine
+    container_name: rental-auth-db
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./user_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  property-db:
+    image: postgres:16-alpine
+    container_name: rental-property-db
+    volumes:
+      - property-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./property_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  booking-db:
+    image: postgres:16-alpine
+    container_name: rental-booking-db
+    volumes:
+      - booking-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./booking_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  engagement-db:
+    image: postgres:16-alpine
+    container_name: rental-engagement-db
+    volumes:
+      - engagement-db-data:/var/lib/postgresql/data
+    env_file:
+      - ./engagement_service/.env
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  auth-service:
+    build: ./user_service
+    container_name: rental-auth-service
+    env_file:
+      - ./user_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-db:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  property-service:
+    build: ./property_service
+    container_name: rental-property-service
+    env_file:
+      - ./property_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      property-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  booking-service:
+    build: ./booking_service
+    container_name: rental-booking-service
+    env_file:
+      - ./booking_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      booking-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  engagement-service:
+    build: ./engagement_service
+    container_name: rental-engagement-service
+    env_file:
+      - ./engagement_service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      engagement-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      property-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+    networks:
+      - rental-network
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:alpine
+    container_name: rental-gateway
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - property-service
+      - booking-service
+      - engagement-service
+    networks:
+      - rental-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost/health" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  rabbitmq_data:
+  auth-db-data:
+  property-db-data:
+  booking-db-data:
+  engagement-db-data:
+
+networks:
+  rental-network:
+    driver: bridge
