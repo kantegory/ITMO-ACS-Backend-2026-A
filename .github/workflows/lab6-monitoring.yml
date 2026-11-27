@@ -1,0 +1,60 @@
+name: ЛР6 · Мониторинг
+on:
+  push:
+    branches: [lab6-monitoring, hw6-ci-cd]
+    paths:
+      - '.github/workflows/lab6-monitoring.yml'
+      - 'БР1.1/Маркозубова Анастасия/labs/lab6/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-monitoring
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'mmmilkinnn/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      SOURCE: 'БР1.1/Маркозубова Анастасия/labs/lab6'
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверить конфигурации
+        run: |
+          bash -n "$SOURCE/scripts/deploy.sh"
+          python3 -m py_compile "$SOURCE/scripts/verify.py"
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/$SOURCE/prometheus.yml:/prometheus.yml:ro" prom/prometheus:v3.5.0 check config /prometheus.yml
+          docker run --rm -v "$PWD/$SOURCE/config.alloy:/etc/alloy/config.alloy:ro" grafana/alloy:v1.12.0 validate /etc/alloy/config.alloy
+      - name: Подключиться к ВМ
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 "$DEPLOY_USER@$DEPLOY_HOST" 'hostname; free -m; df -h /; sudo -n docker network inspect backend-lab4_job-board-network >/dev/null'
+      - name: Развернуть мониторинг
+        run: |
+          ssh=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 "$DEPLOY_USER@$DEPLOY_HOST")
+          tar -cz -C "$SOURCE" compose.yaml blackbox.yml prometheus.yml loki.yml config.alloy grafana scripts | "${ssh[@]}" 'mkdir -p ~/backend-monitoring && tar -xz -C ~/backend-monitoring'
+          "${ssh[@]}" 'bash ~/backend-monitoring/scripts/deploy.sh'
+      - name: Проверить дашборд, метрики и журналы
+        run: |
+          mkdir -p evidence
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 "$DEPLOY_USER@$DEPLOY_HOST" 'python3 ~/backend-monitoring/scripts/verify.py' | tee evidence/result.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab6-result
+          path: evidence/
+      - name: Удалить ключ SSH
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

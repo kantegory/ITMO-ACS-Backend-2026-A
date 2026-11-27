@@ -1,0 +1,84 @@
+name: backend-monitoring
+x-defaults: &defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "5m"
+      max-file: "2"
+
+services:
+  grafana:
+    <<: *defaults
+    image: grafana/grafana:12.3.0
+    ports: ["127.0.0.1:3030:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Run scripts/deploy.sh}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboard.json:/var/lib/grafana/dashboards/lab6.json:ro
+    mem_limit: 450m
+
+  prometheus:
+    <<: *defaults
+    image: prom/prometheus:v3.5.0
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=3d, --storage.tsdb.retention.size=300MB]
+    extra_hosts: ["vm-exporter:${NODE_EXPORTER_BIND:?Run scripts/deploy.sh}"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    mem_limit: 350m
+
+  node-exporter:
+    <<: *defaults
+    image: prom/node-exporter:v1.9.1
+    network_mode: host
+    pid: host
+    command: [--path.rootfs=/host, "--web.listen-address=${NODE_EXPORTER_BIND}:19100"]
+    volumes: ["/:/host:ro,rslave"]
+    mem_limit: 64m
+
+  blackbox:
+    <<: *defaults
+    image: prom/blackbox-exporter:v0.27.0
+    command: [--config.file=/etc/blackbox/config.yml]
+    volumes: ["./blackbox.yml:/etc/blackbox/config.yml:ro"]
+    networks: [default, backend]
+    mem_limit: 64m
+
+  loki:
+    <<: *defaults
+    image: grafana/loki:3.6.3
+    command: [-config.file=/etc/loki/config.yml]
+    volumes:
+      - ./loki.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    mem_limit: 450m
+
+  alloy:
+    <<: *defaults
+    image: grafana/alloy:v1.12.0
+    user: "0:0"
+    command: [run, --storage.path=/var/lib/alloy, /etc/alloy/config.alloy]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy
+    mem_limit: 230m
+    depends_on: [loki]
+
+networks:
+  backend:
+    external: true
+    name: ${BACKEND_NETWORK:-backend-lab4_job-board-network}
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  loki-data:
+  alloy-data:

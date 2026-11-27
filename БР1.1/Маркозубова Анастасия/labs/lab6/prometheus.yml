@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: vm
+    static_configs:
+      - targets: [vm-exporter:19100]
+  - job_name: microservices
+    metrics_path: /probe
+    params:
+      module: [api]
+    static_configs:
+      - targets: [http://auth-service:8001/docs/]
+        labels: {service: auth}
+      - targets: [http://profile-service:8002/docs/]
+        labels: {service: profile}
+      - targets: [http://resume-service:8003/docs/]
+        labels: {service: resume}
+      - targets: [http://vacancy-service:8004/docs/]
+        labels: {service: vacancy}
+      - targets: [http://application-service:8005/docs/]
+        labels: {service: application}
+      - targets: [http://reference-service:8006/docs/]
+        labels: {service: reference}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
