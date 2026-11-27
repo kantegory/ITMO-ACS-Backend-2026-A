@@ -1,0 +1,105 @@
+{
+  "service": "Сервис аренды недвижимости (Rental Platform Microservices)",
+  "environment": "UpCloud Managed Kubernetes (fi-hel2, prod-md-ha, 3x PREMIUM-2xCPU-4GB) + Managed PostgreSQL 16 (2 nodes) + RabbitMQ (3 nodes)",
+  "sla": {
+    "monthly_availability_percent": 99.5,
+    "allowed_downtime_minutes_per_month": 216,
+    "max_error_rate_percent": 1.0,
+    "description": "Внешнее обязательство доступности публичного REST API через UpCloud Load Balancer."
+  },
+  "slo": [
+    {
+      "class": "Healthcheck",
+      "k6_tag": "endpoint:health",
+      "endpoints": ["GET /health"],
+      "target_rps": 100,
+      "p95_ms": 250,
+      "p99_ms": 400,
+      "max_error_rate_percent": 0.1
+    },
+    {
+      "class": "Справочники (Read-only)",
+      "k6_tag": "endpoint:refs",
+      "endpoints": ["GET /api/v1/property-types", "GET /api/v1/amenities"],
+      "target_rps": 60,
+      "p95_ms": 300,
+      "p99_ms": 500,
+      "max_error_rate_percent": 0.5
+    },
+    {
+      "class": "Поиск каталога (Read-only, фильтры/JOIN)",
+      "k6_tag": "endpoint:catalog_search",
+      "endpoints": ["GET /api/v1/properties"],
+      "target_rps": 80,
+      "p95_ms": 400,
+      "p99_ms": 800,
+      "max_error_rate_percent": 0.5
+    },
+    {
+      "class": "Карточка объекта (Read-only)",
+      "k6_tag": "endpoint:property_detail",
+      "endpoints": ["GET /api/v1/properties/{id}"],
+      "target_rps": 80,
+      "p95_ms": 300,
+      "p99_ms": 600,
+      "max_error_rate_percent": 0.5
+    },
+    {
+      "class": "Аутентификация (CPU-bound bcrypt + JWT)",
+      "k6_tag": "endpoint:auth_login",
+      "endpoints": ["POST /api/v1/auth/login"],
+      "target_rps": 20,
+      "p95_ms": 600,
+      "p99_ms": 1200,
+      "max_error_rate_percent": 1.0
+    },
+    {
+      "class": "Отправка сообщения в чат (Write + межсервисная проверка)",
+      "k6_tag": "endpoint:message_send",
+      "endpoints": ["POST /api/v1/rentals/{id}/messages"],
+      "target_rps": 25,
+      "p95_ms": 600,
+      "p99_ms": 1200,
+      "max_error_rate_percent": 1.0
+    },
+    {
+      "class": "Оформление сделки (Write + резервирование + Outbox/RabbitMQ)",
+      "k6_tag": "endpoint:rental_create",
+      "endpoints": ["POST /api/v1/properties/{id}/rentals"],
+      "target_rps": 25,
+      "p95_ms": 800,
+      "p99_ms": 1500,
+      "max_error_rate_percent": 1.0
+    }
+  ],
+  "profiles": [
+    {
+      "name": "smoke",
+      "file": "k6/smoke.js",
+      "vus": "2",
+      "duration": "30s",
+      "purpose": "Функциональная верификация всех классов операций перед нагрузочными прогонами"
+    },
+    {
+      "name": "load",
+      "file": "k6/load.js",
+      "vus": "0 -> 35 -> 35 -> 0",
+      "duration": "3m",
+      "purpose": "Проверка соблюдения SLO при штатном смешанном трафике (3% health, 62% каталог, 20% профиль/auth, 15% сделки)"
+    },
+    {
+      "name": "stress",
+      "file": "k6/stress.js",
+      "vus": "20 -> 50 -> 90 -> 120 -> 0",
+      "duration": "4m30s",
+      "purpose": "Поэтапное наращивание нагрузки для поиска точки насыщения CPU, деградации latency и проверки срабатывания HPA"
+    },
+    {
+      "name": "spike",
+      "file": "k6/spike.js",
+      "vus": "15 -> 85 (5.7x) -> 15 -> 0",
+      "duration": "2m35s",
+      "purpose": "Проверка устойчивости и скорости восстановления при резком 5,7-кратном всплеске запросов"
+    }
+  ]
+}
