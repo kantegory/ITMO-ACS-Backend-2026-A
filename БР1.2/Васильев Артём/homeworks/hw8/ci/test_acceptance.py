@@ -13,6 +13,21 @@ BASE = ROOT.parents[2]
 
 
 class Acceptance(unittest.TestCase):
+    def test_mkdocs_readiness_rejects_unstyled_html(self):
+        text = (ROOT / 'browser.mjs').read_text(encoding='utf-8')
+        line = next(line for line in text.splitlines() if "['mkdocs'," in line)
+        match = re.search(r'`([^`]+)`\],', line)
+        assert match is not None
+        expression = match.group(1)
+        script = "const vm=require('node:vm');const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));console.log(JSON.stringify(vm.runInNewContext(input.expression,{document:{querySelector:()=>({})},getComputedStyle:()=>({display:input.display})})));"
+        for display in ('block', 'flex'):
+            with self.subTest(display=display):
+                result = subprocess.run(['node', '-e', script], input=json.dumps({'expression': expression, 'display': display}), capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), display == 'flex')
+        nginx = (BASE / 'labs/lab7/cloud/gateway/nginx.conf').read_text()
+        self.assertIn('include /etc/nginx/mime.types;', nginx)
+
     def test_grafana_readiness_rejects_blank_canvases(self):
         text = (ROOT / 'browser.mjs').read_text(encoding='utf-8')
         marker = 'const grafanaReadyExpression = `'

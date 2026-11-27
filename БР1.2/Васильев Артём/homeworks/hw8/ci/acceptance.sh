@@ -16,6 +16,9 @@ done
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/internal/users/test")" = 404 ]]
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/users/me")" = 401 ]]
 printf 'DOCUMENTATION_AND_ROUTING_OK\n'
+[[ "$(curl -fsS --max-time 10 -o /dev/null -w '%{content_type}' 'http://127.0.0.1:30080/docs/css/bootstrap.min.css')" = text/css* ]]
+[[ "$(curl -fsS --max-time 10 -o /dev/null -w '%{content_type}' 'http://127.0.0.1:30080/docs/js/base.js')" = application/javascript* ]]
+printf 'DOCUMENTATION_ASSET_MIME_TYPES_OK\n'
 old_uid="$(k get pods -l app=auth-user-service -o jsonpath='{.items[0].metadata.uid}')"
 k delete pod -l app=auth-user-service --wait=true --timeout=60s
 k rollout status deployment/auth-user-service --timeout=240s

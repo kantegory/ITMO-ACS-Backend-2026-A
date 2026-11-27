@@ -6,6 +6,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Dashboard(unittest.TestCase):
+    def test_error_ratio_axis_is_bounded_by_one(self):
+        dashboard = json.loads((ROOT / 'monitoring/dashboard.json').read_text())
+        panel = next(p for p in dashboard['panels'] if p['title'] == 'k6 error rate')
+        self.assertEqual(panel['fieldConfig']['defaults'].get('max'), 1)
+        self.assertEqual(panel['fieldConfig']['defaults'].get('min'), 0)
+
+    def test_auth_count_excludes_stale_cadvisor_samples(self):
+        dashboard = json.loads((ROOT / 'monitoring/dashboard.json').read_text())
+        panel = next(p for p in dashboard['panels'] if p['id'] == 12)
+        self.assertIn('timestamp(container_memory_working_set_bytes', panel['targets'][0]['expr'])
+        self.assertIn('< 75', panel['targets'][0]['expr'])
+        self.assertIn('75s', panel['title'])
+
     def test_grafana_cold_start_budget_exceeds_observed_617_seconds(self):
         import yaml
         docs = list(yaml.safe_load_all((ROOT / 'monitoring/k8s.yml').read_text()))
