@@ -1,0 +1,552 @@
+openapi: 3.0.0
+info:
+  title: Company Service API
+  description: Управление компаниями, услугами, категориями, скидками
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8002/api/v1
+    description: Company Service (Development)
+
+tags:
+  - name: Companies
+  - name: Services
+  - name: Categories
+  - name: Discounts
+  - name: Internal
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    SortOrderParam:
+      name: sort_order
+      in: query
+      schema: { type: string, enum: [asc, desc], default: desc }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: integer }
+            message: { type: string }
+            details: { type: object }
+
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        total_pages: { type: integer }
+
+    Category:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        is_published: { type: boolean }
+
+    Company:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        logo_url: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        avg_rating: { type: number, nullable: true }
+        total_reviews: { type: integer }
+        total_services: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    CompanyDetail:
+      allOf:
+        - $ref: '#/components/schemas/Company'
+        - type: object
+          properties:
+            owner:
+              type: object
+              properties:
+                id: { type: integer }
+                first_name: { type: string }
+                last_name: { type: string }
+            services_preview:
+              type: array
+              items: { $ref: '#/components/schemas/ServiceSummary' }
+
+    ServiceSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        price: { type: number }
+        final_price: { type: number }
+        discount_percentage: { type: integer, nullable: true }
+        is_published: { type: boolean }
+        categories: { type: array, items: { $ref: '#/components/schemas/Category' } }
+        avg_rating: { type: number, nullable: true }
+        total_reviews: { type: integer }
+
+    Service:
+      type: object
+      properties:
+        id: { type: integer }
+        company_id: { type: integer }
+        company_title: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        price: { type: number }
+        final_price: { type: number }
+        discount: { type: object, nullable: true }
+        is_published: { type: boolean }
+        categories: { type: array, items: { $ref: '#/components/schemas/Category' } }
+        avg_rating: { type: number, nullable: true }
+        total_reviews: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    Discount:
+      type: object
+      properties:
+        id: { type: integer }
+        service_id: { type: integer }
+        percentage: { type: integer, minimum: 1, maximum: 99 }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        is_active: { type: boolean }
+
+    CreateCompanyRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, maxLength: 256 }
+        description: { type: string, maxLength: 4096, nullable: true }
+        logo_url: { type: string, format: uri, nullable: true }
+        website: { type: string, format: uri, nullable: true }
+
+    UpdateCompanyRequest:
+      type: object
+      properties:
+        title: { type: string, maxLength: 256 }
+        description: { type: string, maxLength: 4096, nullable: true }
+        logo_url: { type: string, format: uri, nullable: true }
+        website: { type: string, format: uri, nullable: true }
+
+    CreateServiceRequest:
+      type: object
+      required: [name, price]
+      properties:
+        name: { type: string, maxLength: 256 }
+        description: { type: string, maxLength: 4096, nullable: true }
+        price: { type: number, minimum: 0 }
+        is_published: { type: boolean, default: true }
+        category_ids: { type: array, items: { type: integer } }
+
+    UpdateServiceRequest:
+      type: object
+      properties:
+        name: { type: string, maxLength: 256 }
+        description: { type: string, maxLength: 4096, nullable: true }
+        price: { type: number, minimum: 0 }
+        is_published: { type: boolean }
+        category_ids: { type: array, items: { type: integer } }
+
+    CreateDiscountRequest:
+      type: object
+      required: [percentage, start_at, end_at]
+      properties:
+        percentage: { type: integer, minimum: 1, maximum: 99 }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+
+  responses:
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Конфликт
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnprocessableEntity:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /companies:
+    get:
+      tags: [Companies]
+      summary: Список компаний
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, rating, title], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Company' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Companies]
+      summary: Создать компанию
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCompanyRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CompanyDetail' }
+        '403': { description: Уже владеет компанией }
+        '400': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /companies/{company_id}:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Companies]
+      summary: Детали компании
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CompanyDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Companies]
+      summary: Обновить компанию
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCompanyRequest' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CompanyDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Companies]
+      summary: Удалить компанию
+      responses:
+        '204': { description: Удалено }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /companies/{company_id}/services:
+    parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Services]
+      summary: Услуги компании
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: category_id
+          in: query
+          schema: { type: integer }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, price, final_price], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Service' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Services]
+      summary: Создать услугу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServiceRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Service' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/UnprocessableEntity' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /services:
+    get:
+      tags: [Services]
+      summary: Каталог услуг
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: company_id
+          in: query
+          schema: { type: integer }
+        - name: category_id
+          in: query
+          schema: { type: integer }
+        - name: price_min
+          in: query
+          schema: { type: number }
+        - name: price_max
+          in: query
+          schema: { type: number }
+        - name: with_discount
+          in: query
+          schema: { type: boolean }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, price, final_price], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Service' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+
+  /services/{service_id}:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Services]
+      summary: Детали услуги
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Service' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Services]
+      summary: Обновить услугу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateServiceRequest' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Service' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Services]
+      summary: Удалить услугу
+      responses:
+        '204': { description: Удалено }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /services/{service_id}/discount:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Discounts]
+      summary: Получить скидку
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Discount' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Discounts]
+      summary: Создать скидку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDiscountRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Discount' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    put:
+      tags: [Discounts]
+      summary: Обновить скидку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDiscountRequest' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Discount' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Discounts]
+      summary: Удалить скидку
+      responses:
+        '204': { description: Удалено }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Список категорий
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Category' }
+
+  /internal/services/{id}:
+    get:
+      tags: [Internal]
+      summary: Получить услугу (internal)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  company_id: { type: integer }
+                  base_price: { type: number }
+        '404': { $ref: '#/components/responses/NotFound' }

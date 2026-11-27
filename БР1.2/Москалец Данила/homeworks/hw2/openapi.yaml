@@ -1,0 +1,2366 @@
+openapi: 3.0.0
+info:
+  title: Sangel API
+  description: |
+    Маркетплейс охранных услуг.
+
+    ## Роли пользователей
+    - **USER**: обычный пользователь: просмотр каталога, отправка заявок, отзывы, избранное
+    - **OWNER**: владелец компании: управление компанией, услугами, скидками, заявками
+    - **ADMIN**: системный администратор: полный доступ, отчёты, управление категориями
+
+    ## Аутентификация
+    Все защищённые эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
+    Access token живёт 15 минут, refresh token - 30 дней.
+
+    ## Пагинация
+    Все списочные эндпоинты принимают параметры `page` и `page_size`.
+    Ответ содержит объект `pagination` с полями `total`, `page`, `page_size`, `total_pages`.
+
+    ## Машина состояний заявки
+    Допустимые переходы статусов:
+    - `PENDING` → `ACCEPTED` (OWNER компании, через PUT /requests/{id}/status)
+    - `PENDING` → `REJECTED` (OWNER компании, через PUT /requests/{id}/status)
+    - `PENDING` → `CANCELLED` (автор заявки, через PUT /requests/{id}/cancel)
+    - Из статусов `ACCEPTED`, `REJECTED`, `CANCELLED` переходы невозможны.
+
+    ## PATCH vs PUT
+    Все эндпоинты обновления используют PUT с частичными данными:
+    незаполненные поля не изменяют текущее значение (не обнуляют).
+    Для явного обнуления nullable-поля передайте `null`.
+  version: 1.0.0
+  contact:
+    name: Москалец Данила Алексеевич
+
+servers:
+  - url: https://api.sangel.ru/v1
+    description: Production
+  - url: http://localhost:8000/v1
+    description: Development
+
+# ==============================================================================
+# COMPONENTS
+# ==============================================================================
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    # --- Пагинация ---
+    PageParam:
+      name: page
+      in: query
+      description: Номер страницы (начиная с 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: page_size
+      in: query
+      description: Количество элементов на странице
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    # --- Сортировка ---
+    SortOrderParam:
+      name: sort_order
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+    # --- Path params ---
+    CompanyIdPath:
+      name: company_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    ServiceIdPath:
+      name: service_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    RequestIdPath:
+      name: request_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    ReviewIdPath:
+      name: review_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    CategoryIdPath:
+      name: category_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    UserIdPath:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  schemas:
+
+    # ── Общие ───────────────────────────────────────────────────────────────────
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: integer
+              example: 404
+            message:
+              type: string
+              example: Resource not found
+            details:
+              type: object
+              description: Дополнительные сведения об ошибке (поля валидации и т.п.)
+              additionalProperties: true
+
+    Pagination:
+      type: object
+      required: [total, page, page_size, total_pages]
+      properties:
+        total:
+          type: integer
+          description: Общее количество записей
+        page:
+          type: integer
+          description: Текущая страница
+        page_size:
+          type: integer
+          description: Размер страницы
+        total_pages:
+          type: integer
+          description: Всего страниц
+
+    # ── Auth / User ──────────────────────────────────────────────────────────────
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [ADMIN, USER, OWNER]
+        first_name:
+          type: string
+        last_name:
+          type: string
+        middle_name:
+          type: string
+          nullable: true
+        is_verified:
+          type: boolean
+          description: Подтверждён ли email
+        created_at:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          description: Минимум 8 символов, хотя бы одна цифра и одна заглавная буква
+        first_name:
+          type: string
+          maxLength: 64
+        last_name:
+          type: string
+          maxLength: 64
+        middle_name:
+          type: string
+          maxLength: 64
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Время жизни access token в секундах
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 64
+        last_name:
+          type: string
+          maxLength: 64
+        middle_name:
+          type: string
+          maxLength: 64
+          nullable: true
+
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+
+    # ── Category ─────────────────────────────────────────────────────────────────
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        is_published:
+          type: boolean
+
+    CreateCategoryRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 128
+        is_published:
+          type: boolean
+          default: true
+
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 128
+        is_published:
+          type: boolean
+
+    # ── Company ──────────────────────────────────────────────────────────────────
+
+    Company:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        logo_url:
+          type: string
+          format: uri
+          nullable: true
+        website:
+          type: string
+          format: uri
+          nullable: true
+        avg_rating:
+          type: number
+          format: float
+          description: Средний рейтинг на основе отзывов об услугах компании
+          nullable: true
+        total_reviews:
+          type: integer
+        total_services:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CompanyDetail:
+      description: |
+        Детальная карточка компании. Поле `services_preview` содержит
+        не более 5 услуг. Полный список — GET /companies/{company_id}/services.
+      allOf:
+        - $ref: '#/components/schemas/Company'
+        - type: object
+          properties:
+            owner:
+              type: object
+              properties:
+                id:
+                  type: integer
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+            services_preview:
+              type: array
+              maxItems: 5
+              description: Первые 5 опубликованных услуг. Полный список — GET /companies/{company_id}/services.
+              items:
+                $ref: '#/components/schemas/ServiceSummary'
+
+    CreateCompanyRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        logo_url:
+          type: string
+          format: uri
+          description: URL логотипа (загружать через /uploads/image)
+        website:
+          type: string
+          format: uri
+
+    UpdateCompanyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        logo_url:
+          type: string
+          format: uri
+          nullable: true
+        website:
+          type: string
+          format: uri
+          nullable: true
+
+    # ── Service ──────────────────────────────────────────────────────────────────
+
+    # Краткая версия услуги — для списков и встраивания в CompanyDetail
+    ServiceSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+          format: float
+        final_price:
+          type: number
+          format: float
+        discount_percentage:
+          type: integer
+          nullable: true
+          description: Процент активной скидки, null если скидки нет
+        is_published:
+          type: boolean
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        avg_rating:
+          type: number
+          format: float
+          nullable: true
+        total_reviews:
+          type: integer
+
+    # Полная версия услуги — для детального просмотра и списка каталога
+    Service:
+      type: object
+      properties:
+        id:
+          type: integer
+        company_id:
+          type: integer
+        company_title:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+          description: Базовая цена
+        final_price:
+          type: number
+          format: float
+          description: Цена с учётом активной скидки
+        discount:
+          nullable: true
+          description: Активная скидка, если есть. Используется DiscountShort — без service_id.
+          allOf:
+            - $ref: '#/components/schemas/DiscountShort'
+        is_published:
+          type: boolean
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+        avg_rating:
+          type: number
+          format: float
+          nullable: true
+        total_reviews:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CreateServiceRequest:
+      type: object
+      required: [name, price]
+      properties:
+        name:
+          type: string
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        price:
+          type: number
+          format: float
+          minimum: 0
+        is_published:
+          type: boolean
+          default: true
+        category_ids:
+          type: array
+          items:
+            type: integer
+
+    UpdateServiceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 4096
+        price:
+          type: number
+          format: float
+          minimum: 0
+        is_published:
+          type: boolean
+        category_ids:
+          type: array
+          items:
+            type: integer
+
+    # ── Discount ─────────────────────────────────────────────────────────────────
+
+    # Полная схема — используется в /services/{id}/discount
+    Discount:
+      type: object
+      properties:
+        id:
+          type: integer
+        service_id:
+          type: integer
+        percentage:
+          type: integer
+          minimum: 1
+          maximum: 99
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+          description: Действует ли скидка прямо сейчас
+
+    # Встраиваемая схема — используется внутри Service, без service_id.
+    # Это разрывает потенциальную циклическую ссылку Service → Discount → service_id.
+    DiscountShort:
+      type: object
+      properties:
+        id:
+          type: integer
+        percentage:
+          type: integer
+          minimum: 1
+          maximum: 99
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+          description: Действует ли скидка прямо сейчас
+
+    CreateDiscountRequest:
+      type: object
+      required: [percentage, start_at, end_at]
+      properties:
+        percentage:
+          type: integer
+          minimum: 1
+          maximum: 99
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+
+    # ── Request (заявка) ─────────────────────────────────────────────────────────
+
+    ServiceRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        service:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            company:
+              type: object
+              properties:
+                id:
+                  type: integer
+                title:
+                  type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+            first_name:
+              type: string
+            last_name:
+              type: string
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+        description:
+          type: string
+          nullable: true
+          description: Комментарий пользователя при создании заявки
+        reply:
+          type: string
+          nullable: true
+          description: Ответ компании при смене статуса
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateServiceRequestBody:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 2048
+
+    UpdateRequestStatusBody:
+      type: object
+      required: [status]
+      description: |
+        Допустимые переходы: PENDING → ACCEPTED, PENDING → REJECTED.
+        Попытка изменить статус из ACCEPTED, REJECTED или CANCELLED вернёт 400.
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        reply:
+          type: string
+          maxLength: 2048
+          description: Необязательный комментарий компании для пользователя
+
+    # ── Review ───────────────────────────────────────────────────────────────────
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        service_id:
+          type: integer
+        service_name:
+          type: string
+        company_id:
+          type: integer
+        company_title:
+          type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+            first_name:
+              type: string
+            last_name:
+              type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 4096
+
+    # ── Favorite ─────────────────────────────────────────────────────────────────
+
+    Favorite:
+      type: object
+      properties:
+        service_id:
+          type: integer
+        name:
+          type: string
+        company:
+          type: object
+          properties:
+            id:
+              type: integer
+            title:
+              type: string
+        price:
+          type: number
+          format: float
+        final_price:
+          type: number
+          format: float
+        avg_rating:
+          type: number
+          format: float
+          nullable: true
+        added_at:
+          type: string
+          format: date-time
+
+    # ── Reports ──────────────────────────────────────────────────────────────────
+
+    ActivityReport:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+        totals:
+          type: object
+          properties:
+            users:
+              type: integer
+            companies:
+              type: integer
+            services:
+              type: integer
+            requests:
+              type: integer
+            reviews:
+              type: integer
+        requests_by_status:
+          type: object
+          properties:
+            pending:
+              type: integer
+            accepted:
+              type: integer
+            rejected:
+              type: integer
+            cancelled:
+              type: integer
+        top_companies:
+          type: array
+          description: Топ-10 компаний по числу принятых заявок
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              title:
+                type: string
+              requests_accepted:
+                type: integer
+              avg_rating:
+                type: number
+                format: float
+                nullable: true
+        new_users_dynamics:
+          type: array
+          description: Динамика регистраций по дням/неделям/месяцам
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+
+    CompanyReport:
+      type: object
+      properties:
+        company_id:
+          type: integer
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+        requests_total:
+          type: integer
+        requests_by_status:
+          type: object
+          properties:
+            pending:
+              type: integer
+            accepted:
+              type: integer
+            rejected:
+              type: integer
+            cancelled:
+              type: integer
+        top_services:
+          type: array
+          description: Топ услуг по числу заявок
+          items:
+            type: object
+            properties:
+              service_id:
+                type: integer
+              name:
+                type: string
+              requests_count:
+                type: integer
+              avg_rating:
+                type: number
+                format: float
+                nullable: true
+        avg_rating:
+          type: number
+          format: float
+          nullable: true
+        total_reviews:
+          type: integer
+
+  # ── Общие ответы ──────────────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Конфликт состояния
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+security:
+  - bearerAuth: []
+
+# ==============================================================================
+# PATHS
+# ==============================================================================
+paths:
+
+  # ============================================================================
+  # AUTH
+  # ============================================================================
+
+  /auth/register:
+    post:
+      operationId: registerUser
+      summary: Регистрация
+      description: Создаёт нового пользователя. После регистрации на email отправляется письмо для подтверждения.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      operationId: loginUser
+      summary: Вход
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      operationId: refreshTokens
+      summary: Обновить токены
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Новая пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      operationId: logoutUser
+      summary: Выход (инвалидация refresh token)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '204':
+          description: Выполнено успешно
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      summary: Подтвердить email по токену из письма
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Email подтверждён
+        '400':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/resend-verification:
+    post:
+      operationId: resendVerificationEmail
+      summary: Повторно отправить письмо с подтверждением
+      tags: [Auth]
+      responses:
+        '204':
+          description: Письмо отправлено
+        '409':
+          description: Email уже подтверждён
+
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      summary: Запрос на сброс пароля
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '204':
+          description: Письмо отправлено (если email существует)
+
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Сброс пароля по токену из письма
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Пароль изменён
+        '400':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Текущий пользователь
+      tags: [Auth]
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================================
+  # PROFILE
+  # ============================================================================
+
+  /profile:
+    put:
+      operationId: updateProfile
+      summary: Обновить профиль
+      tags: [Profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /profile/password:
+    put:
+      operationId: changePassword
+      summary: Сменить пароль
+      tags: [Profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Пароль изменён
+        '400':
+          description: Неверный текущий пароль
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ============================================================================
+  # ME — личный кабинет
+  # ============================================================================
+
+  /me/company:
+    get:
+      operationId: getMyCompany
+      summary: Моя компания
+      description: Возвращает компанию текущего OWNER-пользователя.
+      tags: [Me]
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /me/requests:
+    get:
+      operationId: getMyRequests
+      summary: Мои заявки (отправленные)
+      tags: [Me]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, status]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceRequest'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /me/reviews:
+    get:
+      operationId: getMyReviews
+      summary: Мои отзывы
+      tags: [Me]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, rating]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Review'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /me/favorites:
+    get:
+      operationId: getMyFavorites
+      summary: Мои избранные услуги
+      tags: [Me]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [added_at, price, rating]
+            default: added_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Favorite'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # ============================================================================
+  # CATEGORIES
+  # ============================================================================
+
+  /categories:
+    get:
+      operationId: listCategories
+      summary: Список категорий
+      tags: [Categories]
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+
+    post:
+      operationId: createCategory
+      summary: Создать категорию
+      description: Только ADMIN.
+      tags: [Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+      responses:
+        '201':
+          description: Категория создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /categories/{category_id}:
+    parameters:
+      - $ref: '#/components/parameters/CategoryIdPath'
+    put:
+      operationId: updateCategory
+      summary: Обновить категорию
+      description: Только ADMIN.
+      tags: [Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteCategory
+      summary: Удалить категорию
+      description: Только ADMIN. Запрещено, если к категории привязаны услуги.
+      tags: [Categories]
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Категория используется в услугах
+
+  # ============================================================================
+  # COMPANIES
+  # ============================================================================
+
+  /companies:
+    get:
+      operationId: listCompanies
+      summary: Список компаний
+      tags: [Companies]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          description: Полнотекстовый поиск по названию и описанию
+          schema:
+            type: string
+        - name: category_id
+          in: query
+          description: Фильтр по категории услуг
+          schema:
+            type: integer
+        - name: price_min
+          in: query
+          description: Минимальная цена услуги
+          schema:
+            type: number
+        - name: price_max
+          in: query
+          description: Максимальная цена услуги
+          schema:
+            type: number
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, rating, title]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Company'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      operationId: createCompany
+      summary: Создать компанию
+      description: Пользователь может создать только одну компанию и становится её OWNER.
+      tags: [Companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyRequest'
+      responses:
+        '201':
+          description: Компания создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyDetail'
+        '403':
+          description: Пользователь уже является владельцем компании
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /companies/{company_id}:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+    get:
+      operationId: getCompany
+      summary: Детальная информация о компании
+      tags: [Companies]
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateCompany
+      summary: Обновить данные компании
+      description: Только OWNER своей компании или ADMIN.
+      tags: [Companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCompanyRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteCompany
+      summary: Удалить компанию
+      description: Только OWNER своей компании или ADMIN. Каскадно удаляет услуги, скидки.
+      tags: [Companies]
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /companies/{company_id}/services:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+    get:
+      operationId: listCompanyServices
+      summary: Услуги компании
+      description: Полный список услуг компании с пагинацией и сортировкой. Публичный эндпоинт.
+      tags: [Services]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: is_published
+          in: query
+          description: Фильтр по публикации. Без авторизации возвращает только опубликованные.
+          schema:
+            type: boolean
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, price, final_price, rating]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Service'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: createService
+      summary: Создать услугу в компании
+      description: Только OWNER своей компании.
+      tags: [Services]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequest'
+      responses:
+        '201':
+          description: Услуга создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Service'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /companies/{company_id}/requests:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+    get:
+      operationId: listCompanyRequests
+      summary: Входящие заявки компании
+      description: Только OWNER своей компании или ADMIN.
+      tags: [Companies]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, status]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceRequest'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /companies/{company_id}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+    get:
+      operationId: listCompanyReviews
+      summary: Отзывы о компании (агрегация по всем услугам)
+      tags: [Companies]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, rating]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avg_rating:
+                    type: number
+                    format: float
+                    nullable: true
+                  total_reviews:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Review'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /companies/{company_id}/report:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+    get:
+      operationId: getCompanyReport
+      summary: Отчёт по компании
+      description: Только OWNER своей компании или ADMIN.
+      tags: [Companies]
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompanyReport'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # SERVICES
+  # ============================================================================
+
+  /services:
+    get:
+      operationId: listServices
+      summary: Каталог услуг
+      tags: [Services]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          description: Полнотекстовый поиск по названию и описанию
+          schema:
+            type: string
+        - name: company_id
+          in: query
+          schema:
+            type: integer
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: price_min
+          in: query
+          schema:
+            type: number
+        - name: price_max
+          in: query
+          schema:
+            type: number
+        - name: with_discount
+          in: query
+          description: Только услуги с активной скидкой
+          schema:
+            type: boolean
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, price, final_price, rating]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Service'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /services/{service_id}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceIdPath'
+    get:
+      operationId: getService
+      summary: Детальная информация об услуге
+      tags: [Services]
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Service'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateService
+      summary: Обновить услугу
+      description: Только OWNER компании-владельца.
+      tags: [Services]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Service'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteService
+      summary: Удалить услугу
+      description: Только OWNER компании-владельца. Каскадно удаляет скидки и заявки.
+      tags: [Services]
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # DISCOUNTS
+  # ============================================================================
+
+  /services/{service_id}/discount:
+    parameters:
+      - $ref: '#/components/parameters/ServiceIdPath'
+    get:
+      operationId: getServiceDiscount
+      summary: Скидка на услугу
+      tags: [Discounts]
+      security: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Discount'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: createDiscount
+      summary: Создать скидку
+      description: Только OWNER компании-владельца услуги. У услуги может быть только одна скидка.
+      tags: [Discounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiscountRequest'
+      responses:
+        '201':
+          description: Скидка создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Discount'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: У услуги уже есть скидка
+
+    put:
+      operationId: updateDiscount
+      summary: Обновить скидку
+      description: Только OWNER компании-владельца услуги.
+      tags: [Discounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiscountRequest'
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Discount'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteDiscount
+      summary: Удалить скидку
+      description: Только OWNER компании-владельца услуги.
+      tags: [Discounts]
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # REQUESTS (заявки)
+  # ============================================================================
+
+  /services/{service_id}/requests:
+    parameters:
+      - $ref: '#/components/parameters/ServiceIdPath'
+    post:
+      operationId: createServiceRequest
+      summary: Создать заявку на услугу
+      description: Нельзя создать заявку на услугу собственной компании.
+      tags: [Requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequestBody'
+      responses:
+        '201':
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceRequest'
+        '403':
+          description: Нельзя создать заявку на услугу своей компании
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: У пользователя уже есть активная заявка на эту услугу
+
+  /requests/{request_id}:
+    parameters:
+      - $ref: '#/components/parameters/RequestIdPath'
+    get:
+      operationId: getRequest
+      summary: Детали заявки
+      description: Доступно автору заявки, OWNER компании и ADMIN.
+      tags: [Requests]
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /requests/{request_id}/status:
+    parameters:
+      - $ref: '#/components/parameters/RequestIdPath'
+    put:
+      operationId: updateRequestStatus
+      summary: Изменить статус заявки
+      description: |
+        Только OWNER компании.
+        Допустимые переходы: PENDING → ACCEPTED, PENDING → REJECTED.
+        Попытка изменить статус из ACCEPTED, REJECTED или CANCELLED вернёт 400.
+      tags: [Requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRequestStatusBody'
+      responses:
+        '200':
+          description: Статус изменён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceRequest'
+        '400':
+          description: Некорректный переход статуса
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /requests/{request_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/RequestIdPath'
+    put:
+      operationId: cancelRequest
+      summary: Отменить заявку
+      description: |
+        Только автор заявки.
+        Допустимый переход: PENDING → CANCELLED.
+        Из статусов ACCEPTED, REJECTED, CANCELLED отмена невозможна — вернёт 400.
+      tags: [Requests]
+      responses:
+        '200':
+          description: Заявка отменена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceRequest'
+        '400':
+          description: Заявку нельзя отменить в текущем статусе
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # REVIEWS
+  # ============================================================================
+
+  /services/{service_id}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/ServiceIdPath'
+    get:
+      operationId: listServiceReviews
+      summary: Отзывы об услуге
+      tags: [Reviews]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, rating]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avg_rating:
+                    type: number
+                    format: float
+                    nullable: true
+                  total_reviews:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Review'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      operationId: createReview
+      summary: Оставить отзыв об услуге
+      description: |
+        Пользователь может оставить отзыв только если:
+        - у него есть заявка на эту услугу в статусе ACCEPTED
+        - он ещё не оставлял отзыв на эту услугу
+      tags: [Reviews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Review'
+        '403':
+          description: Нет принятых заявок на эту услугу или отзыв уже оставлен
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reviews/{review_id}:
+    parameters:
+      - $ref: '#/components/parameters/ReviewIdPath'
+    delete:
+      operationId: deleteReview
+      summary: Удалить отзыв
+      description: Только автор отзыва или ADMIN.
+      tags: [Reviews]
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # FAVORITES
+  # ============================================================================
+
+  /favorites/{service_id}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceIdPath'
+    post:
+      operationId: addToFavorites
+      summary: Добавить услугу в избранное
+      tags: [Favorites]
+      responses:
+        '201':
+          description: Добавлено
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Уже в избранном
+
+    delete:
+      operationId: removeFromFavorites
+      summary: Удалить услугу из избранного
+      tags: [Favorites]
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          description: Услуга не найдена в избранном
+
+  # ============================================================================
+  # UPLOADS
+  # ============================================================================
+
+  /uploads/image:
+    post:
+      operationId: uploadImage
+      summary: Загрузить изображение
+      description: |
+        Возвращает URL для использования в полях logo_url.
+        Максимальный размер — 5 МБ. Форматы: JPEG, PNG, WebP.
+      tags: [Uploads]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Файл загружен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+        '400':
+          description: Неверный формат или размер файла
+        '413':
+          description: Файл слишком большой
+
+  # ============================================================================
+  # ADMIN
+  # ============================================================================
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      summary: Список пользователей
+      description: Только ADMIN.
+      tags: [Admin]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          description: Поиск по email, имени
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [ADMIN, USER, OWNER]
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, email]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      operationId: adminGetUser
+      summary: Информация о пользователе
+      description: Только ADMIN.
+      tags: [Admin]
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: adminDeleteUser
+      summary: Удалить пользователя
+      description: Только ADMIN.
+      tags: [Admin]
+      responses:
+        '204':
+          description: Удалено
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/companies:
+    get:
+      operationId: adminListCompanies
+      summary: Список компаний (включая скрытые)
+      description: Только ADMIN.
+      tags: [Admin]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, rating, title]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Company'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/requests:
+    get:
+      operationId: adminListRequests
+      summary: Все заявки на платформе
+      description: Только ADMIN.
+      tags: [Admin]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, REJECTED, CANCELLED]
+        - name: company_id
+          in: query
+          schema:
+            type: integer
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, status]
+            default: created_at
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceRequest'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/activity:
+    get:
+      operationId: adminGetActivityReport
+      summary: Отчёт по активности платформы
+      description: Только ADMIN.
+      tags: [Admin]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: month
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ActivityReport'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, управление токенами
+  - name: Profile
+    description: Управление профилем текущего пользователя
+  - name: Me
+    description: Личный кабинет — мои заявки, отзывы, избранное, компания
+  - name: Categories
+    description: Категории услуг
+  - name: Companies
+    description: Охранные компании
+  - name: Services
+    description: Услуги компаний
+  - name: Discounts
+    description: Скидки на услуги
+  - name: Requests
+    description: Заявки на услуги
+  - name: Reviews
+    description: Отзывы пользователей
+  - name: Favorites
+    description: Избранные услуги
+  - name: Uploads
+    description: Загрузка файлов
+  - name: Admin
+    description: Административный раздел (только ADMIN)

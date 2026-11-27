@@ -1,0 +1,718 @@
+{
+  "info": {
+    "_postman_id": "1dddf03a-6fa0-42e4-84f6-sangel-api-tests",
+    "name": "Sangel API Tests",
+    "description": "Комплексный Postman сценарий для Sangel API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('runId')) {",
+          "  const runId = Date.now().toString();",
+          "  pm.collectionVariables.set('runId', runId);",
+          "  pm.collectionVariables.set('ownerEmail', `owner-${runId}@sangel.test`);",
+          "  pm.collectionVariables.set('clientEmail', `client-${runId}@sangel.test`);",
+          "  pm.collectionVariables.set('companyTitle', `Sangel Guard ${runId}`);",
+          "  pm.collectionVariables.set('serviceName', `Object protection ${runId}`);",
+          "}",
+          "pm.collectionVariables.set('password', pm.collectionVariables.get('password') || 'Test1234');"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "apiPrefix",
+      "value": "api/v1",
+      "type": "string"
+    },
+    {
+      "key": "runId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "Test1234",
+      "type": "string"
+    },
+    {
+      "key": "ownerEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "companyTitle",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "serviceName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ownerAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ownerRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ownerUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "companyId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "serviceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "requestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reviewId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('API is alive', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Register Owner",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{password}}\",\n  \"first_name\": \"Owner\",\n  \"last_name\": \"Tester\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "auth", "register"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Owner registered', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.email).to.eql(pm.collectionVariables.get('ownerEmail'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Login Owner",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "auth", "login"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Owner logged in', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.tokens.access_token).to.be.a('string');",
+              "  pm.collectionVariables.set('ownerAccessToken', json.data.tokens.access_token);",
+              "  pm.collectionVariables.set('ownerUserId', json.data.user.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Create Company",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{ownerAccessToken}}"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"{{companyTitle}}\",\n  \"description\": \"Security company created by Postman scenario\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/companies",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "companies"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Company created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.title).to.eql(pm.collectionVariables.get('companyTitle'));",
+              "  pm.collectionVariables.set('companyId', json.data.id.toString());",
+              "  console.log('Company ID saved:', pm.collectionVariables.get('companyId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Get My Company",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{ownerAccessToken}}"}],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/me/company",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "me", "company"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Company available', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.id.toString()).to.eql(pm.collectionVariables.get('companyId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Create Service",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{ownerAccessToken}}"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{serviceName}}\",\n  \"description\": \"Daily object protection service\",\n  \"price\": 15000,\n  \"is_published\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/companies/{{companyId}}/services",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "companies", "{{companyId}}", "services"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Service created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.name).to.eql(pm.collectionVariables.get('serviceName'));",
+              "  pm.collectionVariables.set('serviceId', json.data.id.toString());",
+              "  console.log('Service ID saved:', pm.collectionVariables.get('serviceId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Register Client",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{password}}\",\n  \"first_name\": \"Client\",\n  \"last_name\": \"Tester\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "auth", "register"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Client registered', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.email).to.eql(pm.collectionVariables.get('clientEmail'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Login Client",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "auth", "login"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Client logged in', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.collectionVariables.set('clientAccessToken', json.data.tokens.access_token);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 List Companies",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/companies?page=1&page_size=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "companies"],
+          "query": [
+            {"key": "page", "value": "1"},
+            {"key": "page_size", "value": "10"}
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Companies listed', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.data.length).to.be.at.least(1);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Get Services Catalog",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/services?page=1&page_size=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "services"],
+          "query": [
+            {"key": "page", "value": "1"},
+            {"key": "page_size", "value": "10"}
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Catalog returns services', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  console.log('Total services in catalog:', json.data.pagination.total);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Get Service Details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/services/{{serviceId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "services", "{{serviceId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Service details available', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.id.toString()).to.eql(pm.collectionVariables.get('serviceId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Client Creates Request",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{clientAccessToken}}"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Need object protection for a business center\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/services/{{serviceId}}/requests",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "services", "{{serviceId}}", "requests"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Request created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.status).to.eql('PENDING');",
+              "  pm.collectionVariables.set('requestId', json.data.id.toString());",
+              "  console.log('Request ID saved:', pm.collectionVariables.get('requestId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Owner Lists Company Requests",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{ownerAccessToken}}"}],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/companies/{{companyId}}/requests?page=1&page_size=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "companies", "{{companyId}}", "requests"],
+          "query": [
+            {"key": "page", "value": "1"},
+            {"key": "page_size", "value": "10"}
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Owner sees requests', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  const found = json.data.data.some(r => r.id.toString() === pm.collectionVariables.get('requestId'));",
+              "  pm.expect(found).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Owner Accepts Request",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{ownerAccessToken}}"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"ACCEPTED\",\n  \"reply\": \"Request accepted. Our manager will contact you.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/requests/{{requestId}}/status",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "requests", "{{requestId}}", "status"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Request accepted', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.status).to.eql('ACCEPTED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Client Checks Own Requests",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{clientAccessToken}}"}],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/me/requests?page=1&page_size=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "me", "requests"],
+          "query": [
+            {"key": "page", "value": "1"},
+            {"key": "page_size", "value": "10"}
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Client sees accepted request', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  const found = json.data.data.some(r => r.id.toString() === pm.collectionVariables.get('requestId') && r.status === 'ACCEPTED');",
+              "  pm.expect(found).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Client Creates Review",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{clientAccessToken}}"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Excellent service, very professional!\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/services/{{serviceId}}/reviews",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "services", "{{serviceId}}", "reviews"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Review created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.rating).to.eql(5);",
+              "  pm.collectionVariables.set('reviewId', json.data.id.toString());",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Get Service Reviews",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/services/{{serviceId}}/reviews?page=1&page_size=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "services", "{{serviceId}}", "reviews"],
+          "query": [
+            {"key": "page", "value": "1"},
+            {"key": "page_size", "value": "10"}
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Reviews available', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data.total_reviews).to.be.at.least(1);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Client Adds to Favorites",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Authorization", "value": "Bearer {{clientAccessToken}}"}],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/favorites/{{serviceId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "favorites", "{{serviceId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Added to favorites', function () {",
+              "  pm.response.to.have.status(201);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 Client Lists Favorites",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{clientAccessToken}}"}],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/me/favorites?page=1&page_size=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{apiPrefix}}", "me", "favorites"],
+          "query": [
+            {"key": "page", "value": "1"},
+            {"key": "page_size", "value": "10"}
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Favorites contain service', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  const found = json.data.data.some(f => f.service_id.toString() === pm.collectionVariables.get('serviceId'));",
+              "  pm.expect(found).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,424 @@
+openapi: 3.0.0
+info:
+  title: Order Service API
+  description: Управление заявками, отзывами, избранным
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Order Service (Development)
+
+tags:
+  - name: Requests
+  - name: Reviews
+  - name: Favorites
+  - name: Me
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    SortOrderParam:
+      name: sort_order
+      in: query
+      schema: { type: string, enum: [asc, desc], default: desc }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: integer }
+            message: { type: string }
+            details: { type: object }
+
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        total_pages: { type: integer }
+
+    ServiceRequest:
+      type: object
+      properties:
+        id: { type: integer }
+        service:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            company:
+              type: object
+              properties:
+                id: { type: integer }
+                title: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            first_name: { type: string }
+            last_name: { type: string }
+        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED] }
+        description: { type: string, nullable: true }
+        reply: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Review:
+      type: object
+      properties:
+        id: { type: integer }
+        service_id: { type: integer }
+        service_name: { type: string }
+        company_id: { type: integer }
+        company_title: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            first_name: { type: string }
+            last_name: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Favorite:
+      type: object
+      properties:
+        service_id: { type: integer }
+        name: { type: string }
+        company:
+          type: object
+          properties:
+            id: { type: integer }
+            title: { type: string }
+        price: { type: number }
+        final_price: { type: number }
+        avg_rating: { type: number, nullable: true }
+        added_at: { type: string, format: date-time }
+
+    CreateServiceRequestBody:
+      type: object
+      properties:
+        description: { type: string, maxLength: 2048 }
+
+    UpdateRequestStatusBody:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ACCEPTED, REJECTED] }
+        reply: { type: string, maxLength: 2048 }
+
+    CreateReviewRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, maxLength: 4096 }
+
+  responses:
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Конфликт
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnprocessableEntity:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /services/{service_id}/requests:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [Requests]
+      summary: Создать заявку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServiceRequestBody' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ServiceRequest' }
+        '403': { description: Нельзя создать заявку на свою услугу }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Уже есть активная заявка }
+
+  /requests/{request_id}:
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Requests]
+      summary: Детали заявки
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ServiceRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /requests/{request_id}/status:
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      tags: [Requests]
+      summary: Изменить статус
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRequestStatusBody' }
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ServiceRequest' }
+        '400': { description: Некорректный переход }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /requests/{request_id}/cancel:
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      tags: [Requests]
+      summary: Отменить заявку
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ServiceRequest' }
+        '400': { description: Нельзя отменить }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /services/{service_id}/reviews:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Reviews]
+      summary: Отзывы об услуге
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, rating], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avg_rating: { type: number, nullable: true }
+                  total_reviews: { type: integer }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Review' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Reviews]
+      summary: Оставить отзыв
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateReviewRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Review' }
+        '403': { description: Нет принятой заявки или отзыв уже есть }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /reviews/{review_id}:
+    parameters:
+      - name: review_id
+        in: path
+        required: true
+        schema: { type: integer }
+    delete:
+      tags: [Reviews]
+      summary: Удалить отзыв
+      responses:
+        '204': { description: Удалено }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /favorites/{service_id}:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [Favorites]
+      summary: Добавить в избранное
+      responses:
+        '201': { description: Добавлено }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Уже в избранном }
+    delete:
+      tags: [Favorites]
+      summary: Удалить из избранного
+      responses:
+        '204': { description: Удалено }
+        '404': { description: Не найдено в избранном }
+
+  /me/requests:
+    get:
+      tags: [Me]
+      summary: Мои заявки
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, ACCEPTED, REJECTED, CANCELLED] }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, status], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ServiceRequest' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/reviews:
+    get:
+      tags: [Me]
+      summary: Мои отзывы
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [created_at, rating], default: created_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Review' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/favorites:
+    get:
+      tags: [Me]
+      summary: Моё избранное
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [added_at, price, rating], default: added_at }
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Favorite' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
