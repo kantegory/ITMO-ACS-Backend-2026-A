@@ -4,6 +4,8 @@ from unittest.mock import patch
 import io
 import json
 import tempfile
+import subprocess
+import re
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parent
@@ -11,6 +13,36 @@ BASE = ROOT.parents[2]
 
 
 class Acceptance(unittest.TestCase):
+    def test_grafana_readiness_rejects_blank_canvases(self):
+        text = (ROOT / 'browser.mjs').read_text(encoding='utf-8')
+        marker = 'const grafanaReadyExpression = `'
+        if marker in text:
+            expression = text.split(marker, 1)[1].split('`;', 1)[0].replace('EXPECTED_PLOTS', '13')
+        else:
+            line = next(line for line in text.splitlines() if "['grafana'," in line)
+            match = re.search(r'"([^"]+)"\],', line)
+            assert match is not None
+            expression = match.group(1)
+        script = r'''
+const fs = require('node:fs'), vm = require('node:vm');
+const {expression, painted} = JSON.parse(fs.readFileSync(0, 'utf8'));
+const data = new Uint8ClampedArray(64 * 64 * 4);
+for (let i = 0; i < data.length; i += 4) {
+  data[i] = painted ? i % 251 : 0;
+  data[i + 1] = painted ? Math.floor(i / 251) % 251 : 0;
+  data[i + 3] = painted ? 255 : 0;
+}
+const canvases = Array.from({length: 13}, () => ({width: 64, height: 64,
+  getContext: () => ({getImageData: () => ({data})})}));
+const document = {querySelectorAll: () => canvases, body: {innerText: ''}};
+console.log(JSON.stringify(vm.runInNewContext(expression, {document})));
+'''
+        for painted in (False, True):
+            with self.subTest(painted=painted):
+                result = subprocess.run(['node', '-e', script], input=json.dumps({'expression': expression, 'painted': painted}), capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), painted)
+
     def test_vps_metrics_and_load_use_explicit_config_without_browser_dependency(self):
         for name in ('load.sh', 'evidence.sh'):
             script = (ROOT / name).read_text(encoding='utf-8')

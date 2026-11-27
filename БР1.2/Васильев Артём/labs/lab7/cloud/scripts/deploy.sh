@@ -57,7 +57,7 @@ for attempt in $(seq 1 150); do
   sleep 2
 done
 kubectl -n kube-system rollout status deployment/lab-ingress --timeout=300s
-curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --retry-max-time 45 --max-time 15 http://127.0.0.1:30080/api/v1/industries >/dev/null
+curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --retry-all-errors --retry-max-time 45 --max-time 15 http://127.0.0.1:30080/api/v1/industries >/dev/null
 k get pods -o wide
 state_dir="${DEPLOY_STATE_DIR:-/opt/job-platform-cloud}"
 mkdir -p "$state_dir"

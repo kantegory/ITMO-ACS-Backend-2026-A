@@ -6,6 +6,23 @@ import path from 'node:path';
 const [results, dashboardFile] = process.argv.slice(2);
 assert(results && dashboardFile && process.env.RUNNER_TEMP);
 const dashboard = JSON.parse(await readFile(dashboardFile, 'utf8'));
+const grafanaReadyExpression = `(() => {
+  let painted = 0;
+  for (const canvas of document.querySelectorAll('canvas')) {
+    if (canvas.width < 40 || canvas.height < 40) continue;
+    const context = canvas.getContext('2d');
+    if (!context) continue;
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const colors = new Set();
+    const stride = Math.max(4, Math.floor(data.length / 16384) * 4);
+    for (let i = 0; i < data.length; i += stride) {
+      if (data[i + 3]) colors.add(data[i] + ',' + data[i + 1] + ',' + data[i + 2]);
+      if (colors.size > 8) { painted++; break; }
+    }
+  }
+  return painted >= EXPECTED_PLOTS && !document.body.innerText.includes('Loading dashboard')
+    && !document.body.innerText.includes('No data');
+})()`;
 const profile = await mkdtemp(path.join(process.env.RUNNER_TEMP, 'cloud-chrome-'));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const browser = spawn('google-chrome', ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
@@ -45,7 +62,7 @@ try {
   const cases = [
     ['mkdocs', 'http://127.0.0.1:30080/docs/', `!!document.querySelector('[role="main"] h1')`],
     ['swagger', 'http://127.0.0.1:30080/docs/swagger.html', "document.querySelectorAll('.swagger-ui .opblock').length > 0"],
-    ['grafana', `http://127.0.0.1:3100/d/${dashboard.uid}?orgId=1&from=now-30m&to=now&kiosk`, "document.querySelectorAll('canvas').length >= 3 && !document.body.innerText.includes('Loading dashboard')"],
+    ['grafana', `http://127.0.0.1:3100/d/${dashboard.uid}?orgId=1&from=now-30m&to=now&kiosk`, grafanaReadyExpression.replace('EXPECTED_PLOTS', dashboard.panels.filter(panel => panel.type === 'timeseries').length)],
   ];
   for (const [name, url, expression] of cases) {
     await cdp('Page.navigate', { url });
