@@ -1,0 +1,132 @@
+name: Recipes CI and delivery
+
+on:
+  push:
+    branches: [katkov-deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: recipes-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LABS: K3439/Катков Алексей Сергеевич/labs
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  release:
+    if: github.repository == 'Deraxus/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build and verify Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$LABS/lab4/app/init-env.sh"
+          docker compose --project-directory "$LABS/lab4/app" up --build --wait --wait-timeout 180
+          node "$LABS/lab4/app/smoke.mjs"
+
+      - name: Package release for the lab stand
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          docker save recipes/{api-gateway,auth-service,recipe-service,social-service}:"$IMAGE_TAG" \
+            | gzip -1 > release/recipes.tar.gz
+          cd release
+          sha256sum recipes.tar.gz > SHA256SUMS
+
+      - name: Publish release artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: recipes-images
+          path: release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+
+      - name: Publish images to GHCR
+        if: vars.PUBLISH_GHCR == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for service in api-gateway auth-service recipe-service social-service; do
+            target="ghcr.io/deraxus/recipes/$service:$IMAGE_TAG"
+            docker tag "recipes/$service:$IMAGE_TAG" "$target"
+            docker push "$target"
+          done
+
+      - name: Diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          docker compose --project-directory "$LABS/lab4/app" ps || true
+  deploy:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [vm, k8s]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: recipes-images
+          path: release
+
+      - name: Load the verified release
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum --check SHA256SUMS)
+          gzip -dc release/recipes.tar.gz | docker load
+          bash "$LABS/lab4/app/init-env.sh"
+
+      - name: Deploy Compose behind nginx on Ubuntu
+        if: matrix.target == 'vm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx
+          docker compose --project-directory "$LABS/lab4/app" up --no-build --wait --wait-timeout 180
+          sudo install -m 0644 "$LABS/lab4/nginx/recipes.conf" /etc/nginx/sites-available/recipes
+          sudo ln -sfn /etc/nginx/sites-available/recipes /etc/nginx/sites-enabled/recipes
+          sudo unlink /etc/nginx/sites-enabled/default
+          sudo nginx -t
+          sudo systemctl restart nginx
+          node "$LABS/lab4/app/smoke.mjs" http://127.0.0.1
+
+      - name: Deploy release on cloud Kubernetes
+        if: matrix.target == 'k8s'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$LABS/lab7/install-k3d.sh" "$RUNNER_TEMP/bin"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          k3d cluster create recipes-s2 --api-port 127.0.0.1:16443 \
+            -p '127.0.0.1:18081:80@loadbalancer' --wait --timeout 180s
+          k3d image import -c recipes-s2 recipes/{api-gateway,auth-service,recipe-service,social-service}:"$IMAGE_TAG"
+          bash "$LABS/lab7/deploy.sh" recipes "$IMAGE_TAG"
+          curl -fsS --retry 15 --retry-all-errors --retry-delay 2 http://127.0.0.1:18081/ready
+          node "$LABS/lab4/app/smoke.mjs" http://127.0.0.1:18081
