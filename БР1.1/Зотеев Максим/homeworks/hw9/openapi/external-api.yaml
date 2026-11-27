@@ -1,0 +1,933 @@
+openapi: 3.0.3
+info:
+  title: Rental Platform — External REST API
+  version: 2.0.0
+  description: >-
+    Актуальная OpenAPI-спецификация публичного REST API микросервисной платформы
+    аренды недвижимости, доступного через API Gateway. Все запросы клиентов
+    проходят через `api-gateway` (порт `8080`, в облаке — за UpCloud Load Balancer
+    с терминацией TLS на `443`). Внутренние маршруты `/api/v1/internal/*` скрыты
+    на уровне шлюза и возвращают `404 Not Found`.
+  contact:
+    name: Зотеев Максим (БР1.1, ИТМО)
+
+servers:
+  - url: https://{lb_host}/api/v1
+    description: Облачный контур (UpCloud Managed Kubernetes + Load Balancer)
+    variables:
+      lb_host:
+        default: lb.upcloudlb.com
+        description: Публичный HTTPS-домен UpCloud Load Balancer
+  - url: http://localhost:8080/api/v1
+    description: Локальный контур (Docker Compose)
+
+tags:
+  - name: Health
+    description: Проверка доступности API Gateway
+  - name: Auth
+    description: Регистрация и вход в систему (identity-service)
+  - name: Users
+    description: Профиль пользователя и личный кабинет (identity / property / rental)
+  - name: References
+    description: Справочники типов недвижимости и удобств (property-service)
+  - name: Properties
+    description: Каталог, поиск и управление объектами недвижимости (property-service)
+  - name: Rentals
+    description: Сделки аренды, жизненный цикл и снапшоты (rental-service)
+  - name: Messages
+    description: Переписка участников сделки и системные уведомления из RabbitMQ (messaging-service)
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Проверка состояния API Gateway
+      description: Доступен по корневому пути `/health` (без префикса `/api/v1`).
+      servers:
+        - url: https://{lb_host}
+          variables:
+            lb_host:
+              default: lb.upcloudlb.com
+        - url: http://localhost:8080
+      operationId: getGatewayHealth
+      responses:
+        '200':
+          description: Шлюз работает штатно
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: api-gateway
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      description: >-
+        Создаёт пользователя (`tenant` или `landlord`), хэширует пароль через bcrypt,
+        публикует событие `user.registered` в RabbitMQ и возвращает JWT-токен.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email уже занят (`email_taken`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Аутентификация пользователя
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить профиль текущего пользователя
+      operationId: getMe
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags: [Users]
+      summary: Обновить профиль текущего пользователя
+      operationId: updateMe
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/properties:
+    get:
+      tags: [Users]
+      summary: Список объектов текущего пользователя (арендодателя)
+      description: Маршрутизируется шлюзом напрямую в `property-service`.
+      operationId: getMyProperties
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Постраничный список объектов пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/rentals:
+    get:
+      tags: [Users]
+      summary: Список сделок текущего пользователя
+      description: Маршрутизируется шлюзом в `rental-service`. Возвращает сделки, где пользователь является арендатором или владельцем.
+      operationId: getMyRentals
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Фильтр по статусу сделки
+          schema:
+            type: string
+            enum: [active, completed, cancelled]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Постраничный список сделок
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentalPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /property-types:
+    get:
+      tags: [References]
+      summary: Справочник типов недвижимости
+      operationId: getPropertyTypes
+      responses:
+        '200':
+          description: Массив типов недвижимости
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferenceItem'
+
+  /amenities:
+    get:
+      tags: [References]
+      summary: Справочник удобств
+      operationId: getAmenities
+      responses:
+        '200':
+          description: Массив доступных удобств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferenceItem'
+
+  /properties:
+    get:
+      tags: [Properties]
+      summary: Поиск объектов недвижимости с фильтрацией и сортировкой
+      operationId: searchProperties
+      parameters:
+        - name: property_type_id
+          in: query
+          schema:
+            type: integer
+        - name: city
+          in: query
+          description: Поиск по городу (ILIKE)
+          schema:
+            type: string
+            example: Санкт-Петербург
+        - name: district
+          in: query
+          description: Поиск по району (ILIKE)
+          schema:
+            type: string
+        - name: price_min
+          in: query
+          schema:
+            type: number
+        - name: price_max
+          in: query
+          schema:
+            type: number
+        - name: rooms_min
+          in: query
+          schema:
+            type: integer
+        - name: rooms_max
+          in: query
+          schema:
+            type: integer
+        - name: owner_id
+          in: query
+          schema:
+            type: string
+        - name: amenity_ids
+          in: query
+          description: Объект должен содержать все переданные удобства
+          schema:
+            type: array
+            items:
+              type: integer
+          style: form
+          explode: true
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [price_asc, price_desc, created_at_desc]
+            default: created_at_desc
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Страница результатов поиска
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyPage'
+
+    post:
+      tags: [Properties]
+      summary: Создать объявление об объекте недвижимости
+      description: Доступно только пользователям с ролью `landlord`.
+      operationId: createProperty
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyRequest'
+      responses:
+        '201':
+          description: Объект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /properties/{id}:
+    get:
+      tags: [Properties]
+      summary: Карточка объекта недвижимости
+      operationId: getProperty
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Подробная информация об объекте, включая фотографии и условия аренды
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Properties]
+      summary: Обновить объект недвижимости
+      description: Доступно только владельцу объекта.
+      operationId: updateProperty
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyRequest'
+      responses:
+        '200':
+          description: Объект обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Properties]
+      summary: Удалить объект недвижимости
+      description: Доступно только владельцу объекта.
+      operationId: deleteProperty
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Объект удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties/{id}/photos:
+    post:
+      tags: [Properties]
+      summary: Добавить фотографию к объекту
+      description: Принимает JSON с URL фотографии и порядком сортировки. Доступно только владельцу объекта.
+      operationId: addPropertyPhoto
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPhotoRequest'
+      responses:
+        '201':
+          description: Фотография добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Photo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties/{id}/photos/{photoId}:
+    delete:
+      tags: [Properties]
+      summary: Удалить фотографию объекта
+      operationId: deletePropertyPhoto
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Фотография удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties/{id}/rentals:
+    post:
+      tags: [Rentals]
+      summary: Оформить сделку аренды
+      description: >-
+        Проверяет доступность объекта через `property-service`, сохраняет сделку
+        со снапшотом названия/города/цены, атомарно резервирует объект (с компенсацией
+        при сбое транзакции) и записывает событие `rental.created` в таблицу `rental_outbox`.
+      operationId: createRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRentalRequest'
+      responses:
+        '201':
+          description: Сделка создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rental'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Объект уже арендован (`property_taken`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rentals/{id}:
+    get:
+      tags: [Rentals]
+      summary: Получить детали сделки
+      description: Доступно только арендатору или владельцу объекта.
+      operationId: getRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Информация о сделке со снапшотом объекта и профилями участников
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rental'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rentals/{id}/complete:
+    post:
+      tags: [Rentals]
+      summary: Завершить активную сделку
+      description: Доступно только владельцу объекта. Освобождает объект (`is_available = true`) и публикует `rental.completed` через outbox.
+      operationId: completeRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Сделка завершена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rental'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Сделка уже завершена или отменена (`invalid_status`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rentals/{id}/cancel:
+    post:
+      tags: [Rentals]
+      summary: Отменить активную сделку
+      description: Доступно арендатору или владельцу. Освобождает объект и публикует `rental.cancelled` через outbox.
+      operationId: cancelRental
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Сделка отменена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rental'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Сделка уже завершена или отменена (`invalid_status`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rentals/{id}/messages:
+    get:
+      tags: [Messages]
+      summary: Получить историю сообщений по сделке
+      description: Включает как пользовательские сообщения (`kind=user`), так и системные записи (`kind=system`), сформированные по событиям RabbitMQ.
+      operationId: getRentalMessages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Постраничная история переписки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Messages]
+      summary: Отправить сообщение в чат сделки
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Сообщение сохранено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+      example: '1'
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequest:
+      description: Ошибка валидации запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Отсутствует или невалиден JWT-токен / неверные учётные данные
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Недостаточно прав для выполнения операции
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Запрошенный ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, name, role]
+      properties:
+        email: { type: string, format: email, example: tenant@example.com }
+        password: { type: string, minLength: 8, example: SecurePass123 }
+        name: { type: string, example: Максим Зотеев }
+        phone: { type: string, nullable: true, example: "+79990001122" }
+        role: { type: string, enum: [tenant, landlord], example: tenant }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: tenant@example.com }
+        password: { type: string, example: SecurePass123 }
+
+    AuthResponse:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer, example: 3600 }
+        user: { $ref: '#/components/schemas/User' }
+
+    User:
+      type: object
+      required: [id, email, name, role, created_at]
+      properties:
+        id: { type: string, example: '1' }
+        email: { type: string, format: email, example: tenant@example.com }
+        name: { type: string, example: Максим Зотеев }
+        phone: { type: string, nullable: true, example: "+79990001122" }
+        role: { type: string, enum: [tenant, landlord] }
+        created_at: { type: string, format: date-time }
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name: { type: string, example: Максим Е. }
+        phone: { type: string, nullable: true, example: "+79991112233" }
+
+    ReferenceItem:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Квартира }
+
+    LocationInput:
+      type: object
+      required: [city, address]
+      properties:
+        city: { type: string, example: "Санкт-Петербург" }
+        district: { type: string, nullable: true, example: "Петроградский" }
+        address: { type: string, example: "Каменноостровский пр., 10" }
+
+    Location:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, example: '1' }
+        - $ref: '#/components/schemas/LocationInput'
+
+    Photo:
+      type: object
+      required: [id, url, sort_order]
+      properties:
+        id: { type: string, example: '1' }
+        url: { type: string, format: uri, example: "https://cdn.example.com/photos/1.jpg" }
+        sort_order: { type: integer, example: 0 }
+
+    AddPhotoRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri, example: "https://cdn.example.com/photos/1.jpg" }
+        sort_order: { type: integer, default: 0 }
+
+    CreatePropertyRequest:
+      type: object
+      required: [title, description, property_type_id, price_per_month, location]
+      properties:
+        title: { type: string, example: Студия у метро Горьковская }
+        description: { type: string, example: Светлая студия с ремонтом и видом во двор }
+        property_type_id: { type: integer, example: 1 }
+        price_per_month: { type: number, example: 45000 }
+        area_sqm: { type: number, nullable: true, example: 36.5 }
+        rooms: { type: integer, nullable: true, example: 1 }
+        rental_conditions: { type: string, nullable: true, example: Залог 1 месяц }
+        location: { $ref: '#/components/schemas/LocationInput' }
+        amenity_ids:
+          type: array
+          items: { type: integer }
+          example: [1, 2]
+
+    UpdatePropertyRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        property_type_id: { type: integer }
+        price_per_month: { type: number }
+        area_sqm: { type: number, nullable: true }
+        rooms: { type: integer, nullable: true }
+        rental_conditions: { type: string, nullable: true }
+        location: { $ref: '#/components/schemas/LocationInput' }
+        amenity_ids:
+          type: array
+          items: { type: integer }
+
+    Property:
+      type: object
+      required: [id, owner_id, title, description, price_per_month, is_available, amenities, created_at]
+      properties:
+        id: { type: string, example: '10' }
+        owner_id: { type: string, example: '1' }
+        title: { type: string }
+        description: { type: string }
+        property_type: { $ref: '#/components/schemas/ReferenceItem', nullable: true }
+        price_per_month: { type: number, example: 45000 }
+        area_sqm: { type: number, nullable: true, example: 36.5 }
+        rooms: { type: integer, nullable: true, example: 1 }
+        is_available: { type: boolean, example: true }
+        location: { $ref: '#/components/schemas/Location', nullable: true }
+        amenities:
+          type: array
+          items: { $ref: '#/components/schemas/ReferenceItem' }
+        created_at: { type: string, format: date-time }
+
+    PropertyDetail:
+      allOf:
+        - $ref: '#/components/schemas/Property'
+        - type: object
+          properties:
+            rental_conditions: { type: string, nullable: true }
+            photos:
+              type: array
+              items: { $ref: '#/components/schemas/Photo' }
+
+    CreateRentalRequest:
+      type: object
+      required: [start_date]
+      properties:
+        start_date: { type: string, format: date, example: '2026-12-01' }
+        end_date: { type: string, format: date, nullable: true, example: '2027-06-01' }
+
+    Rental:
+      type: object
+      required:
+        - id
+        - property_id
+        - tenant_id
+        - owner_id
+        - property_title_snapshot
+        - property_city_snapshot
+        - price_per_month_snapshot
+        - start_date
+        - status
+        - created_at
+      properties:
+        id: { type: string, example: '100' }
+        property_id: { type: string, example: '10' }
+        tenant_id: { type: string, example: '2' }
+        owner_id: { type: string, example: '1' }
+        property_title_snapshot: { type: string, example: Студия у метро Горьковская }
+        property_city_snapshot: { type: string, example: Санкт-Петербург }
+        price_per_month_snapshot: { type: number, example: 45000 }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+        status: { type: string, enum: [active, completed, cancelled] }
+        created_at: { type: string, format: date-time }
+        tenant: { $ref: '#/components/schemas/User', nullable: true }
+        owner: { $ref: '#/components/schemas/User', nullable: true }
+
+    SendMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, example: "Здравствуйте, можно посмотреть квартиру завтра?" }
+
+    Message:
+      type: object
+      required: [id, rental_id, kind, body, created_at]
+      properties:
+        id: { type: string, example: '501' }
+        rental_id: { type: string, example: '100' }
+        kind: { type: string, enum: [user, system], example: user }
+        sender: { $ref: '#/components/schemas/User', nullable: true }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+
+    PageMeta:
+      type: object
+      required: [page, size, total_elements, total_pages]
+      properties:
+        page: { type: integer, example: 0 }
+        size: { type: integer, example: 20 }
+        total_elements: { type: integer, example: 42 }
+        total_pages: { type: integer, example: 3 }
+
+    PropertyPage:
+      allOf:
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items: { $ref: '#/components/schemas/Property' }
+        - $ref: '#/components/schemas/PageMeta'
+
+    RentalPage:
+      allOf:
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items: { $ref: '#/components/schemas/Rental' }
+        - $ref: '#/components/schemas/PageMeta'
+
+    MessagePage:
+      allOf:
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items: { $ref: '#/components/schemas/Message' }
+        - $ref: '#/components/schemas/PageMeta'
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, example: not_found }
+        message: { type: string, example: Объект не найден }
