@@ -1,0 +1,194 @@
+# ДЗ8, Зотеев Максим БР1.1: CI/CD пайплайн доставки микросервисного приложения
+# в облачный Kubernetes (UpCloud UKS, namespace rental-lab7).
+# Стадии: сборка TypeScript -> Docker-образ в GHCR (immutable digest) ->
+# валидация манифестов (--dry-run=server) -> деплой + rollout status -> smoke-тест (newman).
+
+name: Облачный CI/CD (Kubernetes UpCloud, Зотеев Максим)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "БР1.1/Зотеев Максим/labs/lab2/**"
+      - "БР1.1/Зотеев Максим/labs/lab7/k8s/Dockerfile"
+      - "БР1.1/Зотеев Максим/labs/lab7/k8s/apps/**"
+      - "БР1.1/Зотеев Максим/homeworks/hw8/k8s/**"
+      - ".github/workflows/rental-k8s-deploy.yml"
+      - "!**/*.docx"
+      - "!**/*.pdf"
+  workflow_dispatch:
+    inputs:
+      skip_smoke:
+        description: "Пропустить smoke-тест newman после деплоя"
+        type: boolean
+        default: false
+
+concurrency:
+  group: rental-k8s-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  LAB2_DIR: БР1.1/Зотеев Максим/labs/lab2
+  K8S_DIR: БР1.1/Зотеев Максим/labs/lab7/k8s
+  NAMESPACE: rental-lab7
+
+jobs:
+  test-and-build:
+    name: Сборка и проверка TypeScript
+    if: github.repository == 'F0x1d/ITMO-ACS-Backend-2026-A'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ env.LAB2_DIR }}/package-lock.json
+
+      - name: Установка зависимостей
+        working-directory: ${{ env.LAB2_DIR }}
+        run: npm ci --no-audit --no-fund
+
+      - name: Компиляция всех микросервисов и @rental/shared
+        working-directory: ${{ env.LAB2_DIR }}
+        run: npm run build:all
+
+  build-and-push:
+    name: Сборка и публикация образа в GHCR
+    needs: test-and-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      image_ref: ${{ steps.ref.outputs.image_ref }}
+      short_sha: ${{ steps.ref.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/rental-lab7
+          tags: |
+            type=sha,format=short,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.LAB2_DIR }}
+          file: ${{ env.K8S_DIR }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - id: ref
+        name: Формирование immutable digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          short_sha="${SHA:0:7}"
+          image_ref="ghcr.io/${OWNER,,}/rental-lab7@${DIGEST}"
+          echo "image_ref=$image_ref" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          echo "Образ: $image_ref ($short_sha)"
+
+  deploy-k8s:
+    name: Валидация и деплой в UpCloud Kubernetes
+    needs: build-and-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: cloud-k8s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установка kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.0
+
+      - name: Настройка kubeconfig (ServiceAccount ci-deployer)
+        env:
+          KUBECONFIG_B64: ${{ secrets.K8S_DEPLOYER_KUBECONFIG_B64 }}
+        run: |
+          install -d -m 700 ~/.kube
+          printf '%s' "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl auth can-i patch deployments -n "${NAMESPACE}"
+          kubectl auth can-i get secrets -n "${NAMESPACE}" && exit 1 || echo "RBAC OK: доступ к Secret запрещён"
+
+      - name: Рендер манифестов и server-side dry-run
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image_ref }}
+        run: |
+          mkdir -p /tmp/rendered-apps
+          for f in "${K8S_DIR}"/apps/*.yaml; do
+            sed "s|\${IMAGE}|${IMAGE}|g" "$f" > "/tmp/rendered-apps/$(basename "$f")"
+          done
+          kubectl -n "${NAMESPACE}" apply --server-side --field-manager=hw8-ci --force-conflicts --dry-run=server -f /tmp/rendered-apps/
+
+      - name: Применение манифестов и ожидание rollout
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image_ref }}
+          SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
+        run: |
+          kubectl -n "${NAMESPACE}" apply --server-side --field-manager=hw8-ci --force-conflicts -f /tmp/rendered-apps/
+          for svc in identity-service property-service rental-service messaging-service rental-outbox api-gateway; do
+            kubectl -n "${NAMESPACE}" annotate deployment/"$svc" \
+              kubernetes.io/change-cause="CI deploy ${SHORT_SHA} (${IMAGE})" --overwrite
+            kubectl -n "${NAMESPACE}" rollout status deployment/"$svc" --timeout=180s
+          done
+          kubectl -n "${NAMESPACE}" get deployments,pods -o wide
+
+      - name: Запись сводки релиза
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image_ref }}
+          SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
+        run: |
+          {
+            echo "### Релиз в UpCloud Kubernetes (${NAMESPACE})"
+            echo "- Коммит: \`${SHORT_SHA}\`"
+            echo "- Образ: \`${IMAGE}\`"
+            echo "- Сервисы: \`identity-service\`, \`property-service\`, \`rental-service\`, \`messaging-service\`, \`rental-outbox\`, \`api-gateway\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Очистка kubeconfig
+        if: always()
+        run: rm -f ~/.kube/config
+
+  smoke-test:
+    name: Smoke-проверка API (newman)
+    needs: deploy-k8s
+    if: ${{ !inputs.skip_smoke }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверка /health и сквозного сценария (Postman/newman)
+        env:
+          PUBLIC_API_URL: ${{ secrets.K8S_PUBLIC_API_URL }}
+        run: |
+          curl -fsS "${PUBLIC_API_URL}/health"
+          echo ""
+          npx --yes newman@6 run "${LAB2_DIR}/postman/rental-api.lab2.postman_collection.json" \
+            --env-var "base_url=${PUBLIC_API_URL}/api/v1"

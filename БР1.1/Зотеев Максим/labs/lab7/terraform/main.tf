@@ -8,6 +8,12 @@ variable "admin_ipv4" {
   }
 }
 
+variable "control_plane_ip_filter" {
+  type        = list(string)
+  default     = null
+  description = "CIDR-фильтр доступа к Kubernetes API. По умолчанию разрешён только admin_ipv4/32; для CI/CD (ДЗ8) можно переопределить в tfvars."
+}
+
 locals {
   name = "rental-lab7"
   zone = "fi-hel2"
@@ -48,7 +54,7 @@ resource "upcloud_kubernetes_cluster" "lab" {
   network                 = upcloud_network.lab.id
   plan                    = "prod-md-ha"
   private_node_groups     = true
-  control_plane_ip_filter = ["${var.admin_ipv4}/32"]
+  control_plane_ip_filter = coalesce(var.control_plane_ip_filter, ["${var.admin_ipv4}/32"])
   fetch_kubeconfig        = true
 
   # Приватным узлам нужен работающий маршрут в интернет при первом запуске.
