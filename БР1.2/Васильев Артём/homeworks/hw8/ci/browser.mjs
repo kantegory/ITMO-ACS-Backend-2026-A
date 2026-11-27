@@ -58,6 +58,7 @@ try {
     ws.send(JSON.stringify({ id: request, method, params }));
   });
   await cdp('Page.enable');
+  await cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1600, height: 3000, deviceScaleFactor: 1, mobile: false });
   const cases = [
     ['mkdocs', 'http://127.0.0.1:30080/docs/', `!!document.querySelector('[role="main"] h1')`],
