@@ -32,6 +32,23 @@ def isolate_commands(bin_dir, env, tools):
 
 
 class VpsPipeline(unittest.TestCase):
+    def test_submission_reports_do_not_deploy_but_site_pages_do(self):
+        import fnmatch
+        workflow = yaml.load((REPO / '.github/workflows/cloud.yml').read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
+        patterns = workflow['on']['push']['paths']
+        prefix = 'БР1.2/Васильев Артём/'
+        cases = [('labs/lab7/cloud/docs/report.md', False), ('homeworks/hw8/docs/report.md', False),
+                 ('homeworks/hw9/ДЗ9_Васильев_Артём_БР1.2.pdf', False),
+                 ('homeworks/hw9/docs/evidence/swagger.png', False),
+                 ('homeworks/hw9/docs/api.md', True), ('labs/lab7/cloud/gateway/nginx.conf', True)]
+        for path, expected in cases:
+            with self.subTest(path=path):
+                matched = False
+                for pattern in patterns:
+                    if fnmatch.fnmatchcase(prefix + path, pattern.lstrip('!')):
+                        matched = not pattern.startswith('!')
+                self.assertEqual(matched, expected)
+
     def test_snapshot_restores_only_exact_app_templates_and_verifies_readiness(self):
         helper = CLOUD / 'scripts/release-rollback.sh'
         self.assertTrue(helper.is_file(), 'shared release rollback is missing')
