@@ -1,0 +1,86 @@
+name: recipes-observability
+
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.10.2
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+    volumes:
+      - /:/host:ro
+    restart: unless-stopped
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.28.0
+    networks:
+      - default
+      - recipes
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.8.0
+    extra_hosts:
+      - node-metrics-host:${NODE_EXPORTER_GATEWAY:-host-gateway}
+    networks:
+      - default
+      - recipes
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.6.3
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./loki.yml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.11.3
+    environment:
+      APP_PROJECT_FILTER: ${APP_PROJECT_FILTER:-.*}
+    command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.3.1
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-13000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SMTP_ENABLED: ${GF_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GF_SMTP_HOST:-}
+      GF_SMTP_USER: ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GF_SMTP_FROM_ADDRESS:-grafana@example.invalid}
+    volumes:
+      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+networks:
+  recipes:
+    external: true
+    name: ${APP_NETWORK:-recipes_default}
+
+volumes:
+  prometheus-data:
+  loki-data:
+  alloy-data:
+  grafana-data:
