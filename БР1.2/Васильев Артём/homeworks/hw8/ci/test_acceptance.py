@@ -58,6 +58,28 @@ console.log(JSON.stringify(vm.runInNewContext(expression, {document})));
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout), painted)
 
+    def test_grafana_verifies_captured_pixels_not_only_live_canvases(self):
+        text = (ROOT / 'browser.mjs').read_text(encoding='utf-8')
+        self.assertIn('const screenshotReadyExpression = `', text)
+        expression = text.split('const grafanaReadyExpression = `', 1)[1].split('`;', 1)[0].replace('EXPECTED_PLOTS', '13')
+        template = text.split('const screenshotReadyExpression = `', 1)[1].split('`;', 1)[0]
+        script = r'''
+const vm=require('node:vm'), input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const pixels=painted=>{const a=new Uint8ClampedArray(64*64*4);for(let i=0;i<a.length;i+=4){a[i]=painted?i%251:20;a[i+1]=painted?Math.floor(i/251)%251:20;a[i+3]=255;}return a;};
+const live=Array.from({length:13},()=>({width:64,height:64,getBoundingClientRect:()=>({x:0,y:0,width:64,height:64})}));
+const document={querySelectorAll:()=>live,body:{innerText:''},createElement:()=>({getContext:()=>({drawImage(){},getImageData:()=>({data:pixels(input.painted)})})})};
+class Image{async decode(){}}
+const scope={document,Image,expression:input.expression,image:{data:'actual-cdp-png'}};
+const expression=vm.runInNewContext('`'+input.template+'`',scope);
+vm.runInNewContext(expression,scope).then(result=>console.log(JSON.stringify(result)));
+'''
+        for painted in (False, True):
+            with self.subTest(painted=painted):
+                result = subprocess.run(['node', '-e', script], input=json.dumps({'expression': expression, 'template': template, 'painted': painted}), capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), painted)
+        self.assertIn('assert(screenshotState.result?.value === true', text)
+
     def test_vps_metrics_and_load_use_explicit_config_without_browser_dependency(self):
         for name in ('load.sh', 'evidence.sh'):
             script = (ROOT / name).read_text(encoding='utf-8')

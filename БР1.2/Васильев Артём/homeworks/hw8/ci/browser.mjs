@@ -75,7 +75,25 @@ try {
     }
     assert(ready, `${name} did not render`);
     await sleep(3000);
-    const image = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    const image = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    if (name === 'grafana') {
+      const screenshotReadyExpression = `(async () => {
+        const bitmap = new Image();
+        bitmap.src = 'data:image/png;base64,${image.data}';
+        await bitmap.decode();
+        const captures = [...document.querySelectorAll('canvas')].map(original => {
+          const rect = original.getBoundingClientRect();
+          const canvas = document.createElement('canvas');
+          canvas.width = original.width; canvas.height = original.height;
+          if (canvas.width && canvas.height) canvas.getContext('2d').drawImage(bitmap,
+            rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
+          return canvas;
+        });
+        return ${expression.replace("document.querySelectorAll('canvas')", 'captures')};
+      })()`;
+      const screenshotState = await cdp('Runtime.evaluate', { expression: screenshotReadyExpression, awaitPromise: true, returnByValue: true });
+      assert(screenshotState.result?.value === true, 'Grafana PNG does not contain all painted plots');
+    }
     const png = Buffer.from(image.data, 'base64');
     assert(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
     await writeFile(path.join(results, name + '.png'), png);
