@@ -1,0 +1,27 @@
+discovery.docker "fitnessapi" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "fitnessapi_logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "fitnessapi" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.fitnessapi.targets
+  labels        = { job = "docker" }
+  relabel_rules = discovery.relabel.fitnessapi_logs.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
