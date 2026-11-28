@@ -1,0 +1,771 @@
+openapi: 3.0.3
+info:
+  title: TableReserve API
+  version: 1.0.0
+  description: |
+    REST API сервиса бронирования столиков.
+    Публичный контракт одинаков у монолита (порт 4000) и у API Gateway микросервисов (порт 3000, снаружи через nginx — 8080).
+servers:
+  - url: http://localhost:8080
+    description: Nginx перед gateway
+  - url: http://localhost:3000
+    description: API Gateway
+  - url: http://localhost:4000
+    description: Монолит
+tags:
+  - name: Auth
+  - name: Restaurants
+  - name: Menu
+  - name: Tables
+  - name: Bookings
+  - name: Reviews
+  - name: Notifications
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    RestaurantId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details: {}
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        fullName: { type: string }
+        phone: { type: string, nullable: true }
+        role: { type: string, enum: [user, owner] }
+        createdAt: { type: string, format: date-time }
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    Photo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        caption: { type: string }
+    Restaurant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        cuisine: { type: string, example: итальянская }
+        city: { type: string, example: Санкт-Петербург }
+        address: { type: string }
+        priceLevel: { type: integer, minimum: 1, maximum: 3, description: "1 — бюджетно, 2 — средне, 3 — дорого" }
+        phone: { type: string }
+        ratingAvg: { type: number }
+        ratingCount: { type: integer }
+        photos:
+          type: array
+          items: { $ref: '#/components/schemas/Photo' }
+        createdAt: { type: string, format: date-time }
+    RestaurantInput:
+      type: object
+      required: [name, cuisine, city, address, priceLevel, phone]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        cuisine: { type: string }
+        city: { type: string }
+        address: { type: string }
+        priceLevel: { type: integer, minimum: 1, maximum: 3 }
+        phone: { type: string }
+    MenuItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        restaurantId: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        category: { type: string }
+        isAvailable: { type: boolean }
+    MenuInput:
+      type: object
+      required: [name, price, category]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, exclusiveMinimum: 0 }
+        category: { type: string }
+        isAvailable: { type: boolean }
+    Table:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        restaurantId: { type: string, format: uuid }
+        name: { type: string }
+        seats: { type: integer }
+        zone: { type: string }
+    TableInput:
+      type: object
+      required: [name, seats]
+      properties:
+        name: { type: string }
+        seats: { type: integer, minimum: 1, maximum: 30 }
+        zone: { type: string }
+    Booking:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        restaurantId: { type: string, format: uuid }
+        restaurantName: { type: string }
+        tableId: { type: string, format: uuid }
+        tableName: { type: string }
+        date: { type: string, example: "2026-11-20" }
+        startTime: { type: string, example: "18:00" }
+        endTime: { type: string, example: "20:00" }
+        guests: { type: integer }
+        status: { type: string, enum: [confirmed, cancelled] }
+        comment: { type: string }
+        createdAt: { type: string, format: date-time }
+    BookingInput:
+      type: object
+      required: [restaurantId, tableId, date, startTime, endTime, guests]
+      properties:
+        restaurantId: { type: string, format: uuid }
+        tableId: { type: string, format: uuid }
+        date: { type: string, example: "2026-11-20" }
+        startTime: { type: string, example: "18:00" }
+        endTime: { type: string, example: "20:00" }
+        guests: { type: integer, minimum: 1 }
+        comment: { type: string }
+    Review:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        authorName: { type: string }
+        restaurantId: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        text: { type: string }
+        createdAt: { type: string, format: date-time }
+    ReviewInput:
+      type: object
+      required: [rating, text]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        text: { type: string, minLength: 3 }
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, fullName]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                fullName: { type: string }
+                phone: { type: string }
+                role: { type: string, enum: [user, owner] }
+      responses:
+        "201":
+          description: Пользователь создан, выдан JWT
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Email уже занят
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Успешный вход
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401":
+          description: Неверные учётные данные
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Текущий профиль
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          description: Нет или просрочен токен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      tags: [Auth]
+      summary: Обновить профиль
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string }
+                phone: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          description: Нет токена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/restaurants:
+    get:
+      tags: [Restaurants]
+      summary: Поиск ресторанов
+      parameters:
+        - { in: query, name: cuisine, schema: { type: string }, description: Точное совпадение кухни без учёта регистра }
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: priceLevel, schema: { type: integer, minimum: 1, maximum: 3 } }
+        - { in: query, name: q, schema: { type: string }, description: Подстрока в названии или описании }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Страница ресторанов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Restaurant" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "400":
+          description: Некорректный фильтр
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [Restaurants]
+      summary: Создать ресторан
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestaurantInput" }
+      responses:
+        "201":
+          description: Ресторан создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+        "401":
+          description: Нет токена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Роль не owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/restaurants/{id}:
+    parameters: [{ $ref: "#/components/parameters/RestaurantId" }]
+    get:
+      tags: [Restaurants]
+      summary: Карточка ресторана
+      responses:
+        "200":
+          description: Ресторан и фотографии
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+        "404":
+          description: Не найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      tags: [Restaurants]
+      summary: Изменить свой ресторан
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestaurantInput" }
+      responses:
+        "200":
+          description: Обновлён
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+        "403":
+          description: Чужой ресторан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Не найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [Restaurants]
+      summary: Удалить свой ресторан
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Удалён
+        "403":
+          description: Чужой ресторан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/restaurants/{id}/menu:
+    parameters: [{ $ref: "#/components/parameters/RestaurantId" }]
+    get:
+      tags: [Menu]
+      summary: Меню
+      responses:
+        "200":
+          description: Список блюд
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/MenuItem" }
+        "404":
+          description: Ресторан не найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [Menu]
+      summary: Добавить блюдо
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MenuInput" }
+      responses:
+        "201":
+          description: Блюдо создано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuItem" }
+        "403":
+          description: Не владелец
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/menu/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Menu]
+      summary: Изменить блюдо
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MenuInput" }
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuItem" }
+    delete:
+      tags: [Menu]
+      summary: Удалить блюдо
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Удалено }
+  /api/restaurants/{id}/photos:
+    parameters: [{ $ref: "#/components/parameters/RestaurantId" }]
+    post:
+      tags: [Restaurants]
+      summary: Добавить фото по URL
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+                caption: { type: string }
+      responses:
+        "201":
+          description: Фото добавлено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Photo" }
+  /api/restaurants/{id}/tables:
+    parameters: [{ $ref: "#/components/parameters/RestaurantId" }]
+    get:
+      tags: [Tables]
+      summary: Столы ресторана
+      responses:
+        "200":
+          description: Список столов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Table" }
+    post:
+      tags: [Tables]
+      summary: Добавить стол
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TableInput" }
+      responses:
+        "201":
+          description: Стол создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Table" }
+        "403":
+          description: Не владелец
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/bookings:
+    post:
+      tags: [Bookings]
+      summary: Забронировать стол
+      description: Бронь сразу получает статус confirmed. Пересечение интервалов по одному столу возвращает 409.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingInput" }
+      responses:
+        "201":
+          description: Бронь создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400":
+          description: Время, дата или число гостей некорректны
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Ресторан или стол не найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Стол занят
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/bookings/my:
+    get:
+      tags: [Bookings]
+      summary: История бронирований текущего пользователя
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Страница броней
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Booking" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+  /api/bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Одна бронь пользователя
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Бронь
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "403":
+          description: Чужая бронь
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Не найдена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Отменить свою бронь
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Бронь отменена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "409":
+          description: Уже отменена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/restaurants/{id}/bookings:
+    get:
+      tags: [Bookings]
+      summary: Брони ресторана для владельца
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/RestaurantId" }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Страница броней
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Booking" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+        "403":
+          description: Не владелец
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/restaurants/{id}/reviews:
+    parameters: [{ $ref: "#/components/parameters/RestaurantId" }]
+    get:
+      tags: [Reviews]
+      summary: Отзывы ресторана
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Страница отзывов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Review" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+    post:
+      tags: [Reviews]
+      summary: Оставить отзыв
+      description: Доступно после хотя бы одной неотменённой брони. Один отзыв на пользователя и ресторан.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewInput" }
+      responses:
+        "201":
+          description: Отзыв создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Review" }
+        "403":
+          description: Нет брони
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Отзыв уже есть
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/reviews/{id}:
+    delete:
+      tags: [Reviews]
+      summary: Удалить свой отзыв
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Удалён }
+        "403":
+          description: Чужой отзыв
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: Уведомления пользователя
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Страница уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  meta: { $ref: "#/components/schemas/PageMeta" }
+  /api/notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Отметить уведомление прочитанным
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Обновлённое уведомление
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "404":
+          description: Не найдено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /health:
+    get:
+      tags: [Auth]
+      summary: Проверка живости процесса
+      responses:
+        "200":
+          description: Сервис отвечает
+  /health/deps:
+    get:
+      tags: [Auth]
+      summary: Проверка зависимостей gateway
+      responses:
+        "200":
+          description: Все сервисы доступны
+        "503":
+          description: Хотя бы один сервис недоступен

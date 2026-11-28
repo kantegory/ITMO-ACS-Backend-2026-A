@@ -1,0 +1,161 @@
+x-env: &env
+  JWT_SECRET: dev-secret-change-me
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+  NODE_ENV: development
+
+x-app: &app
+  build: .
+  restart: unless-stopped
+  networks: [tablereserve]
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  healthcheck:
+    test:
+      [
+        "CMD",
+        "node",
+        "-e",
+        "fetch('http://127.0.0.1:'+process.env.PORT+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+      ]
+    interval: 10s
+    timeout: 5s
+    retries: 20
+    start_period: 30s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [tablereserve]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    volumes:
+      - ./rabbit/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbit/definitions.json:/etc/rabbitmq/definitions.json:ro
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    networks: [tablereserve]
+
+  auth:
+    <<: *app
+    command: ["npx", "tsx", "services/auth/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "3001"
+      DATABASE_URL: postgres://app:app@postgres:5432/auth_db
+
+  restaurants:
+    <<: *app
+    command: ["npx", "tsx", "services/restaurants/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "3002"
+      DATABASE_URL: postgres://app:app@postgres:5432/restaurant_db
+
+  bookings:
+    <<: *app
+    command: ["npx", "tsx", "services/bookings/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "3003"
+      DATABASE_URL: postgres://app:app@postgres:5432/booking_db
+      RESTAURANTS_URL: http://restaurants:3002
+
+  reviews:
+    <<: *app
+    command: ["npx", "tsx", "services/reviews/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "3004"
+      DATABASE_URL: postgres://app:app@postgres:5432/review_db
+      AUTH_URL: http://auth:3001
+      RESTAURANTS_URL: http://restaurants:3002
+      BOOKINGS_URL: http://bookings:3003
+
+  notifications:
+    <<: *app
+    command: ["npx", "tsx", "services/notifications/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "3005"
+      DATABASE_URL: postgres://app:app@postgres:5432/notification_db
+
+  gateway:
+    <<: *app
+    command: ["npx", "tsx", "services/gateway/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "3000"
+      AUTH_URL: http://auth:3001
+      RESTAURANTS_URL: http://restaurants:3002
+      BOOKINGS_URL: http://bookings:3003
+      REVIEWS_URL: http://reviews:3004
+      NOTIFICATIONS_URL: http://notifications:3005
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      auth:
+        condition: service_healthy
+      restaurants:
+        condition: service_healthy
+      bookings:
+        condition: service_healthy
+      reviews:
+        condition: service_healthy
+      notifications:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/docker.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks: [tablereserve]
+
+  monolith:
+    <<: *app
+    profiles: ["monolith"]
+    command: ["npx", "tsx", "apps/monolith/src/index.ts"]
+    environment:
+      <<: *env
+      PORT: "4000"
+      DATABASE_URL: postgres://app:app@postgres:5432/monolith_db
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  tablereserve:
+    name: tablereserve
+
+volumes:
+  postgres-data:

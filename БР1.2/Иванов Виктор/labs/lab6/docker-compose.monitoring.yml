@@ -1,0 +1,82 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    networks: [tablereserve]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks: [tablereserve]
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    volumes:
+      - ./monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    networks: [tablereserve]
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+    networks: [tablereserve]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [tablereserve]
+
+  loki:
+    image: grafana/loki:3.2.1
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/loki.yml:ro
+    ports:
+      - "3100:3100"
+    networks: [tablereserve]
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/promtail.yml
+    networks: [tablereserve]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3006:3000"
+    networks: [tablereserve]
+
+networks:
+  tablereserve:
+    external: true
+    name: tablereserve

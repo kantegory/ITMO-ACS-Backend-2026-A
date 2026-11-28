@@ -1,0 +1,267 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: tablereserve
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: auth }
+  template:
+    metadata:
+      labels: { app: auth }
+    spec:
+      containers:
+        - name: auth
+          image: tablereserve
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "tsx", "services/auth/src/index.ts"]
+          ports: [{ name: http, containerPort: 3001 }]
+          env:
+            - { name: PORT, value: "3001" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: JWT_SECRET } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: DATABASE_URL_AUTH } }
+            - name: RABBITMQ_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RABBITMQ_URL } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: auth, namespace: tablereserve }
+spec:
+  selector: { app: auth }
+  ports: [{ port: 3001, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: restaurants, namespace: tablereserve }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: restaurants }
+  template:
+    metadata:
+      labels: { app: restaurants }
+    spec:
+      containers:
+        - name: restaurants
+          image: tablereserve
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "tsx", "services/restaurants/src/index.ts"]
+          ports: [{ name: http, containerPort: 3002 }]
+          env:
+            - { name: PORT, value: "3002" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: JWT_SECRET } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: DATABASE_URL_RESTAURANTS } }
+            - name: RABBITMQ_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RABBITMQ_URL } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: restaurants, namespace: tablereserve }
+spec:
+  selector: { app: restaurants }
+  ports: [{ port: 3002, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: bookings, namespace: tablereserve }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: bookings }
+  template:
+    metadata:
+      labels: { app: bookings }
+    spec:
+      containers:
+        - name: bookings
+          image: tablereserve
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "tsx", "services/bookings/src/index.ts"]
+          ports: [{ name: http, containerPort: 3003 }]
+          env:
+            - { name: PORT, value: "3003" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: JWT_SECRET } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: DATABASE_URL_BOOKINGS } }
+            - name: RABBITMQ_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RABBITMQ_URL } }
+            - name: RESTAURANTS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RESTAURANTS_URL } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: bookings, namespace: tablereserve }
+spec:
+  selector: { app: bookings }
+  ports: [{ port: 3003, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reviews, namespace: tablereserve }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: reviews }
+  template:
+    metadata:
+      labels: { app: reviews }
+    spec:
+      containers:
+        - name: reviews
+          image: tablereserve
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "tsx", "services/reviews/src/index.ts"]
+          ports: [{ name: http, containerPort: 3004 }]
+          env:
+            - { name: PORT, value: "3004" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: JWT_SECRET } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: DATABASE_URL_REVIEWS } }
+            - name: RABBITMQ_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RABBITMQ_URL } }
+            - name: AUTH_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: AUTH_URL } }
+            - name: RESTAURANTS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RESTAURANTS_URL } }
+            - name: BOOKINGS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: BOOKINGS_URL } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 300m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: reviews, namespace: tablereserve }
+spec:
+  selector: { app: reviews }
+  ports: [{ port: 3004, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: notifications, namespace: tablereserve }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: notifications }
+  template:
+    metadata:
+      labels: { app: notifications }
+    spec:
+      containers:
+        - name: notifications
+          image: tablereserve
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "tsx", "services/notifications/src/index.ts"]
+          ports: [{ name: http, containerPort: 3005 }]
+          env:
+            - { name: PORT, value: "3005" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: JWT_SECRET } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: DATABASE_URL_NOTIFICATIONS } }
+            - name: RABBITMQ_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RABBITMQ_URL } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 300m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: notifications, namespace: tablereserve }
+spec:
+  selector: { app: notifications }
+  ports: [{ port: 3005, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: gateway, namespace: tablereserve }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: gateway }
+  template:
+    metadata:
+      labels: { app: gateway }
+    spec:
+      containers:
+        - name: gateway
+          image: tablereserve
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "tsx", "services/gateway/src/index.ts"]
+          ports: [{ name: http, containerPort: 3000 }]
+          env:
+            - { name: PORT, value: "3000" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: tablereserve-secret, key: JWT_SECRET } }
+            - name: AUTH_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: AUTH_URL } }
+            - name: RESTAURANTS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: RESTAURANTS_URL } }
+            - name: BOOKINGS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: BOOKINGS_URL } }
+            - name: REVIEWS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: REVIEWS_URL } }
+            - name: NOTIFICATIONS_URL
+              valueFrom: { configMapKeyRef: { name: tablereserve-config, key: NOTIFICATIONS_URL } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: gateway, namespace: tablereserve }
+spec:
+  selector: { app: gateway }
+  ports: [{ name: http, port: 80, targetPort: http }]

@@ -1,0 +1,356 @@
+{
+  "info": {
+    "name": "TableReserve — основной сценарий",
+    "description": "Регистрация, вход, поиск ресторанов, фильтрация, карточка, бронь, отзыв и уведомление.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" },
+    { "key": "email", "value": "" },
+    { "key": "password", "value": "password123" },
+    { "key": "restaurantId", "value": "" },
+    { "key": "tableId", "value": "" },
+    { "key": "bookingId", "value": "" },
+    { "key": "reviewId", "value": "" },
+    { "key": "date", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Регистрация",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const email = `guest_${Date.now()}@example.com`;",
+              "pm.collectionVariables.set('email', email);",
+              "const date = new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString().slice(0, 10);",
+              "pm.collectionVariables.set('date', date);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('создан пользователь', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('есть токен и роль user', () => {",
+              "  pm.expect(body.token).to.be.a('string').and.not.empty;",
+              "  pm.expect(body.user.role).to.eql('user');",
+              "  pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email'));",
+              "});",
+              "pm.collectionVariables.set('token', body.token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"fullName\": \"Иван Тестов\",\n  \"phone\": \"+79991112233\"\n}"
+        },
+        "url": "{{baseUrl}}/api/auth/register"
+      }
+    },
+    {
+      "name": "2. Вход",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('успешный вход', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.expect(body.user.email).to.eql(pm.collectionVariables.get('email'));",
+              "pm.collectionVariables.set('token', body.token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": "{{baseUrl}}/api/auth/login"
+      }
+    },
+    {
+      "name": "3. Список ресторанов",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('список получен', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('есть рестораны и мета', () => {",
+              "  pm.expect(body.data.length).to.be.above(0);",
+              "  pm.expect(body.meta.total).to.be.above(0);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/restaurants?city=Санкт-Петербург" }
+    },
+    {
+      "name": "4. Фильтр по кухне и городу",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('фильтр успешен', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('все найденные рестораны итальянские', () => {",
+              "  pm.expect(body.data.length).to.be.above(0);",
+              "  body.data.forEach((item) => {",
+              "    pm.expect(item.cuisine.toLowerCase()).to.eql('итальянская');",
+              "    pm.expect(item.city).to.eql('Санкт-Петербург');",
+              "  });",
+              "});",
+              "const picked = body.data[Math.floor(Math.random() * body.data.length)];",
+              "pm.collectionVariables.set('restaurantId', picked.id);"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/restaurants?cuisine=итальянская&city=Санкт-Петербург" }
+    },
+    {
+      "name": "5. Карточка случайного ресторана",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('карточка открыта', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('есть фото и рейтинг', () => {",
+              "  pm.expect(body.id).to.eql(pm.collectionVariables.get('restaurantId'));",
+              "  pm.expect(body.photos.length).to.be.above(0);",
+              "  pm.expect(body.ratingAvg).to.be.a('number');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/restaurants/{{restaurantId}}" }
+    },
+    {
+      "name": "6. Меню",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('меню получено', () => pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().data.length).to.be.above(0);"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/restaurants/{{restaurantId}}/menu" }
+    },
+    {
+      "name": "7. Столы",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('столы получены', () => pm.response.to.have.status(200));",
+              "const table = pm.response.json().data.find((item) => item.seats >= 2);",
+              "pm.expect(table).to.be.an('object');",
+              "pm.collectionVariables.set('tableId', table.id);"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/restaurants/{{restaurantId}}/tables" }
+    },
+    {
+      "name": "8. Бронирование",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('бронь создана', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('статус confirmed', () => {",
+              "  pm.expect(body.status).to.eql('confirmed');",
+              "  pm.expect(body.guests).to.eql(2);",
+              "});",
+              "pm.collectionVariables.set('bookingId', body.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"tableId\": \"{{tableId}}\",\n  \"date\": \"{{date}}\",\n  \"startTime\": \"18:00\",\n  \"endTime\": \"20:00\",\n  \"guests\": 2,\n  \"comment\": \"У окна, если можно\"\n}"
+        },
+        "url": "{{baseUrl}}/api/bookings"
+      }
+    },
+    {
+      "name": "9. Повторная бронь того же стола отклоняется",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('конфликт 409', () => pm.response.to.have.status(409));",
+              "pm.expect(pm.response.json().error.code).to.eql('TABLE_BUSY');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"tableId\": \"{{tableId}}\",\n  \"date\": \"{{date}}\",\n  \"startTime\": \"19:00\",\n  \"endTime\": \"21:00\",\n  \"guests\": 2\n}"
+        },
+        "url": "{{baseUrl}}/api/bookings"
+      }
+    },
+    {
+      "name": "10. История бронирований",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('история получена', () => pm.response.to.have.status(200));",
+              "const ids = pm.response.json().data.map((item) => item.id);",
+              "pm.expect(ids).to.include(pm.collectionVariables.get('bookingId'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/bookings/my"
+      }
+    },
+    {
+      "name": "11. Отзыв",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('отзыв создан', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.expect(body.rating).to.eql(5);",
+              "pm.collectionVariables.set('reviewId', body.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 5,\n  \"text\": \"Отличная паста и спокойный зал.\"\n}"
+        },
+        "url": "{{baseUrl}}/api/restaurants/{{restaurantId}}/reviews"
+      }
+    },
+    {
+      "name": "12. Список отзывов",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('отзывы получены', () => pm.response.to.have.status(200));",
+              "const ids = pm.response.json().data.map((item) => item.id);",
+              "pm.expect(ids).to.include(pm.collectionVariables.get('reviewId'));"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/restaurants/{{restaurantId}}/reviews" }
+    },
+    {
+      "name": "13. Уведомления",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('уведомления получены', () => pm.response.to.have.status(200));",
+              "pm.test('после брони есть хотя бы одно уведомление', () => {",
+              "  pm.expect(pm.response.json().data.length).to.be.above(0);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/notifications"
+      }
+    },
+    {
+      "name": "14. Отмена брони",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('бронь отменена', () => pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().status).to.eql('cancelled');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel"
+      }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tablereserve
+  namespace: tablereserve
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: tablereserve.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway
+  namespace: tablereserve
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: restaurants
+  namespace: tablereserve
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: restaurants
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: bookings
+  namespace: tablereserve
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: bookings
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+  namespace: tablereserve
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: gateway }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bookings
+  namespace: tablereserve
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: bookings }
