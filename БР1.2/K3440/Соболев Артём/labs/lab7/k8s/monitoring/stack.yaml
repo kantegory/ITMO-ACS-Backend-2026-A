@@ -1,0 +1,317 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: alloy}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: alloy-pod-logs, namespace: monitoring}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: alloy-pod-logs, namespace: monitoring}
+subjects:
+  - {kind: ServiceAccount, name: alloy, namespace: monitoring}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: alloy-pod-logs}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: node-exporter}
+spec:
+  selector: {app: node-exporter}
+  ports:
+    - name: http
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: node-exporter}
+spec:
+  selector: {matchLabels: {app: node-exporter}}
+  template:
+    metadata: {labels: {app: node-exporter}}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.9.1
+          args:
+            - "--path.procfs=/host/proc"
+            - "--path.sysfs=/host/sys"
+            - "--path.rootfs=/rootfs"
+            - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/kubelet/.+)($|/)"
+          ports:
+            - {name: http, containerPort: 9100}
+          resources: {requests: {cpu: "25m", memory: "64Mi"}, limits: {memory: "256Mi"}}
+          volumeMounts:
+            - {name: proc, mountPath: "/host/proc", readOnly: true}
+            - {name: sys, mountPath: "/host/sys", readOnly: true}
+            - name: rootfs
+              mountPath: "/rootfs"
+              readOnly: true
+              mountPropagation: HostToContainer
+      volumes:
+        - {name: proc, hostPath: {path: "/proc", type: Directory}}
+        - {name: sys, hostPath: {path: "/sys", type: Directory}}
+        - {name: rootfs, hostPath: {path: "/", type: Directory}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: blackbox-exporter}
+spec:
+  selector: {app: blackbox-exporter}
+  ports:
+    - {name: http, port: 9115, targetPort: 9115}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: blackbox-exporter}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: blackbox-exporter}}
+  template:
+    metadata: {labels: {app: blackbox-exporter}}
+    spec:
+      containers:
+        - name: blackbox-exporter
+          image: prom/blackbox-exporter:v0.27.0
+          args:
+            - "--config.file=/etc/blackbox/blackbox.yml"
+          ports:
+            - {name: http, containerPort: 9115}
+          resources: {requests: {cpu: "25m", memory: "64Mi"}, limits: {memory: "256Mi"}}
+          volumeMounts:
+            - {name: blackbox-config, mountPath: "/etc/blackbox", readOnly: true}
+      volumes:
+        - {name: blackbox-config, configMap: {name: blackbox-config}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: prometheus}
+spec:
+  selector: {app: prometheus}
+  ports:
+    - {name: http, port: 9090, targetPort: 9090}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: prometheus-data}
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: "5Gi"}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: prometheus}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: prometheus}}
+  template:
+    metadata: {labels: {app: prometheus}}
+    spec:
+      securityContext: {fsGroup: 65534}
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.5.0
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=7d"
+          ports:
+            - {name: http, containerPort: 9090}
+          resources: {requests: {cpu: "25m", memory: "64Mi"}, limits: {memory: "768Mi"}}
+          volumeMounts:
+            - {name: prometheus-config, mountPath: "/etc/prometheus", readOnly: true}
+            - {name: data, mountPath: "/prometheus"}
+      volumes:
+        - {name: prometheus-config, configMap: {name: prometheus-config}}
+        - {name: data, persistentVolumeClaim: {claimName: prometheus-data}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: alertmanager}
+spec:
+  selector: {app: alertmanager}
+  ports:
+    - {name: http, port: 9093, targetPort: 9093}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: alertmanager-data}
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: "1Gi"}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: alertmanager}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: alertmanager}}
+  template:
+    metadata: {labels: {app: alertmanager}}
+    spec:
+      securityContext: {fsGroup: 65534}
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.28.1
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+          ports:
+            - {name: http, containerPort: 9093}
+          resources: {requests: {cpu: "25m", memory: "64Mi"}, limits: {memory: "256Mi"}}
+          volumeMounts:
+            - {name: alertmanager-config, mountPath: "/etc/alertmanager", readOnly: true}
+            - {name: data, mountPath: "/alertmanager"}
+      volumes:
+        - {name: alertmanager-config, secret: {secretName: alertmanager-config}}
+        - {name: data, persistentVolumeClaim: {claimName: alertmanager-data}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: loki}
+spec:
+  selector: {app: loki}
+  ports:
+    - {name: http, port: 3100, targetPort: 3100}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: loki-data}
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: "5Gi"}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: loki}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: loki}}
+  template:
+    metadata: {labels: {app: loki}}
+    spec:
+      securityContext: {fsGroup: 10001}
+      containers:
+        - name: loki
+          image: grafana/loki:3.7.8
+          args:
+            - "-config.file=/etc/loki/loki.yml"
+          ports:
+            - {name: http, containerPort: 3100}
+          resources: {requests: {cpu: "25m", memory: "128Mi"}, limits: {memory: "768Mi"}}
+          volumeMounts:
+            - {name: loki-config, mountPath: "/etc/loki", readOnly: true}
+            - {name: data, mountPath: "/loki"}
+      volumes:
+        - {name: loki-config, configMap: {name: loki-config}}
+        - {name: data, persistentVolumeClaim: {claimName: loki-data}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: alloy}
+spec:
+  selector: {app: alloy}
+  ports:
+    - {name: http, port: 12345, targetPort: 12345}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: alloy}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: alloy}}
+  template:
+    metadata: {labels: {app: alloy}}
+    spec:
+      serviceAccountName: alloy
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.22.0
+          args:
+            - run
+            - "--storage.path=/var/lib/alloy"
+            - "/etc/alloy/config.alloy"
+          ports:
+            - {name: http, containerPort: 12345}
+          resources: {requests: {cpu: "25m", memory: "64Mi"}, limits: {memory: "256Mi"}}
+          volumeMounts:
+            - {name: alloy-config, mountPath: "/etc/alloy", readOnly: true}
+      volumes:
+        - {name: alloy-config, configMap: {name: alloy-config}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: grafana}
+spec:
+  selector: {app: grafana}
+  ports:
+    - {name: http, port: 3000, targetPort: 3000}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: grafana-data}
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: "2Gi"}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: grafana}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: grafana}}
+  template:
+    metadata: {labels: {app: grafana}}
+    spec:
+      securityContext: {fsGroup: 472}
+      containers:
+        - name: grafana
+          image: grafana/grafana:12.2.2
+          args: []
+          ports:
+            - {name: http, containerPort: 3000}
+          resources: {requests: {cpu: "25m", memory: "64Mi"}, limits: {memory: "768Mi"}}
+          volumeMounts:
+            - name: grafana-datasources
+              mountPath: "/etc/grafana/provisioning/datasources"
+              readOnly: true
+            - name: grafana-provider
+              mountPath: "/etc/grafana/provisioning/dashboards"
+              readOnly: true
+            - name: grafana-dashboard
+              mountPath: "/etc/grafana/dashboards"
+              readOnly: true
+            - name: data
+              mountPath: "/var/lib/grafana"
+          env:
+            -
+              name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: grafana-admin, key: password}}
+            -
+              name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+      volumes:
+        - {name: grafana-datasources, configMap: {name: grafana-datasources}}
+        - {name: grafana-provider, configMap: {name: grafana-provider}}
+        - {name: grafana-dashboard, configMap: {name: grafana-dashboard}}
+        - {name: data, persistentVolumeClaim: {claimName: grafana-data}}

@@ -1,0 +1,379 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  selector:
+    app: user-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: fitnessapi-registry
+      containers:
+      - name: user-service
+        image: FITNESSAPI_REGISTRY/user-service:FITNESSAPI_TAG
+        ports:
+        - containerPort: 8080
+        env:
+        - name: USER_SERVICE_DB_URL
+          value: "jdbc:postgresql://postgres:5432/user_service"
+        - name: SERVER_FORWARD_HEADERS_STRATEGY
+          value: "framework"
+        - name: REFRESH_TTL
+          value: "30d"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_USERNAME}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_PASSWORD}
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: JWT_SECRET}
+        - name: REFRESH_PEPPER
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: REFRESH_PEPPER}
+        startupProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 72
+        readinessProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          tcpSocket: {port: 8080}
+          periodSeconds: 15
+        resources:
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 896Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: media-service
+spec:
+  selector:
+    app: media-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: media-service
+  template:
+    metadata:
+      labels:
+        app: media-service
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: fitnessapi-registry
+      containers:
+      - name: media-service
+        image: FITNESSAPI_REGISTRY/media-service:FITNESSAPI_TAG
+        ports:
+        - containerPort: 8080
+        env:
+        - name: MEDIA_SERVICE_DB_URL
+          value: "jdbc:postgresql://postgres:5432/media_service"
+        - name: SERVER_FORWARD_HEADERS_STRATEGY
+          value: "framework"
+        - name: RABBITMQ_HOST
+          value: "rabbitmq"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_USERNAME}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_PASSWORD}
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: JWT_SECRET}
+        - name: REFRESH_PEPPER
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: REFRESH_PEPPER}
+        - name: RABBITMQ_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_USERNAME}
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_PASSWORD}
+        startupProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 72
+        readinessProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          tcpSocket: {port: 8080}
+          periodSeconds: 15
+        resources:
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 896Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-service
+spec:
+  selector:
+    app: training-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: training-service
+  template:
+    metadata:
+      labels:
+        app: training-service
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: fitnessapi-registry
+      containers:
+      - name: training-service
+        image: FITNESSAPI_REGISTRY/training-service:FITNESSAPI_TAG
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TRAINING_SERVICE_DB_URL
+          value: "jdbc:postgresql://postgres:5432/training_service"
+        - name: SERVER_FORWARD_HEADERS_STRATEGY
+          value: "framework"
+        - name: RABBITMQ_HOST
+          value: "rabbitmq"
+        - name: MEDIA_SERVICE_BASE_URL
+          value: "http://media-service:8080/api/v1"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_USERNAME}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_PASSWORD}
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: JWT_SECRET}
+        - name: REFRESH_PEPPER
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: REFRESH_PEPPER}
+        - name: RABBITMQ_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_USERNAME}
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_PASSWORD}
+        startupProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 72
+        readinessProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          tcpSocket: {port: 8080}
+          periodSeconds: 15
+        resources:
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 896Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-service
+spec:
+  selector:
+    app: blog-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: blog-service
+  template:
+    metadata:
+      labels:
+        app: blog-service
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: fitnessapi-registry
+      containers:
+      - name: blog-service
+        image: FITNESSAPI_REGISTRY/blog-service:FITNESSAPI_TAG
+        ports:
+        - containerPort: 8080
+        env:
+        - name: BLOG_SERVICE_DB_URL
+          value: "jdbc:postgresql://postgres:5432/blog_service"
+        - name: SERVER_FORWARD_HEADERS_STRATEGY
+          value: "framework"
+        - name: RABBITMQ_HOST
+          value: "rabbitmq"
+        - name: MEDIA_SERVICE_BASE_URL
+          value: "http://media-service:8080/api/v1"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_USERNAME}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_PASSWORD}
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: JWT_SECRET}
+        - name: REFRESH_PEPPER
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: REFRESH_PEPPER}
+        - name: RABBITMQ_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_USERNAME}
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_PASSWORD}
+        startupProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 72
+        readinessProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          tcpSocket: {port: 8080}
+          periodSeconds: 15
+        resources:
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 896Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: progress-service
+spec:
+  selector:
+    app: progress-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: progress-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: progress-service
+  template:
+    metadata:
+      labels:
+        app: progress-service
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: fitnessapi-registry
+      containers:
+      - name: progress-service
+        image: FITNESSAPI_REGISTRY/progress-service:FITNESSAPI_TAG
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PROGRESS_SERVICE_DB_URL
+          value: "jdbc:postgresql://postgres:5432/progress_service"
+        - name: SERVER_FORWARD_HEADERS_STRATEGY
+          value: "framework"
+        - name: RABBITMQ_HOST
+          value: "rabbitmq"
+        - name: TRAINING_SERVICE_BASE_URL
+          value: "http://training-service:8080/api/v1"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_USERNAME}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: DB_PASSWORD}
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: JWT_SECRET}
+        - name: REFRESH_PEPPER
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: REFRESH_PEPPER}
+        - name: RABBITMQ_USERNAME
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_USERNAME}
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: fitnessapi-secrets, key: RABBITMQ_PASSWORD}
+        startupProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 72
+        readinessProbe:
+          httpGet: {path: /api/v1/actuator/health, port: 8080}
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          tcpSocket: {port: 8080}
+          periodSeconds: 15
+        resources:
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 896Mi}
