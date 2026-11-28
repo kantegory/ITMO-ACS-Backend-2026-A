@@ -5,11 +5,32 @@ x-app-secrets: &app_secrets
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
   INTERNAL_SECRET: ${INTERNAL_SECRET:-lab2-internal-docker-secret-min16}
 
+x-app-resources: &app_resources
+  deploy:
+    resources:
+      limits:
+        cpus: "0.25"
+        memory: 256M
+      reservations:
+        cpus: "0.05"
+        memory: 64M
+
+x-data-resources: &data_resources
+  deploy:
+    resources:
+      limits:
+        cpus: "0.50"
+        memory: 512M
+      reservations:
+        cpus: "0.10"
+        memory: 128M
+
 services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: lab2_rabbitmq
     restart: unless-stopped
+    <<: *data_resources
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -27,6 +48,7 @@ services:
     image: postgres:16
     container_name: lab1_postgres
     restart: unless-stopped
+    <<: *data_resources
     environment:
       POSTGRES_DB: lab1
       POSTGRES_USER: lab1_user
@@ -48,6 +70,7 @@ services:
       dockerfile: Dockerfile
       target: auth
     restart: unless-stopped
+    <<: *app_resources
     environment:
       PORT: "3001"
       DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_auth?schema=public
@@ -62,6 +85,7 @@ services:
       dockerfile: Dockerfile
       target: catalog
     restart: unless-stopped
+    <<: *app_resources
     environment:
       PORT: "3002"
       DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_catalog?schema=public
@@ -76,6 +100,7 @@ services:
       dockerfile: Dockerfile
       target: jobseeker
     restart: unless-stopped
+    <<: *app_resources
     environment:
       PORT: "3003"
       DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_jobseeker?schema=public
@@ -93,6 +118,7 @@ services:
       dockerfile: Dockerfile
       target: employer
     restart: unless-stopped
+    <<: *app_resources
     environment:
       PORT: "3004"
       DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_employer?schema=public
@@ -113,6 +139,7 @@ services:
       dockerfile: Dockerfile
       target: application
     restart: unless-stopped
+    <<: *app_resources
     environment:
       PORT: "3005"
       DATABASE_URL: postgresql://lab1_user:lab1_pass@postgres:5432/lab2_application?schema=public
@@ -136,6 +163,7 @@ services:
       dockerfile: Dockerfile
       target: gateway
     restart: unless-stopped
+    <<: *app_resources
     ports:
       - "3000:3000"
     environment:
