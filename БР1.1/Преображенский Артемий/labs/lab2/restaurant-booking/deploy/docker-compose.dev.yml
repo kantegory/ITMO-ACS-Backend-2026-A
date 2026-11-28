@@ -1,0 +1,151 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    restart: always
+    container_name: restaurant-booking-auth-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB_AUTH}
+    ports:
+      - "${POSTGRES_PORT_AUTH}:5432"
+    volumes:
+      - auth-dbdata:/var/lib/postgresql/data
+      - ../auth-service/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/000001_init.up.sql:ro
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB_AUTH}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  catalog-db:
+    image: postgres:16-alpine
+    restart: always
+    container_name: restaurant-booking-catalog-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB_CATALOG}
+    ports:
+      - "${POSTGRES_PORT_CATALOG}:5432"
+    volumes:
+      - catalog-dbdata:/var/lib/postgresql/data
+      - ../catalog-service/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ../catalog-service/migrations/000002_users_cache.up.sql:/docker-entrypoint-initdb.d/02_users_cache.sql:ro
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB_CATALOG}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    container_name: restaurant-booking-rabbitmq
+    ports:
+      - "${RABBITMQ_PORT_AMQP}:5672"
+      - "${RABBITMQ_PORT_MANAGEMENT}:15672"
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  booking-db:
+    image: postgres:16-alpine
+    restart: always
+    container_name: restaurant-booking-booking-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB_BOOKING}
+    ports:
+      - "${POSTGRES_PORT_BOOKING}:5432"
+    volumes:
+      - booking-dbdata:/var/lib/postgresql/data
+      - ../booking-service/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/000001_init.up.sql:ro
+    networks:
+      - restaurant-booking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB_BOOKING}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dev
+      args:
+        SERVICE: auth-service
+    restart: always
+    container_name: restaurant-booking-auth-service
+    env_file:
+      - ../.env
+    ports:
+      - "${AUTH_SERVICE_PUBLISHED_PORT}:8081"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - restaurant-booking
+
+  catalog-service:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dev
+      args:
+        SERVICE: catalog-service
+    restart: always
+    container_name: restaurant-booking-catalog-service
+    env_file:
+      - ../.env
+    ports:
+      - "${CATALOG_SERVICE_PUBLISHED_PORT}:8082"
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - restaurant-booking
+
+  booking-service:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dev
+      args:
+        SERVICE: booking-service
+    restart: always
+    container_name: restaurant-booking-booking-service
+    env_file:
+      - ../.env
+    ports:
+      - "${BOOKING_SERVICE_PUBLISHED_PORT}:8083"
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      catalog-service:
+        condition: service_started
+    networks:
+      - restaurant-booking
+
+volumes:
+  auth-dbdata:
+    name: restaurant_booking_auth_dbdata
+  catalog-dbdata:
+    name: restaurant_booking_catalog_dbdata
+  booking-dbdata:
+    name: restaurant_booking_booking_dbdata
+
+networks:
+  restaurant-booking:
+    driver: bridge

@@ -1,0 +1,93 @@
+---
+- name: Deploy Restaurant Booking to local Ubuntu
+  hosts: ubuntu
+  become: true
+  gather_facts: false
+
+  vars:
+    app_dir: /opt/restaurant-booking
+    app_source: "{{ playbook_dir }}/../../.."
+    monitoring: false
+
+  tasks:
+    - name: Install Docker, Compose, and nginx
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2, nginx, rsync]
+        state: present
+        cache_valid_time: 3600
+
+    - name: Enable Docker and nginx
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop: [docker, nginx]
+
+    - name: Prepare the application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy the application
+      ansible.posix.synchronize:
+        src: "{{ app_source }}/{{ item }}/"
+        dest: "{{ app_dir }}/{{ item }}/"
+        use_ssh_args: true
+        owner: false
+        group: false
+        delete: true
+        rsync_opts:
+          - --exclude=.env
+          - --exclude=.DS_Store
+          - --exclude=node_modules/
+      loop: [backend, frontend]
+      register: app_sync
+
+    - name: Create .env on the first run
+      ansible.builtin.copy:
+        src: "{{ app_dir }}/backend/.env.example"
+        dest: "{{ app_dir }}/backend/.env"
+        remote_src: true
+        force: false
+        mode: '0600'
+
+    - name: Find optional Gmail settings on the VM
+      become: false
+      ansible.builtin.stat:
+        path: ~/grafana-gmail.env
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: gmail_env
+      when: monitoring | bool
+
+    - name: Build and start the application
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}/backend/deploy"
+        files: [docker-compose.dev.yml]
+        env_files: >-
+          {{ [app_dir ~ '/backend/.env']
+             + ([gmail_env.stat.path] if gmail_env.stat.isreg | default(false) else []) }}
+        profiles: "{{ ['monitoring'] if monitoring | bool else [] }}"
+        build: "{{ 'always' if app_sync.results[0].changed else 'policy' }}"
+        wait: true
+        wait_timeout: 180
+      environment:
+        COMPOSE_PARALLEL_LIMIT: '1'
+
+    - name: Copy the local nginx config
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../nginx/local.conf"
+        dest: /etc/nginx/sites-enabled/restaurant-booking.conf
+        mode: '0644'
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.shell: nginx -t && systemctl reload nginx
+
+  post_tasks:
+    - name: Check the local site
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8180/

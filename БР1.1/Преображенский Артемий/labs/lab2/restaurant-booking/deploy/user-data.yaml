@@ -1,0 +1,34 @@
+#cloud-config
+users:
+  - name: {{ env.YC_SSH_LOGIN }}
+    groups: sudo
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - {{ env.YC_SSH_PUBLIC_KEY }}
+
+write_files:
+  - path: /etc/systemd/system/docker-prune.service
+    content: |
+      [Unit]
+      Requires=docker.service
+      After=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/docker image prune -af
+
+  - path: /etc/systemd/system/docker-prune.timer
+    content: |
+      [Timer]
+      OnCalendar=daily
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+runcmd:
+  - wget -O - https://monitoring.api.cloud.yandex.net/monitoring/v2/unifiedAgent/config/install.sh | bash
+  - systemctl daemon-reload
+  - systemctl enable docker-prune.timer
+  - systemctl start docker-prune.timer

@@ -1,0 +1,130 @@
+{
+  "uid": "backend-vm",
+  "title": "Backend VM",
+  "schemaVersion": 41,
+  "refresh": "15s",
+  "time": {"from": "now-15m", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "Container",
+        "type": "query",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "query": "label_values({job=\"docker\"}, container)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "VM CPU",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 0, "w": 5, "h": 5},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"vm\",mode=\"idle\"}[1m])))",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent"}}
+    },
+    {
+      "id": 2,
+      "title": "VM RAM",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 5, "y": 0, "w": 5, "h": 5},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"vm\"} / node_memory_MemTotal_bytes{job=\"vm\"})",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent"}}
+    },
+    {
+      "id": 3,
+      "title": "VM disk",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 10, "y": 0, "w": 5, "h": 5},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"vm\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"vm\",mountpoint=\"/\"})",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent"}}
+    },
+    {
+      "id": 4,
+      "title": "Healthcheck API",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 15, "y": 0, "w": 9, "h": 5},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_success{job=\"health\"} or on (service) (up{job=\"health\"} * 0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.service}",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}
+            }
+          ],
+          "noValue": "DOWN"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "VM network",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 5, "w": 24, "h": 6},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(node_network_receive_bytes_total{job=\"vm\",device!~\"lo|veth.*|docker.*|br-.*\"}[1m]))",
+          "legendFormat": "RX"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(node_network_transmit_bytes_total{job=\"vm\",device!~\"lo|veth.*|docker.*|br-.*\"}[1m]))",
+          "legendFormat": "TX"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "Bps"}}
+    },
+    {
+      "id": 7,
+      "title": "All Docker container logs",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 11, "w": 24, "h": 10},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"docker\", container=~\"$container\"}",
+          "queryType": "range"
+        }
+      ],
+      "options": {"showTime": true, "showLabels": true}
+    }
+  ]
+}

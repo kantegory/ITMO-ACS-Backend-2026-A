@@ -1,0 +1,57 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-vm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check deploy configuration
+        env:
+          VM_HOST: ${{ vars.VM_HOST }}
+          VM_USER: ${{ vars.VM_USER }}
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_FINGERPRINT: ${{ secrets.VM_FINGERPRINT }}
+        run: |
+          : "${VM_HOST:?Set the VM_HOST repository variable}"
+          : "${VM_USER:?Set the VM_USER repository variable}"
+          : "${VM_SSH_KEY:?Set the VM_SSH_KEY repository secret}"
+          : "${VM_FINGERPRINT:?Set the VM_FINGERPRINT repository secret}"
+
+      - name: Deploy to Yandex Cloud VM
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          host: ${{ vars.VM_HOST }}
+          username: ${{ vars.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          fingerprint: ${{ secrets.VM_FINGERPRINT }}
+          envs: DEPLOY_SHA
+          command_timeout: 25m
+          script: |
+            set -eu
+            cd /opt/restaurant-booking
+            git fetch origin main
+            if [ "$(git rev-parse FETCH_HEAD)" != "$DEPLOY_SHA" ]; then
+              printf 'Пропуск: коммит %s больше не является вершиной main.\n' "$DEPLOY_SHA"
+              exit 0
+            fi
+            git checkout --detach "$DEPLOY_SHA"
+            if [ ! -f backend/.env ]; then
+              install -m 600 .env backend/.env
+            fi
+            COMPOSE_PARALLEL_LIMIT=1 docker compose --env-file backend/.env -f backend/deploy/docker-compose.dev.yml up -d --build --wait --wait-timeout 300
+            printf '%s\n' "$DEPLOY_SHA" > .deployed-revision
