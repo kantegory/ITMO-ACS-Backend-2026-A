@@ -1,0 +1,219 @@
+{
+  "info": {
+    "name": "Rental Service API",
+    "_postman_id": "00000000-0000-0000-0000-000000000000",
+    "description": "Main flow: register -> login -> list properties -> filter -> open property -> start chat -> send message -> list messages (paginated).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" },
+    { "key": "propertyId", "value": "" },
+    { "key": "chatId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1) Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user{{$timestamp}}@example.com\",\n  \"password\": \"password123\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"User\",\n  \"role\": \"TENANT\"\n}\n"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 201', function () { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.test('has id and email', function () {",
+              "  pm.expect(json).to.have.property('id');",
+              "  pm.expect(json).to.have.property('email');",
+              "});",
+              "pm.collectionVariables.set('email', json.email);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2) Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"password123\"\n}\n"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('has access_token', function () { pm.expect(json).to.have.property('access_token'); });",
+              "pm.collectionVariables.set('token', json.access_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3) List properties",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/properties", "host": ["{{baseUrl}}"], "path": ["properties"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('is array', function () { pm.expect(Array.isArray(json)).to.be.true; });",
+              "if (json.length > 0) {",
+              "  pm.collectionVariables.set('propertyId', json[0].id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4) Filter properties (type/city/price)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/properties?type=APARTMENT&city=saint&min_price=0&max_price=999999",
+          "host": ["{{baseUrl}}"],
+          "path": ["properties"],
+          "query": [
+            { "key": "type", "value": "APARTMENT" },
+            { "key": "city", "value": "saint" },
+            { "key": "min_price", "value": "0" },
+            { "key": "max_price", "value": "999999" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('is array', function () { pm.expect(Array.isArray(json)).to.be.true; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5) Get property by ID",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/properties/{{propertyId}}", "host": ["{{baseUrl}}"], "path": ["properties", "{{propertyId}}"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 200 (or 404 when empty db)', function () {",
+              "  pm.expect([200,404]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6) Start conversation about property",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/properties/{{propertyId}}/chats", "host": ["{{baseUrl}}"], "path": ["properties", "{{propertyId}}", "chats"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 201 or 200', function () { pm.expect([200,201]).to.include(pm.response.code); });",
+              "const json = pm.response.json();",
+              "pm.test('has id', function () { pm.expect(json).to.have.property('id'); });",
+              "pm.collectionVariables.set('chatId', json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7) Send message",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/chats/{{chatId}}/messages", "host": ["{{baseUrl}}"], "path": ["chats", "{{chatId}}", "messages"] },
+        "body": { "mode": "raw", "raw": "{\n  \"text\": \"Hello! Is this property still available?\"\n}\n" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 201', function () { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.test('has text', function () { pm.expect(json.text).to.be.a('string'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8) List messages (paginated)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/chats/{{chatId}}/messages?limit=20&offset=0",
+          "host": ["{{baseUrl}}"],
+          "path": ["chats", "{{chatId}}", "messages"],
+          "query": [
+            { "key": "limit", "value": "20" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('has items/total', function () {",
+              "  pm.expect(json).to.have.property('items');",
+              "  pm.expect(json).to.have.property('total');",
+              "});",
+              "pm.test('items is array', function () { pm.expect(Array.isArray(json.items)).to.be.true; });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+

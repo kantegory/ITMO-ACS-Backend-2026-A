@@ -1,0 +1,453 @@
+openapi: 3.0.3
+
+info:
+  title: Chat Service API
+  version: 1.0.0
+  description: |
+    Микросервис чатов и сообщений между
+    арендатором и владельцем недвижимости.
+
+servers:
+  - url: http://chat-service:8080
+
+tags:
+  - name: Chats
+  - name: Messages
+  - name: Internal
+
+paths:
+  /chats:
+    get:
+      tags: [Chats]
+      summary: Получить список чатов пользователя
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - in: query
+          name: property_id
+          schema:
+            type: integer
+
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+
+      responses:
+        "200":
+          description: Список чатов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatShort"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags: [Chats]
+      summary: Создать чат по объекту недвижимости
+      description: |
+        Создает чат между tenant и landlord.
+        Если чат уже существует — возвращается существующий.
+
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChat"
+
+      responses:
+        "201":
+          description: Чат создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+        "200":
+          description: Чат уже существует
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+        "404":
+          description: Property не найден
+
+  /chats/{chat_id}:
+    get:
+      tags: [Chats]
+      summary: Получить чат
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ChatId"
+
+      responses:
+        "200":
+          description: Информация о чате
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatFull"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Chats]
+      summary: Удалить чат
+      description: |
+        Удаление чата пользователем.
+        Сообщения также удаляются.
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ChatId"
+
+      responses:
+        "204":
+          description: Чат удален
+
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /chats/{chat_id}/messages:
+    get:
+      tags: [Messages]
+      summary: Получить сообщения чата
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ChatId"
+
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+
+      responses:
+        "200":
+          description: Список сообщений
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      tags: [Messages]
+      summary: Отправить сообщение
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ChatId"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessage"
+
+      responses:
+        "201":
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /messages/{message_id}:
+    patch:
+      tags: [Messages]
+      summary: Изменить сообщение
+      description: Только автор сообщения
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessage"
+
+      responses:
+        "200":
+          description: Сообщение обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Messages]
+      summary: Удалить сообщение
+      description: Только автор сообщения
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+
+      responses:
+        "204":
+          description: Удалено
+
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /chats/{chat_id}/read:
+    patch:
+      tags: [Messages]
+      summary: Пометить сообщения как прочитанные
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ChatId"
+
+      responses:
+        "200":
+          description: Сообщения прочитаны
+
+  /internal/chats/property/{property_id}:
+    get:
+      tags: [Internal]
+      summary: Получить количество чатов объекта
+      description: Используется Property Service
+
+      parameters:
+        - in: path
+          name: property_id
+          required: true
+          schema:
+            type: integer
+
+      responses:
+        "200":
+          description: Статистика чатов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyChatStats"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ChatId:
+      in: path
+      name: chat_id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    MessageId:
+      in: path
+      name: message_id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    Unauthorized:
+      description: Требуется авторизация
+
+    Forbidden:
+      description: Нет доступа
+
+    NotFound:
+      description: Ресурс не найден
+
+    BadRequest:
+      description: Ошибка валидации
+
+  schemas:
+    Chat:
+      type: object
+      properties:
+        id:
+          type: integer
+
+        property_id:
+          type: integer
+
+        tenant_id:
+          type: integer
+
+        landlord_id:
+          type: integer
+
+        created_at:
+          type: string
+          format: date-time
+
+    ChatShort:
+      allOf:
+        - $ref: "#/components/schemas/Chat"
+        - type: object
+          properties:
+            last_message:
+              type: string
+              nullable: true
+
+            unread_count:
+              type: integer
+
+    ChatFull:
+      allOf:
+        - $ref: "#/components/schemas/Chat"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/Message"
+
+    CreateChat:
+      type: object
+      required:
+        - property_id
+
+      properties:
+        property_id:
+          type: integer
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+
+        chat_id:
+          type: integer
+
+        sender_id:
+          type: integer
+
+        text:
+          type: string
+
+        is_read:
+          type: boolean
+
+        created_at:
+          type: string
+          format: date-time
+
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateMessage:
+      type: object
+      required:
+        - text
+
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+
+    UpdateMessage:
+      type: object
+      required:
+        - text
+
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+
+    PropertyChatStats:
+      type: object
+      properties:
+        property_id:
+          type: integer
+
+        total_chats:
+          type: integer

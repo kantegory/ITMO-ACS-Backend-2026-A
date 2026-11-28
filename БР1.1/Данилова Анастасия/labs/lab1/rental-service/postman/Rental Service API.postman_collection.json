@@ -1,0 +1,261 @@
+{
+  "info": {
+    "name": "Rental Service API - Main Flow",
+    "_postman_id": "00000000-0000-0000-0000-000000000000",
+    "description": "Main scenario: Login as LANDLORD -> view my properties -> Login as TENANT -> list properties -> filter properties -> view random property -> start chat",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "landlordToken", "value": "" },
+    { "key": "tenantToken", "value": "" },
+    { "key": "propertyId", "value": "" },
+    { "key": "chatId", "value": "" },
+    { "key": "landlordEmail", "value": "user1@example.com" },
+    { "key": "landlordPassword", "value": "firstUserPassword" },
+    { "key": "tenantEmail", "value": "user2@example.com" },
+    { "key": "tenantPassword", "value": "password123" }
+  ],
+  "item": [
+    {
+      "name": "LANDLORD: Login and view my properties",
+      "item": [
+        {
+          "name": "1) Login as LANDLORD",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{landlordEmail}}\",\n  \"password\": \"{{landlordPassword}}\"\n}\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Has token', () => { pm.expect(json).to.have.property('token'); });",
+                  "pm.collectionVariables.set('landlordToken', json.token);",
+                  "pm.collectionVariables.set('landlordToken', json.token);",
+                  "console.log('Saved landlord token:', json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2) View my properties (as LANDLORD)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me/properties",
+              "host": ["{{baseUrl}}"],
+              "path": ["me", "properties"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Returns array of properties', () => { pm.expect(Array.isArray(json)).to.be.true; });",
+                  "if(json.length > 0) {",
+                  "  pm.test('First property has required fields', () => {",
+                  "    pm.expect(json[0]).to.have.property('id');",
+                  "    pm.expect(json[0]).to.have.property('title');",
+                  "    pm.expect(json[0]).to.have.property('owner_id');",
+                  "  });",
+                  "  if(!pm.collectionVariables.get('propertyId')) {",
+                  "    pm.collectionVariables.set('propertyId', json[0].id);",
+                  "  }",
+                  "  console.log('LANDLORD has', json.length, 'properties');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TENANT: Search and start chat",
+      "item": [
+        {
+          "name": "3) Login as TENANT",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"{{tenantPassword}}\"\n}\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Has token', () => { pm.expect(json).to.have.property('token'); });",
+                  "pm.collectionVariables.set('tenantToken', json.token);",
+                  "console.log('TENANT logged in');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4) List all properties",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/properties",
+              "host": ["{{baseUrl}}"],
+              "path": ["properties"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Returns array', () => { pm.expect(Array.isArray(json)).to.be.true; });",
+                  "pm.test('Has at least one property', () => { pm.expect(json.length).to.be.greaterThan(0); });",
+                  "console.log('Found', json.length, 'properties');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5) Filter properties (APARTMENT in Moscow)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/properties?type=APARTMENT&city=Moscow",
+              "host": ["{{baseUrl}}"],
+              "path": ["properties"],
+              "query": [
+                { "key": "type", "value": "APARTMENT" },
+                { "key": "city", "value": "Moscow" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Returns filtered array', () => { pm.expect(Array.isArray(json)).to.be.true; });",
+                  "if(json.length > 0) {",
+                  "  pm.test('All properties match filters', () => {",
+                  "    json.forEach(prop => {",
+                  "      pm.expect(prop.type).to.equal('APARTMENT');",
+                  "      pm.expect(prop.city).to.equal('Moscow');",
+                  "    });",
+                  "  });",
+                  "  const randomIndex = Math.floor(Math.random() * json.length);",
+                  "  pm.collectionVariables.set('propertyId', json[randomIndex].id);",
+                  "  console.log('Selected random property ID:', json[randomIndex].id);",
+                  "}",
+                  "console.log('Filtered:', json.length, 'apartments in Moscow');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6) View random property details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/properties/{{propertyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["properties", "{{propertyId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Returns full property details', () => {",
+                  "  pm.expect(json).to.have.property('id', parseInt(pm.collectionVariables.get('propertyId')));",
+                  "  pm.expect(json).to.have.property('title');",
+                  "  pm.expect(json).to.have.property('price_per_month');",
+                  "  pm.expect(json).to.have.property('description');",
+                  "  pm.expect(json).to.have.property('images');",
+                  "});",
+                  "console.log('Property:', json.title, '-', json.price_per_month, '₽');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7) Start chat about this property",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenantToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": {{propertyId}}\n}\n"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', () => { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Chat created successfully', () => {",
+                  "  pm.expect(json).to.have.property('id');",
+                  "  pm.expect(json).to.have.property('property_id', parseInt(pm.collectionVariables.get('propertyId')));",
+                  "  pm.expect(json).to.have.property('tenant_id');",
+                  "  pm.expect(json).to.have.property('landlord_id');",
+                  "});",
+                  "pm.collectionVariables.set('chatId', json.id);",
+                  "console.log('Chat started, ID:', json.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,448 @@
+{
+  "info": {
+    "name": "Rental Platform API (Microservices)",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "description": "Тестирование микросервисной платформы через API Gateway (nginx :8080).\n\nПорядок E2E: папка «0. E2E Main Flow» (запускать сверху вниз).\nДля RabbitMQ — папка «6. RabbitMQ Events» + RabbitMQ Management UI.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. E2E Main Flow",
+      "description": "Полный сценарий: landlord + tenant → property → rental → approve → chat → message → dashboard.",
+      "item": [
+        {
+          "name": "0.1 Register Landlord",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"landlord{{$timestamp}}@example.com\",\n  \"password\": \"password123\",\n  \"first_name\": \"Ivan\",\n  \"last_name\": \"Landlord\",\n  \"role\": \"LANDLORD\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                "const j = pm.response.json();",
+                "pm.environment.set('landlordEmail', j.email);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.2 Register Tenant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tenant{{$timestamp}}@example.com\",\n  \"password\": \"password123\",\n  \"first_name\": \"Anna\",\n  \"last_name\": \"Tenant\",\n  \"role\": \"TENANT\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                "pm.environment.set('tenantEmail', pm.response.json().email);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.3 Login Landlord",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{landlordEmail}}\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                "const j = pm.response.json();",
+                "pm.environment.set('landlordToken', j.access_token);",
+                "pm.environment.set('refreshToken', j.refresh_token || '');"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.4 Login Tenant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                "pm.environment.set('tenantToken', pm.response.json().access_token);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.5 Landlord — Create Property",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": "{{baseUrl}}/properties",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Cozy apartment near metro\",\n  \"description\": \"Bright 2-room flat\",\n  \"property_type\": \"APARTMENT\",\n  \"city\": \"Saint Petersburg\",\n  \"address\": \"Nevsky 1\",\n  \"price_per_month\": 65000\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                "pm.environment.set('propertyId', pm.response.json().id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.6 Tenant — List Properties",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/properties?city=Saint&is_available=true"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                "pm.test('array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.7 Tenant — Create Rental",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenantToken}}" }
+            ],
+            "url": "{{baseUrl}}/rentals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": {{propertyId}},\n  \"start_date\": \"2026-06-01\",\n  \"end_date\": \"2026-12-01\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                "const j = pm.response.json();",
+                "pm.environment.set('rentalId', j.id);",
+                "pm.test('status PENDING', () => pm.expect(j.status).to.eql('PENDING'));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.8 Landlord — Approve Rental",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
+            "url": "{{baseUrl}}/rentals/{{rentalId}}/approve"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                "pm.test('status ACTIVE', () => pm.expect(pm.response.json().status).to.eql('ACTIVE'));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.9 Tenant — Create Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenantToken}}" }
+            ],
+            "url": "{{baseUrl}}/chats",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": {{propertyId}}\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201 or 200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                "pm.environment.set('chatId', pm.response.json().id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.10 Tenant — Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenantToken}}" }
+            ],
+            "url": "{{baseUrl}}/chats/{{chatId}}/messages",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Hello! Rental approved, when can I move in?\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                "pm.environment.set('messageId', pm.response.json().id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "0.11 Tenant — Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/dashboard"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                "const j = pm.response.json();",
+                "pm.test('has as_tenant', () => pm.expect(j).to.have.property('as_tenant'));"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "1. Health & Gateway",
+      "item": [
+        {
+          "name": "Gateway Health",
+          "request": { "method": "GET", "url": "http://localhost:8080/health" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "2. Auth Service",
+      "item": [
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}" }
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/users/me"
+          }
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tenantToken}}" }
+            ],
+            "url": "{{baseUrl}}/users/me",
+            "body": { "mode": "raw", "raw": "{\n  \"first_name\": \"Anna Updated\"\n}" }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Property Service",
+      "item": [
+        {
+          "name": "Get Property by ID",
+          "request": { "method": "GET", "url": "{{baseUrl}}/properties/{{propertyId}}" }
+        },
+        {
+          "name": "My Properties (Landlord)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
+            "url": "{{baseUrl}}/properties/me"
+          }
+        },
+        {
+          "name": "Filter by type and price",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/properties?property_type=APARTMENT&min_price=10000&max_price=100000"
+          }
+        },
+        {
+          "name": "Create Amenity",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": "{{baseUrl}}/amenities",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"WiFi\"\n}" }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["if (pm.response.code === 201) pm.environment.set('amenityId', pm.response.json().id);"] }
+          }]
+        },
+        {
+          "name": "List Amenities",
+          "request": { "method": "GET", "url": "{{baseUrl}}/amenities" }
+        },
+        {
+          "name": "Add Property Image",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": "{{baseUrl}}/properties/{{propertyId}}/images",
+            "body": { "mode": "raw", "raw": "{\n  \"image_url\": \"https://example.com/photo1.jpg\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Rental Service",
+      "item": [
+        {
+          "name": "Get Rental",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/rentals/{{rentalId}}"
+          }
+        },
+        {
+          "name": "List Rentals (tenant)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/rentals?role=tenant"
+          }
+        },
+        {
+          "name": "Complete Rental",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
+            "url": "{{baseUrl}}/rentals/{{rentalId}}/complete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Chat Service",
+      "item": [
+        {
+          "name": "List Chats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/chats"
+          }
+        },
+        {
+          "name": "List Messages",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/chats/{{chatId}}/messages?limit=50&offset=0"
+          }
+        },
+        {
+          "name": "Mark Chat Read",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
+            "url": "{{baseUrl}}/chats/{{chatId}}/read"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. RabbitMQ Events (manual)",
+      "description": "После запросов проверьте очереди и сообщения в RabbitMQ Management (http://localhost:15672).\n\nСобытия:\n- user.deleted → property/rental/chat consumers\n- rental.created → property is_available=false, chat auto-create\n- rental.completed → property is_available=true",
+      "item": [
+        {
+          "name": "6.1 Delete User (publish user.deleted)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
+            "url": "{{baseUrl}}/users/me"
+          }
+        },
+        {
+          "name": "6.2 Verify property unavailable after rental",
+          "request": { "method": "GET", "url": "{{baseUrl}}/properties/{{propertyId}}" },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "  pm.test('is_available false after active rental', () => {",
+                "    pm.expect(pm.response.json().is_available).to.eql(false);",
+                "  });",
+                "}"
+              ]
+            }
+          }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,561 @@
+openapi: 3.0.0
+
+info:
+  title: Auth Service API
+  version: 1.0.0
+  description: |
+    Сервис аутентификации и управления пользователями.
+    Отвечает за регистрацию, авторизацию, JWT,
+    управление профилем пользователя и межсервисную
+    валидацию пользователей.
+
+servers:
+  - url: http://localhost:8081
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Internal
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+
+      responses:
+        "201":
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Авторизация пользователя
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+
+      responses:
+        "200":
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновить access token
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+
+      responses:
+        "200":
+          description: Токен обновлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход из системы
+      security:
+        - bearerAuth: []
+
+      responses:
+        "204":
+          description: Успешный выход
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Получить текущего пользователя
+      security:
+        - bearerAuth: []
+
+      responses:
+        "200":
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    patch:
+      tags: [Users]
+      summary: Обновить профиль пользователя
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+
+      responses:
+        "200":
+          description: Данные обновлены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    delete:
+      tags: [Users]
+      summary: Удалить аккаунт (soft delete)
+      description: |
+        Аккаунт деактивируется через is_active=false.
+        Используется soft delete для сохранения
+        истории договоров аренды и сообщений.
+
+      security:
+        - bearerAuth: []
+
+      responses:
+        "204":
+          description: Аккаунт деактивирован
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/change-password:
+    put:
+      tags: [Users]
+      summary: Смена пароля
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+
+      responses:
+        "204":
+          description: Пароль изменен
+
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Получить список пользователей
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+
+      responses:
+        "200":
+          description: Список пользователей
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/{user_id}:
+    get:
+      tags: [Users]
+      summary: Получить пользователя по ID
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+
+      responses:
+        "200":
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/users/{user_id}:
+    get:
+      tags: [Internal]
+      summary: Получить пользователя для межсервисного взаимодействия
+      description: |
+        Используется Property, Rental и Chat сервисами
+        для проверки существования пользователя.
+
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+
+      responses:
+        "200":
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserInternal"
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/users/validate:
+    post:
+      tags: [Internal]
+      summary: Проверка существования пользователей
+      description: |
+        Используется сервисами для пакетной проверки user_id.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateUsersRequest"
+
+      responses:
+        "200":
+          description: Результат проверки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateUsersResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserId:
+      in: path
+      name: user_id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Unauthorized:
+      description: Пользователь не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Conflict:
+      description: Конфликт данных
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - message
+
+      properties:
+        message:
+          type: string
+
+        code:
+          type: string
+
+    Role:
+      type: string
+      enum:
+        - TENANT
+        - LANDLORD
+        - BOTH
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - first_name
+        - last_name
+        - role
+
+      properties:
+        email:
+          type: string
+          format: email
+
+        password:
+          type: string
+          minLength: 6
+
+        first_name:
+          type: string
+
+        last_name:
+          type: string
+
+        role:
+          $ref: "#/components/schemas/Role"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+
+      properties:
+        email:
+          type: string
+          format: email
+
+        password:
+          type: string
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+
+      properties:
+        refresh_token:
+          type: string
+
+    AuthResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+
+      properties:
+        access_token:
+          type: string
+
+        refresh_token:
+          type: string
+
+        token_type:
+          type: string
+          example: bearer
+
+    UserPublic:
+      type: object
+      required:
+        - id
+        - email
+        - first_name
+        - last_name
+        - role
+        - is_verified
+        - is_active
+        - created_at
+        - updated_at
+
+      properties:
+        id:
+          type: integer
+
+        email:
+          type: string
+          format: email
+
+        first_name:
+          type: string
+
+        last_name:
+          type: string
+
+        role:
+          $ref: "#/components/schemas/Role"
+
+        is_verified:
+          type: boolean
+
+        is_active:
+          type: boolean
+
+        created_at:
+          type: string
+          format: date-time
+
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+
+      properties:
+        first_name:
+          type: string
+
+        last_name:
+          type: string
+
+        email:
+          type: string
+          format: email
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+
+      properties:
+        current_password:
+          type: string
+
+        new_password:
+          type: string
+          minLength: 6
+
+    UserInternal:
+      type: object
+      required:
+        - id
+        - role
+        - is_active
+
+      properties:
+        id:
+          type: integer
+
+        role:
+          $ref: "#/components/schemas/Role"
+
+        is_active:
+          type: boolean
+
+    UserList:
+      type: object
+
+      required:
+        - users
+        - total
+
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserPublic"
+
+        total:
+          type: integer
+
+    ValidateUsersRequest:
+      type: object
+
+      required:
+        - user_ids
+
+      properties:
+        user_ids:
+          type: array
+          items:
+            type: integer
+
+    ValidateUsersResponse:
+      type: object
+
+      required:
+        - valid
+        - invalid_user_ids
+
+      properties:
+        valid:
+          type: boolean
+
+        invalid_user_ids:
+          type: array
+          items:
+            type: integer
