@@ -1,0 +1,86 @@
+---
+- name: Подготовить ВМ для TableReserve
+  hosts: app
+  become: true
+  vars:
+    app_dir: /opt/tablereserve
+    repo_url: "https://github.com/REPLACE_OWNER/ITMO-ACS-Backend-2026-A.git"
+    repo_branch: main
+
+  tasks:
+    - name: Обновить индекс пакетов
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Установить пакеты
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - git
+          - nginx
+          - gnupg
+        state: present
+
+    - name: Проверить, установлен ли Docker
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Установить Docker по официальному скрипту, если его ещё нет
+      ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
+      args:
+        executable: /bin/bash
+      when: docker_check.rc != 0
+
+    - name: Включить и запустить Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Создать каталог приложения
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Клонировать или обновить репозиторий
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ repo_branch }}"
+        force: true
+
+    - name: Запустить стек
+      ansible.builtin.command: docker compose up -d --build
+      args:
+        chdir: "{{ app_dir }}/coursework/project"
+
+    - name: Положить конфигурацию nginx
+      ansible.builtin.copy:
+        src: ../nginx/vm.conf
+        dest: /etc/nginx/sites-available/tablereserve.conf
+        mode: "0644"
+      notify: reload nginx
+
+    - name: Включить сайт
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/tablereserve.conf
+        dest: /etc/nginx/sites-enabled/tablereserve.conf
+        state: link
+      notify: reload nginx
+
+    - name: Убрать дефолтный сайт nginx
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: reload nginx
+
+  handlers:
+    - name: reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
