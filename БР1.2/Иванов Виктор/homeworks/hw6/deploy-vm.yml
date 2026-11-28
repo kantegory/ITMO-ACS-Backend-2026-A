@@ -1,0 +1,39 @@
+name: Deploy VM
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Пропустить, если секрет сервера не задан
+        id: gate
+        run: |
+          if [ -n "${{ secrets.SSH_HOST }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SSH_HOST не задан, деплой на ВМ пропущен"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+
+      - name: Обновить приложение на сервере
+        if: steps.gate.outputs.enabled == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/tablereserve
+            git fetch origin
+            git checkout main
+            git pull --ff-only origin main
+            docker compose -f coursework/project/docker-compose.yml up -d --build
+            docker image prune -f
