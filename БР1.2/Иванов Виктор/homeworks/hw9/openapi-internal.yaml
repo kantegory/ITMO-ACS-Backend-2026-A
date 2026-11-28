@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: TableReserve internal API
+  version: 1.0.0
+  description: |
+    Эндпоинты только для сети микросервисов. Gateway их не публикует.
+    Вызывающая сторона — другой сервис, а не браузер пользователя.
+servers:
+  - url: http://auth:3001
+    description: auth
+  - url: http://restaurants:3002
+    description: restaurants
+  - url: http://bookings:3003
+    description: bookings
+paths:
+  /internal/users/{id}:
+    get:
+      summary: Краткий профиль для других сервисов
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Имя и роль
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  fullName: { type: string }
+                  role: { type: string }
+        "404":
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: NOT_FOUND }
+                      message: { type: string }
+  /internal/restaurants/{id}:
+    get:
+      summary: Проверка, что ресторан существует, и получение владельца
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Краткие данные ресторана
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, ownerId, name, city]
+                properties:
+                  id: { type: string, format: uuid }
+                  ownerId: { type: string, format: uuid }
+                  name: { type: string }
+                  city: { type: string }
+        "404":
+          description: Ресторан не найден
+  /internal/users/{userId}/restaurants/{restaurantId}/visited:
+    get:
+      summary: Была ли неотменённая бронь пользователя в ресторане
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: restaurantId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Признак визита
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visited: { type: boolean }
